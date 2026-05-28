@@ -59,7 +59,7 @@ This is an npm-workspaces monorepo, driven from the root:
 
 Root scripts fan out to the workspaces: `npm run build`, `npm run lint`,
 `npm run typecheck`, `npm test`, `npm run test:e2e`, `npm run dev`, plus the
-`db:*` helpers. See the root [`package.json`](package.json).
+`prisma:*` and `hermes:*` helpers. See the root [`package.json`](package.json).
 
 ## Quick start (local)
 
@@ -93,11 +93,32 @@ These can't be scripted for you and gate the live run (not the build or tests):
 For local dev, tunnel webhooks with [smee.io](https://smee.io) or ngrok to
 `localhost:3000/webhooks/github`.
 
-### 2. Provision Hermes
-- Install the `hermes` CLI (set `HERMES_BIN`) **or** build the sandbox image
-  (`docker build -f Dockerfile.agent -t hermes-agent .`) and set `SANDBOX_MODE=docker`.
-- Configure provider credentials/model under `HERMES_HOME` (`~/.hermes`), or set
-  `HERMES_MODEL`/`HERMES_PROVIDER`.
+### 2. Provision Hermes (automated, isolated)
+
+Hermes keys all of its config, credentials, sessions, and state off `HERMES_HOME`. The
+setup script gives the orchestrator a **project-local `HERMES_HOME`** so it never reads or
+writes your global `~/.hermes`:
+
+```bash
+npm run hermes:local     # default: reuse your system `hermes` binary, isolated HERMES_HOME
+npm run hermes:docker    # strongest: build the agent sandbox image, run agents in a container
+```
+
+- **`system` mode (default):** uses the `hermes` already on your PATH but points
+  `HERMES_HOME` at `./.hermes/home`, so any local Hermes config/context stays out of
+  orchestration. No Docker, no reinstall.
+- **`docker` mode:** builds [`api/Dockerfile.agent`](api/Dockerfile.agent) and runs every
+  agent invocation in a container (`SANDBOX_MODE=docker`), mounting only the job directory
+  and the isolated `HERMES_HOME` (read-only). True isolation; requires Docker.
+
+The script writes `HERMES_BIN` / `HERMES_HOME` / `SANDBOX_MODE` into `api/.env` and creates
+the isolated home. It does **not** copy your credentials — configure the isolated home
+separately (the script prints the exact command), e.g.:
+
+```bash
+HERMES_HOME="$(pwd)/.hermes/home" hermes model   # provider setup wizard, scoped to the isolated home
+# …or set HERMES_MODEL / HERMES_PROVIDER + an API key in api/.env
+```
 
 ## Using it
 

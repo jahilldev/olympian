@@ -23,3 +23,6 @@ logs/
 
 # agent workspaces (cloned repos / worktrees)
 .workspaces/
+
+# isolated, project-local Hermes home (config/credentials/sessions/state)
+.hermes/

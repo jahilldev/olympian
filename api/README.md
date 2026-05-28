@@ -23,7 +23,9 @@ implement → self-review → PR, with humans only ever approving the plan and t
 ## Prerequisites
 
 - Node.js 20+
-- A `hermes` CLI on `PATH` (or build the sandbox image and set `SANDBOX_MODE=docker`)
+- Hermes — run `npm run hermes:local` from the repo root to wire an **isolated**,
+  project-local `HERMES_HOME` to your existing `hermes` binary (or `npm run hermes:docker`
+  for a fully containerized agent). See the [project README](../README.md#2-provision-hermes-automated-isolated).
 - A GitHub App (for the live flow) — see the [project README](../README.md)
 
 ## Installation

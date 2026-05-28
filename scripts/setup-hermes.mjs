@@ -1,0 +1,154 @@
+#!/usr/bin/env node
+// Automates an *isolated* Hermes environment for the orchestrator so it never
+// touches the user's global ~/.hermes. Two modes:
+//
+//   system (default) — reuse the `hermes` binary already on PATH, but point
+//                      HERMES_HOME at a project-local dir so all config,
+//                      credentials, sessions, and state are separate from the
+//                      user's global install.
+//   docker          — build the agent sandbox image and run every agent
+//                      invocation in a container (strongest isolation; needs Docker).
+//
+// Either way it writes the resolved settings into api/.env (idempotently) and
+// creates the isolated HERMES_HOME directory. Credentials are NOT copied — you
+// configure the isolated home separately (see the printed next steps).
+
+import { execSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+function parseArgs(argv) {
+  const args = { mode: 'system' };
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === '--mode') args.mode = argv[++i];
+    else if (a === '--home') args.home = argv[++i];
+    else if (a === '--image') args.image = argv[++i];
+    else if (a === '--bin') args.bin = argv[++i];
+    else if (a === '--help' || a === '-h') args.help = true;
+  }
+  return args;
+}
+
+function log(msg) {
+  console.log(`  ${msg}`);
+}
+function section(msg) {
+  console.log(`\n${msg}`);
+}
+
+/** Replace KEY=... lines in place (preserving comments/order); append missing keys. */
+function upsertEnv(envPath, updates) {
+  const examplePath = join(REPO_ROOT, 'api', '.env.example');
+  if (!existsSync(envPath) && existsSync(examplePath)) {
+    copyFileSync(examplePath, envPath);
+    log(`created ${rel(envPath)} from .env.example`);
+  }
+  const raw = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+  const lines = raw.length ? raw.split('\n') : [];
+  const seen = new Set();
+  const next = lines.map((line) => {
+    const m = line.match(/^([A-Z0-9_]+)=/);
+    if (m && Object.prototype.hasOwnProperty.call(updates, m[1])) {
+      seen.add(m[1]);
+      return `${m[1]}=${updates[m[1]]}`;
+    }
+    return line;
+  });
+  for (const [key, value] of Object.entries(updates)) {
+    if (!seen.has(key)) next.push(`${key}=${value}`);
+  }
+  writeFileSync(envPath, next.join('\n').replace(/\n*$/, '\n'));
+}
+
+function rel(p) {
+  return p.startsWith(REPO_ROOT) ? p.slice(REPO_ROOT.length + 1) : p;
+}
+
+function commandExists(cmd) {
+  try {
+    return execSync(`command -v ${cmd}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return null;
+  }
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    console.log(
+      'Usage: npm run hermes:local -- [--mode system|docker] [--home <path>] [--image <name>] [--bin <path>]\n' +
+        '       npm run hermes:docker        (shortcut for --mode docker)',
+    );
+    return;
+  }
+
+  const envPath = join(REPO_ROOT, 'api', '.env');
+  const hermesHome = resolve(args.home ?? join(REPO_ROOT, '.hermes', 'home'));
+  mkdirSync(hermesHome, { recursive: true });
+
+  section('Hermes setup');
+  log(`mode:         ${args.mode}`);
+  log(`HERMES_HOME:  ${hermesHome}  (isolated; separate from ~/.hermes)`);
+
+  if (args.mode === 'system') {
+    const found = args.bin ?? commandExists('hermes');
+    const bin = found ?? 'hermes';
+    if (found) {
+      log(`hermes binary: ${found}`);
+    } else {
+      log('hermes binary: NOT found on PATH — install Hermes or use `--mode docker`.');
+      log('               (HERMES_BIN left as "hermes"; it will work once installed.)');
+    }
+    upsertEnv(envPath, {
+      SANDBOX_MODE: 'none',
+      HERMES_BIN: bin,
+      HERMES_HOME: hermesHome,
+    });
+  } else if (args.mode === 'docker') {
+    const image = args.image ?? 'hermes-agent:latest';
+    if (!commandExists('docker')) {
+      console.error('\nDocker is required for --mode docker but was not found on PATH.');
+      process.exit(1);
+    }
+    section(`Building agent image ${image} from api/Dockerfile.agent …`);
+    try {
+      execSync(`docker build -f api/Dockerfile.agent -t ${image} api`, {
+        cwd: REPO_ROOT,
+        stdio: 'inherit',
+      });
+    } catch {
+      console.error(
+        `\nImage build failed. Confirm the Hermes install line in api/Dockerfile.agent, then re-run.`,
+      );
+      process.exit(1);
+    }
+    upsertEnv(envPath, {
+      SANDBOX_MODE: 'docker',
+      DOCKER_AGENT_IMAGE: image,
+      HERMES_HOME: hermesHome,
+    });
+  } else {
+    console.error(`Unknown --mode "${args.mode}". Use "system" or "docker".`);
+    process.exit(1);
+  }
+
+  log(`wrote settings to ${rel(envPath)}`);
+
+  section('Next steps');
+  log('Configure provider credentials in the ISOLATED home (not your global ~/.hermes):');
+  if (args.mode === 'docker') {
+    log(`  HERMES_HOME=${hermesHome} hermes model    # or drop config.yaml/.env into that dir`);
+    log('  (the orchestrator mounts this dir read-only into the agent container)');
+  } else {
+    log(`  HERMES_HOME=${hermesHome} hermes model    # run the provider setup wizard`);
+    log('  …or set HERMES_MODEL/HERMES_PROVIDER + an API key in api/.env');
+  }
+  log('Then start the service:  npm run dev');
+  console.log('');
+}
+
+main();

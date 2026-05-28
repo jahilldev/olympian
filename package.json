@@ -10,18 +10,20 @@
     "node": ">=20"
   },
   "scripts": {
-    "setup": "npm install && npm run db:setup",
-    "db:setup": "npm run -w api prisma:generate && npm run -w api prisma:migrate",
-    "db:generate": "npm run -w api prisma:generate",
-    "db:deploy": "npm run -w api prisma:deploy",
-    "db:studio": "npm run -w api prisma:studio",
+    "setup": "npm install && npm run prisma:setup",
+    "start": "npm run -w api start:prod",
+    "dev": "npm run -w api start:dev",
+    "prisma:setup": "npm run -w api prisma:generate && npm run -w api prisma:migrate",
+    "prisma:generate": "npm run -w api prisma:generate",
+    "prisma:deploy": "npm run -w api prisma:deploy",
+    "prisma:studio": "npm run -w api prisma:studio",
+    "hermes:local": "node scripts/setup-hermes.mjs",
+    "hermes:docker": "node scripts/setup-hermes.mjs --mode docker",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "npm run format --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "test:e2e": "npm run -w api test:e2e",
-    "dev": "npm run -w api start:dev",
-    "start": "npm run -w api start:prod"
+    "test:e2e": "npm run -w api test:e2e"
   }
 }
