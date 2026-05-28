@@ -1,0 +1,25 @@
+# dependencies (hoisted to the workspace root)
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# test
+coverage/
+
+# logs
+*.log
+logs/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# os
+.DS_Store
+
+# agent workspaces (cloned repos / worktrees)
+.workspaces/

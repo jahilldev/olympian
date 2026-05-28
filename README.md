@@ -50,14 +50,23 @@ Module layout (one service per module): `config`, `prisma`, `metrics`, `health`,
 `github-app`, `github-api`, `webhook`, `job`, `queue`, `worker`, `agent`, `workspace`,
 `review`, `orchestrator`.
 
+## Monorepo layout
+
+This is an npm-workspaces monorepo, driven from the root:
+
+- **`api/`** — the orchestration service (this is the whole product today).
+- **`app/`** — a management/overview UI (planned; not yet present).
+
+Root scripts fan out to the workspaces: `npm run build`, `npm run lint`,
+`npm run typecheck`, `npm test`, `npm run test:e2e`, `npm run dev`, plus the
+`db:*` helpers. See the root [`package.json`](package.json).
+
 ## Quick start (local)
 
 ```bash
-cd api
-cp .env.example .env            # fill in GitHub App + Hermes values
-npm install
-npx prisma migrate dev          # creates prisma/dev.db
-npm run start:dev
+cp api/.env.example api/.env    # fill in GitHub App + Hermes values
+npm run setup                   # installs all workspaces + generates client + migrates
+npm run dev                     # runs the api service in watch mode
 ```
 
 Probe it:

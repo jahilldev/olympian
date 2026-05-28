@@ -1,0 +1,27 @@
+{
+  "name": "olympian",
+  "version": "0.1.0",
+  "description": "Hermes Agent orchestration service — an AI dark factory. Monorepo root: `api` (orchestration service) and, eventually, `app` (management/overview UI).",
+  "private": true,
+  "workspaces": [
+    "api"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "npm install && npm run db:setup",
+    "db:setup": "npm run -w api prisma:generate && npm run -w api prisma:migrate",
+    "db:generate": "npm run -w api prisma:generate",
+    "db:deploy": "npm run -w api prisma:deploy",
+    "db:studio": "npm run -w api prisma:studio",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "npm run format --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run -w api test:e2e",
+    "dev": "npm run -w api start:dev",
+    "start": "npm run -w api start:prod"
+  }
+}
