@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+.workspaces
+*.log
+.env
+.env.*
+!.env.example
+prisma/dev.db*
+*.pem
+.git

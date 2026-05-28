@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+*.tsbuildinfo
+
+# test
+coverage/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# logs
+*.log
+logs/
+
+# runtime
+.DS_Store
+
+# agent workspaces (cloned repos / worktrees)
+.workspaces/
+
+# sqlite database files (migrations are tracked; the .db files are not)
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm

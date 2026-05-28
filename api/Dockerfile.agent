@@ -1,0 +1,30 @@
+# Sandbox image for running the Hermes Agent (used when SANDBOX_MODE=docker).
+# The orchestrator runs:  docker run --rm -i -v <job-dir>:/workspace -w /workspace \
+#     [-v <HERMES_HOME>:/root/.hermes:ro] <DOCKER_AGENT_IMAGE> hermes -z --yolo ...
+#
+# This image must contain the `hermes` executable plus a toolchain rich enough for
+# the repos you target (git, node, python, build tools, etc.). Add languages/SDKs
+# your repositories need.
+
+FROM python:3.12-slim
+
+# Base toolchain. Extend per your repos' needs.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl ca-certificates build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node 20 (many target repos need it; harmless otherwise).
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Install Hermes Agent ──────────────────────────────────────────────────────
+# IMPORTANT: confirm the install command against the current Hermes docs
+# (https://github.com/nousresearch/hermes-agent). The line below uses the Python
+# package install path; switch to the official installer script if that's preferred.
+RUN pip install --no-cache-dir hermes-agent || \
+    echo "WARNING: adjust this line to the current Hermes install method"
+
+# Provider credentials/config are mounted at runtime via HERMES_HOME -> /root/.hermes.
+WORKDIR /workspace
+ENTRYPOINT []

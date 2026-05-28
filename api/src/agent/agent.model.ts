@@ -1,0 +1,70 @@
+export const AGENT_PHASES = ['PLAN', 'IMPLEMENT', 'REVIEW', 'REVISE'] as const;
+export type AgentPhase = (typeof AGENT_PHASES)[number];
+
+export type AgentRunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT';
+
+/** Caps so a runaway agent can't blow up memory or the SQLite row. */
+export const STDOUT_CAP = 200_000;
+
+export interface AgentRunOptions {
+  jobId: string;
+  phase: AgentPhase;
+  /** Absolute working directory the agent runs in (its repo worktree). */
+  cwd: string;
+  /** The full prompt, assembled from DB context by the orchestrator. */
+  prompt: string;
+  /** Optional Hermes toolset CSV (`-t`). */
+  toolsets?: string;
+  /** Optional Hermes skills to preload (`--skills`, repeatable). */
+  skills?: string[];
+  /** Override the default per-invocation timeout. */
+  timeoutMs?: number;
+}
+
+export interface AgentRunResult {
+  runId: string;
+  status: AgentRunStatus;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+}
+
+export interface SpawnSpec {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+}
+
+export interface RawSpawnResult {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  timedOut: boolean;
+}
+
+// ── Prompt context (string-based to keep agent decoupled from other modules) ──
+export interface PlanPromptContext {
+  repoFullName: string;
+  issueNumber: number;
+  issueTitle: string;
+  issueBody: string;
+  priorPlan?: string;
+  feedback?: string[];
+}
+
+export interface ImplementPromptContext {
+  repoFullName: string;
+  issueTitle: string;
+  issueBody: string;
+  plan: string;
+  attempt: number;
+  /** Pre-formatted extra guidance: prior review issues or PR-review feedback. */
+  guidance?: string;
+}
+
+export interface RevisePromptContext {
+  plan: string;
+  issuesText: string;
+}

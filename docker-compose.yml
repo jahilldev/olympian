@@ -1,0 +1,23 @@
+# SQLite is file-based, so there is no database service to run — only the app.
+# The sqlite file lives on a named volume so it survives container restarts.
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: hermes-api
+    restart: unless-stopped
+    env_file:
+      - ./api/.env
+    environment:
+      DATABASE_URL: file:/data/hermes.db
+    volumes:
+      - hermes-data:/data
+      # Persist agent workspaces (cloned repos) across restarts.
+      - hermes-workspaces:/app/.workspaces
+    ports:
+      - '3000:3000'
+
+volumes:
+  hermes-data:
+  hermes-workspaces:

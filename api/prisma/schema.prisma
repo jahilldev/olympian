@@ -1,0 +1,184 @@
+// Hermes Agent orchestration service — system of record.
+// Prisma owns all job state, queue tasks, plan/review history, and audit trail.
+//
+// Datasource is SQLite (file-based, zero provisioning). SQLite has no native enum
+// or JSON column types in Prisma, so:
+//   - "enum" columns are plain strings; the allowed values live as TS unions in the
+//     relevant <module>.model.ts (e.g. JobState in job/job.model.ts).
+//   - JSON payloads are stored as serialized strings (see *.utility.ts (de)serializers).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A GitHub App installation on an account; scopes which repos/labels we act on.
+model RepoInstallation {
+  id             String   @id @default(cuid())
+  installationId BigInt   @unique
+  accountLogin   String
+  accountType    String // "User" | "Organization"
+  triggerLabel   String? // overrides the global TRIGGER_LABEL when set
+  suspended      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  jobs           Job[]
+}
+
+model Job {
+  id             String           @id @default(cuid())
+  installation   RepoInstallation @relation(fields: [installationId], references: [id])
+  installationId String
+  repoOwner      String
+  repoName       String
+  repoFullName   String
+  issueNumber    Int
+  issueTitle     String
+  issueBody      String
+  triggerLabel   String
+  state          String           @default("TRIAGED") // JobState union
+  branchName     String?
+  prNumber       Int?
+  headSha        String?
+  confidence     Int? // latest review confidence (0-100)
+  attempts       Int              @default(0)
+  error          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  transitions JobStateTransition[]
+  plans       PlanRevision[]
+  feedback    PlanFeedback[]
+  runs        AgentRun[]
+  reviews     ReviewPass[]
+  pr          PullRequestRef?
+  tasks       QueueTask[]
+
+  @@unique([repoFullName, issueNumber])
+  @@index([state])
+  @@index([repoFullName, state])
+}
+
+model JobStateTransition {
+  id        String   @id @default(cuid())
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId     String
+  fromState String? // JobState union
+  toState   String // JobState union
+  reason    String?
+  actor     String   @default("SYSTEM") // Actor union
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model PlanRevision {
+  id              String   @id @default(cuid())
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId           String
+  revision        Int
+  content         String
+  status          String   @default("PROPOSED") // PlanRevisionStatus union
+  githubCommentId BigInt?
+  createdAt       DateTime @default(now())
+
+  @@unique([jobId, revision])
+  @@index([jobId])
+}
+
+model PlanFeedback {
+  id              String   @id @default(cuid())
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId           String
+  author          String
+  body            String
+  githubCommentId BigInt?
+  createdAt       DateTime @default(now())
+
+  @@index([jobId])
+}
+
+// Audit of every Hermes CLI invocation.
+model AgentRun {
+  id         String   @id @default(cuid())
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId      String
+  phase      String // AgentPhase union
+  command    String
+  cwd        String
+  model      String?
+  status     String   @default("RUNNING") // AgentRunStatus union
+  exitCode   Int?
+  stdout     String? // truncated
+  stderr     String? // truncated
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model ReviewPass {
+  id         String   @id @default(cuid())
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId      String
+  passNumber Int
+  confidence Int
+  verdict    String // ReviewVerdict union
+  issues     String // serialized JSON: [{ severity, title, detail, file? }]
+  createdAt  DateTime @default(now())
+
+  @@unique([jobId, passNumber])
+  @@index([jobId])
+}
+
+model PullRequestRef {
+  id        String   @id @default(cuid())
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId     String   @unique
+  prNumber  Int
+  url       String
+  state     String // "open" | "closed" | "merged"
+  isDraft   Boolean  @default(true)
+  headSha   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Idempotency record for GitHub webhook deliveries.
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  deliveryId  String    @unique
+  event       String
+  action      String?
+  payload     String // serialized JSON
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([event])
+}
+
+// Durable, file-backed work queue. Claimed via an atomic UPDATE ... RETURNING
+// (atomic in SQLite); WAL + busy_timeout keep concurrent claimers safe.
+model QueueTask {
+  id          String    @id @default(cuid())
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId       String
+  kind        String // TaskKind union
+  status      String    @default("PENDING") // TaskStatus union
+  priority    Int       @default(0)
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@index([jobId])
+}
