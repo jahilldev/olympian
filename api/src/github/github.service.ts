@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GithubAppService } from '../github-app/github-app.service.js';
+import { createAppAuth } from '@octokit/auth-app';
+import { Octokit } from '@octokit/rest';
+import { AppConfigService } from '../config/config.service.js';
 import {
   type CreatedPr,
   type DraftPrInput,
@@ -7,20 +9,65 @@ import {
   type RepoPermission,
   type RepoRef,
   type ReviewFeedback,
-} from './github-api.model.js';
+} from './github.model.js';
 
-/**
- * All read/write operations against GitHub repos, scoped to an installation.
- * Thin wrapper over Octokit so the rest of the app never touches Octokit directly.
- */
 @Injectable()
-export class GithubApiService {
-  private readonly logger = new Logger(GithubApiService.name);
+export class GithubService {
+  private readonly logger = new Logger(GithubService.name);
+  private readonly installationClients = new Map<number, Octokit>();
+  private appClient?: Octokit;
 
-  constructor(private readonly app: GithubAppService) {}
+  constructor(private readonly config: AppConfigService) {}
+
+  private get appAuth() {
+    return {
+      appId: this.config.get('GITHUB_APP_ID'),
+      privateKey: this.config.githubPrivateKey,
+    };
+  }
+
+  /** Octokit authenticated as the App (JWT) — for installation discovery, etc. */
+  appOctokit(): Octokit {
+    if (!this.appClient) {
+      this.appClient = new Octokit({
+        authStrategy: createAppAuth,
+        auth: this.appAuth,
+      });
+    }
+    return this.appClient;
+  }
+
+  /** Octokit scoped to a single installation — for repo reads/writes. */
+  installationOctokit(installationId: number): Octokit {
+    const cached = this.installationClients.get(installationId);
+    if (cached) {
+      return cached;
+    }
+    const client = new Octokit({
+      authStrategy: createAppAuth,
+      auth: { ...this.appAuth, installationId },
+    });
+    this.installationClients.set(installationId, client);
+    return client;
+  }
+
+  /**
+   * Short-lived installation access token, for authenticating git remotes
+   * (clone/push). Tokens expire ~1h, so callers should fetch one per push.
+   */
+  async getInstallationToken(installationId: number): Promise<string> {
+    const auth = createAppAuth(this.appAuth);
+    const result = await auth({ type: 'installation', installationId });
+    return result.token;
+  }
+
+  /** Drop a cached client (e.g. on installation suspension/deletion). */
+  evict(installationId: number): void {
+    this.installationClients.delete(installationId);
+  }
 
   private client(ref: RepoRef) {
-    return this.app.installationOctokit(ref.installationId);
+    return this.installationOctokit(ref.installationId);
   }
 
   async createIssueComment(ref: RepoRef, issueNumber: number, body: string): Promise<number> {

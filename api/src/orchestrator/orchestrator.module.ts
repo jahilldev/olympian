@@ -4,11 +4,11 @@ import { QueueModule } from '../queue/queue.module.js';
 import { AgentModule } from '../agent/agent.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 import { ReviewModule } from '../review/review.module.js';
-import { GithubApiModule } from '../github-api/github-api.module.js';
+import { GithubModule } from '../github/github.module.js';
 import { OrchestratorService } from './orchestrator.service.js';
 
 @Module({
-  imports: [JobModule, QueueModule, AgentModule, WorkspaceModule, ReviewModule, GithubApiModule],
+  imports: [JobModule, QueueModule, AgentModule, WorkspaceModule, ReviewModule, GithubModule],
   providers: [OrchestratorService],
   exports: [OrchestratorService],
 })

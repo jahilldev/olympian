@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { GithubAppModule } from '../github-app/github-app.module.js';
+import { GithubModule } from '../github/github.module.js';
 import { WorkspaceService } from './workspace.service.js';
 
 @Module({
-  imports: [GithubAppModule],
+  imports: [GithubModule],
   providers: [WorkspaceService],
   exports: [WorkspaceService],
 })

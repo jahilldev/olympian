@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
-import { GithubAppService } from '../github-app/github-app.service.js';
+import { GithubService } from '../github/github.service.js';
 import { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import {
   type InstallationPayload,
@@ -23,7 +23,7 @@ export class WebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: MetricsService,
-    private readonly app: GithubAppService,
+    private readonly app: GithubService,
     private readonly orchestrator: OrchestratorService,
   ) {}
 

@@ -4,7 +4,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { Injectable, Logger } from '@nestjs/common';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { AppConfigService } from '../config/config.service.js';
-import { GithubAppService } from '../github-app/github-app.service.js';
+import { GithubService } from '../github/github.service.js';
 import { type DiffSummary, type Workspace, type WorkspacePrepareInput } from './workspace.model.js';
 import {
   authenticatedRemoteUrl,
@@ -23,7 +23,7 @@ export class WorkspaceService {
 
   constructor(
     private readonly config: AppConfigService,
-    private readonly app: GithubAppService,
+    private readonly app: GithubService,
   ) {}
 
   /** Clone (if needed) and check out the job's branch. Idempotent across attempts. */

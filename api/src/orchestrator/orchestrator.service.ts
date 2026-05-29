@@ -17,12 +17,12 @@ import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
 import { type ReviewResult } from '../review/review.model.js';
 import { formatIssues, parseReview } from '../review/review.utility.js';
-import { GithubApiService } from '../github-api/github-api.service.js';
+import { GithubService } from '../github/github.service.js';
 import {
   APPROVAL_PERMISSIONS,
   type RepoRef,
   type ReviewFeedback,
-} from '../github-api/github-api.model.js';
+} from '../github/github.model.js';
 import {
   type IssueCommentEvent,
   type IssueLabeledEvent,
@@ -54,7 +54,7 @@ export class OrchestratorService {
     private readonly agent: HermesAgentService,
     private readonly workspace: WorkspaceService,
     private readonly review: ReviewService,
-    private readonly github: GithubApiService,
+    private readonly github: GithubService,
   ) {}
 
   // ── Webhook-driven events ──────────────────────────────────────────────────
