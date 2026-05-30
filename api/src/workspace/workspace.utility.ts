@@ -5,9 +5,9 @@ export function workspaceDir(root: string, jobId: string): string {
   return resolve(root, jobId);
 }
 
-/** HTTPS remote URL carrying a short-lived installation token. */
-export function authenticatedRemoteUrl(owner: string, repo: string, token: string): string {
-  return `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
+/** SSH remote URL — authentication is handled by the host machine's SSH credentials. */
+export function sshRemoteUrl(owner: string, repo: string): string {
+  return `git@github.com:${owner}/${repo}.git`;
 }
 
 /** Files touched in the working tree, from a simple-git StatusResult. */

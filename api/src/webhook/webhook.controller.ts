@@ -30,17 +30,23 @@ export class WebhookController {
     @Headers(SIGNATURE_HEADER) signature: string,
   ): Promise<{ ok: true }> {
     const raw = req.rawBody?.toString('utf8');
+
     if (!raw) {
       throw new BadRequestException('missing raw body');
     }
+
     const valid = verifySignature(this.config.get('GITHUB_WEBHOOK_SECRET'), raw, signature);
+    
     if (!valid) {
       throw new UnauthorizedException('invalid signature');
     }
+
     if (!event || !delivery) {
       throw new BadRequestException('missing event or delivery headers');
     }
+
     await this.webhooks.handle(event, delivery, raw, req.body as unknown);
+   
     return { ok: true };
   }
 }
