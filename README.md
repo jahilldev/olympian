@@ -72,9 +72,9 @@ npm run dev                     # runs the api service in watch mode
 Probe it:
 
 ```bash
-curl localhost:3000/health        # liveness
-curl localhost:3000/health/ready  # readiness (DB)
-curl localhost:3000/metrics       # Prometheus metrics
+curl localhost:3030/health        # liveness
+curl localhost:3030/health/ready  # readiness (DB)
+curl localhost:3030/metrics       # Prometheus metrics
 ```
 
 ## Required external setup
@@ -91,7 +91,7 @@ These can't be scripted for you and gate the live run (not the build or tests):
   `GITHUB_APP_PRIVATE_KEY` (inline, `\n`-escaped) or `GITHUB_APP_PRIVATE_KEY_PATH`.
 
 For local dev, tunnel webhooks with [smee.io](https://smee.io) or ngrok to
-`localhost:3000/webhooks/github`.
+`localhost:3030/webhooks/github`.
 
 ### 2. Provision Hermes (automated, isolated)
 

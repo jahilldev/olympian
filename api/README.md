@@ -57,9 +57,9 @@ npm run build && npm run start:prod
 Verify it's up:
 
 ```bash
-curl localhost:3000/health        # liveness
-curl localhost:3000/health/ready  # readiness (database)
-curl localhost:3000/metrics       # Prometheus metrics
+curl localhost:3030/health        # liveness
+curl localhost:3030/health/ready  # readiness (database)
+curl localhost:3030/metrics       # Prometheus metrics
 ```
 
 ## Testing

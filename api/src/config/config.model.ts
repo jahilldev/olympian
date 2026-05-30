@@ -9,7 +9,7 @@ const intFromString = (def: number) => z.coerce.number().int().default(def);
 
 export const envSchema = z.object({
   // server
-  PORT: z.coerce.number().int().default(3000),
+  PORT: z.coerce.number().int().default(3030),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 

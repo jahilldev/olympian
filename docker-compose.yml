@@ -16,7 +16,7 @@ services:
       # Persist agent workspaces (cloned repos) across restarts.
       - hermes-workspaces:/app/.workspaces
     ports:
-      - '3000:3000'
+      - '3030:3030'
 
 volumes:
   hermes-data:
