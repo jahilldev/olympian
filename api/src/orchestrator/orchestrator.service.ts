@@ -84,7 +84,7 @@ export class OrchestratorService {
     });
     await this.queue.enqueue({ jobId: job.id, kind: 'PLAN' });
     const ref = this.refFor(job, installation);
-    await this.github.createIssueReaction(ref, evt.issueNumber, 'eyes');
+    await this.safeReaction(ref, evt.issueNumber, 'eyes');
     await this.safeComment(
       ref,
       evt.issueNumber,
@@ -654,6 +654,18 @@ export class OrchestratorService {
       await this.github.createIssueComment(ref, issueOrPr, body);
     } catch (e) {
       this.logger.warn(`failed to post comment: ${(e as Error).message}`);
+    }
+  }
+
+  private async safeReaction(
+    ref: RepoRef,
+    issueNumber: number,
+    content: Parameters<GithubService['createIssueReaction']>[2],
+  ): Promise<void> {
+    try {
+      await this.github.createIssueReaction(ref, issueNumber, content);
+    } catch (e) {
+      this.logger.warn(`failed to add reaction: ${(e as Error).message}`);
     }
   }
 }

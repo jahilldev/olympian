@@ -26,3 +26,6 @@ logs/
 
 # isolated, project-local Hermes home (config/credentials/sessions/state)
 .hermes/
+
+# generated files
+api/prisma/dev.db

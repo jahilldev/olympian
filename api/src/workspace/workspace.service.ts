@@ -4,9 +4,10 @@ import { mkdir, rm } from 'node:fs/promises';
 import { Injectable, Logger } from '@nestjs/common';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { AppConfigService } from '../config/config.service.js';
+import { GithubService } from '../github/github.service.js';
 import { type DiffSummary, type Workspace, type WorkspacePrepareInput } from './workspace.model.js';
 import {
-  sshRemoteUrl,
+  authenticatedRemoteUrl,
   changedFilesFromStatus,
   workspaceDir,
 } from './workspace.utility.js';
@@ -20,13 +21,17 @@ import {
 export class WorkspaceService {
   private readonly logger = new Logger(WorkspaceService.name);
 
-  constructor(private readonly config: AppConfigService) {}
+  constructor(
+    private readonly config: AppConfigService,
+    private readonly app: GithubService,
+  ) {}
 
   /** Clone (if needed) and check out the job's branch. Idempotent across attempts. */
   async prepare(input: WorkspacePrepareInput): Promise<Workspace> {
     const root = this.config.get('WORKSPACE_ROOT');
     const dir = workspaceDir(root, input.jobId);
-    const remote = sshRemoteUrl(input.owner, input.repo);
+    const token = await this.app.getInstallationToken(input.installationId);
+    const remote = authenticatedRemoteUrl(input.owner, input.repo, token);
 
     if (existsSync(`${dir}/.git`)) {
       const git = simpleGit(dir);
@@ -81,11 +86,13 @@ export class WorkspaceService {
     return (await git.revparse(['HEAD'])).trim();
   }
 
-  /** Push the job branch using the host machine's SSH credentials. */
+  /** Push the job branch, refreshing the remote token first (tokens expire ~1h). */
   async push(input: WorkspacePrepareInput): Promise<string> {
     const root = this.config.get('WORKSPACE_ROOT');
     const dir = workspaceDir(root, input.jobId);
     const git = simpleGit(dir);
+    const token = await this.app.getInstallationToken(input.installationId);
+    await git.remote(['set-url', 'origin', authenticatedRemoteUrl(input.owner, input.repo, token)]);
     await git.push(['-u', 'origin', input.branchName]);
     const sha = (await git.revparse(['HEAD'])).trim();
     this.logger.log(`[job ${input.jobId}] pushed ${input.branchName} @ ${sha}`);
