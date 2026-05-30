@@ -83,8 +83,10 @@ export class OrchestratorService {
       triggerLabel,
     });
     await this.queue.enqueue({ jobId: job.id, kind: 'PLAN' });
+    const ref = this.refFor(job, installation);
+    await this.github.createIssueReaction(ref, evt.issueNumber, 'eyes');
     await this.safeComment(
-      this.refFor(job, installation),
+      ref,
       evt.issueNumber,
       `Hermes picked up this issue and is drafting an implementation plan. I'll post it here for your approval.`,
     );

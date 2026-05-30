@@ -80,6 +80,19 @@ export class GithubService {
     return data.id;
   }
 
+  async createIssueReaction(
+    ref: RepoRef,
+    issueNumber: number,
+    content: '+1' | '-1' | 'laugh' | 'confused' | 'heart' | 'hooray' | 'rocket' | 'eyes',
+  ): Promise<void> {
+    await this.client(ref).rest.reactions.createForIssue({
+      owner: ref.owner,
+      repo: ref.repo,
+      issue_number: issueNumber,
+      content,
+    });
+  }
+
   /** Repo permission level of a user, used to authorize approve/iterate commands. */
   async getCollaboratorPermission(ref: RepoRef, username: string): Promise<RepoPermission> {
     try {
