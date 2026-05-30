@@ -47,7 +47,7 @@ each Hermes prompt is rebuilt deterministically from the database.
 - **Hermes Agent CLI** — invoked headless: `hermes -z --yolo --source tool --max-turns N`.
 
 Module layout (one service per module): `config`, `prisma`, `metrics`, `health`,
-`github-app`, `github-api`, `webhook`, `job`, `queue`, `worker`, `agent`, `workspace`,
+`github`, `webhook`, `job`, `queue`, `worker`, `agent`, `workspace`,
 `review`, `orchestrator`.
 
 ## Monorepo layout
