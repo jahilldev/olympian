@@ -19,11 +19,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Install Hermes Agent ──────────────────────────────────────────────────────
-# IMPORTANT: confirm the install command against the current Hermes docs
-# (https://github.com/nousresearch/hermes-agent). The line below uses the Python
-# package install path; switch to the official installer script if that's preferred.
-RUN pip install --no-cache-dir hermes-agent || \
-    echo "WARNING: adjust this line to the current Hermes install method"
+# Uses the official install script. Running as root with no TTY triggers the
+# non-interactive FHS layout: code → /usr/local/lib/hermes-agent,
+# command → /usr/local/bin/hermes.
+# --skip-setup  skips the interactive configuration wizard.
+# --skip-browser skips Playwright/Chromium (not needed for code agent tasks).
+RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh \
+    | bash -s -- --skip-setup --skip-browser
 
 # Provider credentials/config are mounted at runtime via HERMES_HOME -> /root/.hermes.
 WORKDIR /workspace

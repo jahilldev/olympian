@@ -162,6 +162,38 @@ docker compose up --build        # from repo root: builds the api image
 
 SQLite lives on a named volume; there is no separate database container.
 
+## Production (systemd)
+
+Run `setup.sh` once to register the `olympian` systemd service under your current user:
+
+```bash
+./setup.sh
+```
+
+The script detects your Node/npm paths automatically and writes
+`/etc/systemd/system/olympian.service`, then enables it to start on boot. It uses `sudo`
+only for the two privileged steps (writing the unit file and `systemctl daemon-reload`).
+
+After running the script:
+
+```bash
+sudo systemctl start olympian    # start the service
+sudo systemctl status olympian   # check it is running
+sudo journalctl -u olympian -f   # follow logs
+```
+
+On every start the service runs `npm ci`, `npm run setup` (Prisma migrate), `npm run build`,
+and `npm prune --omit=dev` before launching the production server, so deployments are as
+simple as `git pull && sudo systemctl restart olympian`.
+
+To uninstall:
+
+```bash
+sudo systemctl disable --now olympian
+sudo rm /etc/systemd/system/olympian.service
+sudo systemctl daemon-reload
+```
+
 ## Operations
 
 - **Health:** `/health` (liveness), `/health/ready` (DB).
