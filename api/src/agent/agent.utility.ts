@@ -18,7 +18,7 @@ export interface SpawnSpecParams {
 
 /** Hermes flags shared by every invocation: headless, autonomous, tagged as a tool. */
 function hermesArgs(p: SpawnSpecParams): string[] {
-  const args = ['-z', '--yolo', '--accept-hooks'];
+  const args = ['-z', '-', '--yolo', '--accept-hooks'];
   if (p.model) {
     args.push('--model', p.model);
   }

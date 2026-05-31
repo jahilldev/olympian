@@ -24,7 +24,7 @@ describe('buildSpawnSpec', () => {
     });
     expect(spec.command).toBe('hermes');
     expect(spec.args).toEqual(
-      expect.arrayContaining(['-z', '--yolo', '--accept-hooks']),
+      expect.arrayContaining(['-z', '-', '--yolo', '--accept-hooks']),
     );
   });
 

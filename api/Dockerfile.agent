@@ -27,6 +27,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh \
     | bash -s -- --skip-setup --skip-browser
 
-# Provider credentials/config are mounted at runtime via HERMES_HOME -> /root/.hermes.
+# Bake in the default config (model, provider, base_url).
+# Rewrite localhost → host.docker.internal so Ollama is reachable from inside
+# the container (the orchestrator passes --add-host=host.docker.internal:host-gateway).
+# A runtime HERMES_HOME volume mount will overlay this if provided.
+COPY .hermes /root/.hermes
+RUN sed -i 's|http://localhost:|http://host.docker.internal:|g' /root/.hermes/config.yaml
+
 WORKDIR /workspace
 ENTRYPOINT []

@@ -1,0 +1,7 @@
+# User-specific and ephemeral — never commit
+sessions/
+logs/
+checkpoints/
+.env
+*.key
+*.pem

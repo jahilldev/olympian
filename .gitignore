@@ -25,7 +25,8 @@ logs/
 .workspaces/
 
 # isolated, project-local Hermes home (config/credentials/sessions/state)
-.hermes/
+# anchored to root so api/.hermes/ (the packaged default config) can be tracked
+/.hermes/
 
 # generated files
 api/prisma/dev.db

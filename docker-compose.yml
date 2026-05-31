@@ -4,7 +4,7 @@ services:
   api:
     build:
       context: ./api
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.service
     container_name: hermes-api
     restart: unless-stopped
     env_file:
