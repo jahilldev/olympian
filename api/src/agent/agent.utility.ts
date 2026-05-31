@@ -46,6 +46,7 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       'run',
       '--rm',
       '-i',
+      '--add-host=host.docker.internal:host-gateway',
       '-v',
       `${p.cwd}:${CONTAINER_WORKDIR}`,
       '-w',
