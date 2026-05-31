@@ -36,8 +36,9 @@ function hermesArgs(p: SpawnSpecParams): string[] {
 
 /**
  * Builds the spawn spec for a Hermes run. `none` runs the binary directly in the
- * worktree; `docker` runs it in a container with only the worktree mounted and the
- * Hermes config mounted read-only. The prompt is always delivered over stdin.
+ * worktree (HERMES_HOME forwarded via env if set); `docker` runs it in a container
+ * with only the worktree mounted — the image's baked config is always used so the
+ * provider URL is correct for container networking. The prompt is delivered via stdin.
  */
 export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
   if (p.sandboxMode === 'docker') {
@@ -51,9 +52,6 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       '-w',
       CONTAINER_WORKDIR,
     ];
-    if (p.hermesHome) {
-      args.push('-v', `${p.hermesHome}:${HERMES_CONTAINER_HOME}:ro`);
-    }
     args.push(p.dockerImage, 'hermes', ...hermesArgs(p));
     return { command: 'docker', args, env: process.env };
   }
