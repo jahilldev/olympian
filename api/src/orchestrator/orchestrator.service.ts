@@ -62,17 +62,29 @@ export class OrchestratorService {
   async onIssueLabeled(evt: IssueLabeledEvent): Promise<void> {
     const installation = await this.upsertInstallation(evt);
     const triggerLabel = installation.triggerLabel ?? this.config.get('TRIGGER_LABEL');
+   
     if (evt.label !== triggerLabel) {
       return;
     }
+
+    const ref: RepoRef = {
+      installationId: Number(installation.installationId),
+      owner: evt.owner,
+      repo: evt.repo,
+    };
+
+    await this.safeReaction(ref, evt.issueNumber, 'eyes');
+
     const repoFullName = `${evt.owner}/${evt.repo}`;
     const existing = await this.jobs.findByRepoIssue(repoFullName, evt.issueNumber);
+    
     if (existing) {
       this.logger.debug(
         `Job already exists for ${repoFullName}#${evt.issueNumber}; ignoring label`,
       );
       return;
     }
+
     const job = await this.jobs.create({
       installationId: installation.id,
       repoOwner: evt.owner,
@@ -82,9 +94,9 @@ export class OrchestratorService {
       issueBody: evt.issueBody,
       triggerLabel,
     });
+
     await this.queue.enqueue({ jobId: job.id, kind: 'PLAN' });
-    const ref = this.refFor(job, installation);
-    await this.safeReaction(ref, evt.issueNumber, 'eyes');
+    
     await this.safeComment(
       ref,
       evt.issueNumber,
