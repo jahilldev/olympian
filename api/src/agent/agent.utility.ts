@@ -10,7 +10,6 @@ export interface SpawnSpecParams {
   dockerImage: string;
   hermesHome?: string;
   cwd: string;
-  maxTurns: number;
   model?: string;
   provider?: string;
   toolsets?: string;
@@ -19,7 +18,7 @@ export interface SpawnSpecParams {
 
 /** Hermes flags shared by every invocation: headless, autonomous, tagged as a tool. */
 function hermesArgs(p: SpawnSpecParams): string[] {
-  const args = ['-z', '--yolo', '--source', 'tool', '--max-turns', String(p.maxTurns)];
+  const args = ['-z', '--yolo', '--accept-hooks'];
   if (p.model) {
     args.push('--model', p.model);
   }

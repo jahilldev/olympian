@@ -27,7 +27,6 @@ export const envSchema = z.object({
   HERMES_HOME: z.string().optional(),
   HERMES_MODEL: z.string().optional(),
   HERMES_PROVIDER: z.string().optional(),
-  HERMES_MAX_TURNS: intFromString(90),
   HERMES_TIMEOUT_MS: intFromString(1_800_000),
 
   // orchestration policy

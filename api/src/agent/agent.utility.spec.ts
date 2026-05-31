@@ -21,11 +21,10 @@ describe('buildSpawnSpec', () => {
       hermesBin: 'hermes',
       dockerImage: 'img',
       cwd: '/w',
-      maxTurns: 50,
     });
     expect(spec.command).toBe('hermes');
     expect(spec.args).toEqual(
-      expect.arrayContaining(['-z', '--yolo', '--source', 'tool', '--max-turns', '50']),
+      expect.arrayContaining(['-z', '--yolo', '--accept-hooks']),
     );
   });
 
@@ -35,7 +34,6 @@ describe('buildSpawnSpec', () => {
       hermesBin: 'hermes',
       dockerImage: 'img',
       cwd: '/jobs/abc',
-      maxTurns: 50,
       hermesHome: '/cfg',
     });
     expect(spec.command).toBe('docker');
@@ -60,7 +58,6 @@ describe('buildSpawnSpec', () => {
       hermesBin: 'hermes',
       dockerImage: 'img',
       cwd: '/w',
-      maxTurns: 1,
       model: 'anthropic/claude-sonnet-4.6',
       provider: 'anthropic',
     });

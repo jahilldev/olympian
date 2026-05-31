@@ -6,7 +6,7 @@ import { type AgentRunOptions, type AgentRunResult, type AgentRunStatus } from '
 import { buildSpawnSpec, spawnProcess } from './agent.utility.js';
 
 /**
- * Drives the Hermes Agent CLI. Each call runs `hermes -z --yolo …` headless in the
+ * Drives the Hermes Agent CLI. Each call runs `hermes -z --yolo --accept-hooks …` headless in the
  * job's worktree with the prompt piped over stdin, captures the result, and records
  * an AgentRun audit row. The orchestrator owns git, so this never commits.
  */
@@ -28,7 +28,6 @@ export class HermesAgentService {
       dockerImage: this.config.get('DOCKER_AGENT_IMAGE'),
       hermesHome: this.config.get('HERMES_HOME') || undefined,
       cwd: opts.cwd,
-      maxTurns: this.config.get('HERMES_MAX_TURNS'),
       model,
       provider: this.config.get('HERMES_PROVIDER') || undefined,
       toolsets: opts.toolsets,
