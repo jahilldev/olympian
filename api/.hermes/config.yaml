@@ -12,6 +12,10 @@ providers:
     request_timeout_seconds: 3600  # hard cap: 1 h per LLM call
     stale_timeout_seconds: 900     # declare a stream stale after 15 min of silence
 
+plugins:
+  enabled:
+    - web_fetch
+
 browser:
   camofox:
     # When the agent runs inside Docker and navigates to localhost/127.0.0.1 page URLs,

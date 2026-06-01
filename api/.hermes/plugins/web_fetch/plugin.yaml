@@ -1,0 +1,5 @@
+name: web_fetch
+version: 1.0.0
+description: Fetch a web page and return its main content as markdown
+provides_tools:
+  - web_fetch
