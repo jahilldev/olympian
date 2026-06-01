@@ -2,7 +2,4 @@ model:
   provider: custom
   model: qwen3.6:35b
   context_length: 131072
-
-providers:
-  custom:
-    base_url: http://localhost:11434/v1
+  base_url: http://localhost:11434/v1
