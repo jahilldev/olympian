@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { STDOUT_CAP, type RawSpawnResult, type SpawnSpec } from './agent.model.js';
 
@@ -38,8 +40,8 @@ function hermesArgs(p: SpawnSpecParams): string[] {
 /**
  * Builds the spawn spec for a Hermes run. `none` runs the binary directly in the
  * worktree (HERMES_HOME forwarded via env if set); `docker` runs it in a container
- * with only the worktree mounted — the image's baked config is always used so the
- * provider URL is correct for container networking. The prompt is delivered via stdin.
+ * with the worktree mounted and — when HERMES_HOME is set — individual memory
+ * paths bind-mounted so MEMORY.md, USER.md, and skills survive across invocations.
  */
 export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
   if (p.sandboxMode === 'docker') {
@@ -53,6 +55,20 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       '-w',
       CONTAINER_WORKDIR,
     ];
+
+    // Mount individual hermes memory paths so learning persists across invocations.
+    // Only MEMORY.md, USER.md, and skills/ are mounted — the baked config.yaml and
+    // SOUL.md inside the image are left untouched.
+    if (p.hermesHome) {
+      const mounts: Array<[string, string]> = [
+        [join(p.hermesHome, 'MEMORY.md'), `${HERMES_CONTAINER_HOME}/MEMORY.md`],
+        [join(p.hermesHome, 'USER.md'), `${HERMES_CONTAINER_HOME}/USER.md`],
+        [join(p.hermesHome, 'skills'), `${HERMES_CONTAINER_HOME}/skills`],
+      ];
+      for (const [host, container] of mounts) {
+        args.push('-v', `${host}:${container}`);
+      }
+    }
 
     // Forward CAMOFOX_URL into the container, rewriting localhost → host.docker.internal
     // so the agent can reach a Camofox server running on the host.
@@ -70,6 +86,12 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
     args: hermesArgs(p),
     env: { ...process.env, ...(p.hermesHome ? { HERMES_HOME: p.hermesHome } : {}) },
   };
+}
+
+/** Touches MEMORY.md and USER.md in hermesHome so Docker can bind-mount them. */
+export function prepareHermesMemoryPaths(hermesHome: string): void {
+  writeFileSync(join(hermesHome, 'MEMORY.md'), '', { flag: 'a' });
+  writeFileSync(join(hermesHome, 'USER.md'), '', { flag: 'a' });
 }
 
 function cap(buf: string): string {
@@ -164,6 +186,6 @@ export function extractJsonBlock(text: string): unknown | null {
       // try next candidate
     }
   }
-  
+
   return null;
 }

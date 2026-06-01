@@ -29,7 +29,7 @@ describe('buildSpawnSpec', () => {
     );
   });
 
-  it('builds a docker invocation that mounts only the workspace', () => {
+  it('mounts the workspace and hermes memory paths into the container', () => {
     const spec = buildSpawnSpec({
       sandboxMode: 'docker',
       hermesBin: 'hermes',
@@ -46,6 +46,12 @@ describe('buildSpawnSpec', () => {
         '-i',
         '-v',
         '/jobs/abc:/workspace',
+        '-v',
+        '/cfg/MEMORY.md:/root/.hermes/MEMORY.md',
+        '-v',
+        '/cfg/USER.md:/root/.hermes/USER.md',
+        '-v',
+        '/cfg/skills:/root/.hermes/skills',
         'img',
         'hermes',
       ]),

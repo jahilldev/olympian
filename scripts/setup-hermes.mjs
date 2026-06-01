@@ -118,7 +118,7 @@ function main() {
   }
 
   const envPath = join(REPO_ROOT, 'api', '.env');
-  const hermesHome = resolve(args.home ?? join(REPO_ROOT, '.hermes', 'home'));
+  const hermesHome = resolve(args.home ?? join(REPO_ROOT, 'api', '.hermes'));
   mkdirSync(hermesHome, { recursive: true });
 
   section('Hermes setup');

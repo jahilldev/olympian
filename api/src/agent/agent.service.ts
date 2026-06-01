@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/config.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
 import { type AgentRunOptions, type AgentRunResult, type AgentRunStatus } from './agent.model.js';
-import { buildSpawnSpec, spawnProcess } from './agent.utility.js';
+import { buildSpawnSpec, spawnProcess, prepareHermesMemoryPaths } from './agent.utility.js';
 
 /**
  * Drives the Hermes Agent CLI. Each call runs `hermes -z --yolo --accept-hooks …` headless in the
@@ -22,12 +22,18 @@ export class HermesAgentService {
 
   async run(opts: AgentRunOptions): Promise<AgentRunResult> {
     const model = this.config.get('HERMES_MODEL') || undefined;
+    const sandboxMode = this.config.get('SANDBOX_MODE');
+    const hermesHome = this.config.get('HERMES_HOME') || undefined;
+
+    if (sandboxMode === 'docker' && hermesHome) {
+      prepareHermesMemoryPaths(hermesHome);
+    }
 
     const spec = buildSpawnSpec({
-      sandboxMode: this.config.get('SANDBOX_MODE'),
+      sandboxMode,
       hermesBin: this.config.get('HERMES_BIN'),
       dockerImage: this.config.get('DOCKER_AGENT_IMAGE'),
-      hermesHome: this.config.get('HERMES_HOME') || undefined,
+      hermesHome,
       cwd: opts.cwd,
       prompt: opts.prompt,
       model,

@@ -2,6 +2,11 @@
 sessions/
 logs/
 checkpoints/
+MEMORY.md
+USER.md
+skills/*
+!skills/.gitkeep
+cli-config.yaml
 .env
 *.key
 *.pem
