@@ -32,7 +32,10 @@ RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/
 # the container (the orchestrator passes --add-host=host.docker.internal:host-gateway).
 # A runtime HERMES_HOME volume mount will overlay this if provided.
 COPY .hermes /root/.hermes
-RUN sed -i 's|http://localhost:|http://host.docker.internal:|g' /root/.hermes/config.yaml
+RUN sed -i \
+    -e 's|http://localhost:|http://host.docker.internal:|g' \
+    -e 's|loopback_host_alias: localhost|loopback_host_alias: host.docker.internal|g' \
+    /root/.hermes/config.yaml
 
 WORKDIR /workspace
 ENTRYPOINT []

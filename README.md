@@ -120,6 +120,35 @@ HERMES_HOME="$(pwd)/.hermes/home" hermes model   # provider setup wizard, scoped
 # …or set HERMES_MODEL / HERMES_PROVIDER + an API key in api/.env
 ```
 
+### 3. Camofox browser (optional)
+
+[Camofox](https://github.com/jo-inc/camofox-browser) is a self-hosted Firefox-based
+browser server with fingerprint spoofing. When configured, Hermes's browser tools
+(`browser_navigate`, `browser_click`, etc.) route through it instead of cloud providers
+like Browserbase.
+
+**Start Camofox** (Docker, port 9377):
+
+```bash
+git clone https://github.com/jo-inc/camofox-browser
+cd camofox-browser
+make up          # builds + starts on port 9377
+```
+
+**Wire it to Olympian** — add to `api/.env`:
+
+```bash
+CAMOFOX_URL=http://localhost:9377
+```
+
+That's all. In `SANDBOX_MODE=docker` the orchestrator automatically rewrites the URL to
+`host.docker.internal:9377` before passing it into the agent container, and the baked
+hermes config (`api/.hermes/config.yaml`) already enables loopback URL rewriting so the
+agent can reach host-side services when navigating pages.
+
+To opt out: leave `CAMOFOX_URL` empty (or unset) — Hermes falls back to `agent-browser`
+(a local Chromium install) or errors if no browser backend is available.
+
 ## Using it
 
 1. Label an issue `hermes` (or your `TRIGGER_LABEL`).

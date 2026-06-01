@@ -53,7 +53,16 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       '-w',
       CONTAINER_WORKDIR,
     ];
+
+    // Forward CAMOFOX_URL into the container, rewriting localhost → host.docker.internal
+    // so the agent can reach a Camofox server running on the host.
+    const camofoxUrl = process.env.CAMOFOX_URL;
+    if (camofoxUrl) {
+      args.push('--env', `CAMOFOX_URL=${camofoxUrl.replace(/\/\/localhost(:|$)/g, '//host.docker.internal$1')}`);
+    }
+
     args.push(p.dockerImage, 'hermes', ...hermesArgs(p));
+
     return { command: 'docker', args, env: process.env };
   }
   return {
@@ -113,15 +122,18 @@ export function spawnProcess(
         stdout += d.toString();
       }
     });
+
     child.stderr.on('data', (d: Buffer) => {
       if (stderr.length < STDOUT_CAP) {
         stderr += d.toString();
       }
     });
+
     child.on('error', (err) => {
       stderr += `\n[spawn error] ${err.message}`;
       finish(null);
     });
+
     child.on('close', (code) => finish(code));
   });
 }
@@ -133,14 +145,18 @@ export function spawnProcess(
 export function extractJsonBlock(text: string): unknown | null {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidates: string[] = [];
+
   if (fenced) {
     candidates.push(fenced[1]);
   }
+
   const first = text.indexOf('{');
   const last = text.lastIndexOf('}');
+
   if (first !== -1 && last > first) {
     candidates.push(text.slice(first, last + 1));
   }
+
   for (const c of candidates) {
     try {
       return JSON.parse(c.trim());
@@ -148,5 +164,6 @@ export function extractJsonBlock(text: string): unknown | null {
       // try next candidate
     }
   }
+  
   return null;
 }

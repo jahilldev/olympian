@@ -3,3 +3,20 @@ model:
   model: qwen3.6:35b
   context_length: 131072
   base_url: http://localhost:11434/v1
+
+# Per-provider LLM call timeouts. Local inference (Ollama/vLLM) is much
+# slower than cloud APIs — raise the stale detector and hard timeout so
+# a large review prompt doesn't get killed mid-generation.
+providers:
+  custom:
+    request_timeout_seconds: 3600  # hard cap: 1 h per LLM call
+    stale_timeout_seconds: 900     # declare a stream stale after 15 min of silence
+
+browser:
+  camofox:
+    # When the agent runs inside Docker and navigates to localhost/127.0.0.1 page URLs,
+    # rewrite them to host.docker.internal so the container can reach host-side services.
+    # CAMOFOX_URL itself is set via env var — see api/.env.example.
+    rewrite_loopback_urls: true
+    loopback_host_alias: localhost
+  inactivity_timeout: 120
