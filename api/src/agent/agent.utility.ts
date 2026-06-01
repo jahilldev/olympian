@@ -123,8 +123,6 @@ export function spawnProcess(
       finish(null);
     });
     child.on('close', (code) => finish(code));
-
-    child.stdin.end();
   });
 }
 
