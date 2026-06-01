@@ -22,17 +22,20 @@ export class HermesAgentService {
 
   async run(opts: AgentRunOptions): Promise<AgentRunResult> {
     const model = this.config.get('HERMES_MODEL') || undefined;
+
     const spec = buildSpawnSpec({
       sandboxMode: this.config.get('SANDBOX_MODE'),
       hermesBin: this.config.get('HERMES_BIN'),
       dockerImage: this.config.get('DOCKER_AGENT_IMAGE'),
       hermesHome: this.config.get('HERMES_HOME') || undefined,
       cwd: opts.cwd,
+      prompt: opts.prompt,
       model,
       provider: this.config.get('HERMES_PROVIDER') || undefined,
       toolsets: opts.toolsets,
       skills: opts.skills,
     });
+
     const commandLine = `${spec.command} ${spec.args.join(' ')}`;
 
     const run = await this.prisma.agentRun.create({
@@ -47,9 +50,9 @@ export class HermesAgentService {
     });
 
     this.logger.log(`[job ${opts.jobId}] agent ${opts.phase} starting: ${commandLine}`);
+    
     const raw = await spawnProcess(spec, {
       cwd: opts.cwd,
-      input: opts.prompt,
       timeoutMs: opts.timeoutMs ?? this.config.get('HERMES_TIMEOUT_MS'),
     });
 
@@ -69,7 +72,9 @@ export class HermesAgentService {
         durationMs: raw.durationMs,
       },
     });
+
     this.metrics.recordAgentRun(opts.phase, status, raw.durationMs);
+    
     this.logger.log(
       `[job ${opts.jobId}] agent ${opts.phase} ${status} in ${raw.durationMs}ms (exit ${raw.exitCode})`,
     );

@@ -10,6 +10,7 @@ export interface SpawnSpecParams {
   dockerImage: string;
   hermesHome?: string;
   cwd: string;
+  prompt: string;
   model?: string;
   provider?: string;
   toolsets?: string;
@@ -18,7 +19,7 @@ export interface SpawnSpecParams {
 
 /** Hermes flags shared by every invocation: headless, autonomous, tagged as a tool. */
 function hermesArgs(p: SpawnSpecParams): string[] {
-  const args = ['-z', '-', '--yolo', '--accept-hooks'];
+  const args = ['-z', p.prompt, '--yolo', '--accept-hooks'];
   if (p.model) {
     args.push('--model', p.model);
   }
@@ -67,12 +68,12 @@ function cap(buf: string): string {
 }
 
 /**
- * Spawns a process, pipes `input` to stdin, captures (capped) stdout/stderr, and
- * hard-kills it after `timeoutMs`. Never rejects — failures surface in the result.
+ * Spawns a process, captures (capped) stdout/stderr, and hard-kills it after
+ * `timeoutMs`. Never rejects — failures surface in the result.
  */
 export function spawnProcess(
   spec: SpawnSpec,
-  opts: { cwd: string; input: string; timeoutMs: number },
+  opts: { cwd: string; timeoutMs: number },
 ): Promise<RawSpawnResult> {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -84,7 +85,7 @@ export function spawnProcess(
     const child = spawn(spec.command, spec.args, {
       cwd: opts.cwd,
       env: spec.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     const timer = setTimeout(() => {
@@ -123,7 +124,6 @@ export function spawnProcess(
     });
     child.on('close', (code) => finish(code));
 
-    child.stdin.write(opts.input);
     child.stdin.end();
   });
 }

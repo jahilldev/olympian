@@ -21,10 +21,11 @@ describe('buildSpawnSpec', () => {
       hermesBin: 'hermes',
       dockerImage: 'img',
       cwd: '/w',
+      prompt: 'test prompt',
     });
     expect(spec.command).toBe('hermes');
     expect(spec.args).toEqual(
-      expect.arrayContaining(['-z', '-', '--yolo', '--accept-hooks']),
+      expect.arrayContaining(['-z', 'test prompt', '--yolo', '--accept-hooks']),
     );
   });
 
@@ -35,6 +36,7 @@ describe('buildSpawnSpec', () => {
       dockerImage: 'img',
       cwd: '/jobs/abc',
       hermesHome: '/cfg',
+      prompt: 'test prompt',
     });
     expect(spec.command).toBe('docker');
     expect(spec.args).toEqual(
@@ -44,8 +46,6 @@ describe('buildSpawnSpec', () => {
         '-i',
         '-v',
         '/jobs/abc:/workspace',
-        '-v',
-        '/cfg:/root/.hermes:ro',
         'img',
         'hermes',
       ]),
@@ -58,6 +58,7 @@ describe('buildSpawnSpec', () => {
       hermesBin: 'hermes',
       dockerImage: 'img',
       cwd: '/w',
+      prompt: 'test prompt',
       model: 'anthropic/claude-sonnet-4.6',
       provider: 'anthropic',
     });
