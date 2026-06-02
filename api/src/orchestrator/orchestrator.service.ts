@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/config.service.js';
 import { JobService } from '../job/job.service.js';
 import { branchNameFor } from '../job/job.utility.js';
+import { type JobState, TERMINAL_STATES } from '../job/job.model.js';
 import { QueueService } from '../queue/queue.service.js';
 import { type TaskKind } from '../queue/queue.model.js';
 import { HermesAgentService } from '../agent/agent.service.js';
@@ -273,6 +274,13 @@ export class OrchestratorService {
   // ── Queue task processing ──────────────────────────────────────────────────
 
   async processTask(task: QueueTask): Promise<void> {
+    const job = await this.jobs.findById(task.jobId);
+    if (!job || TERMINAL_STATES.has(job.state as JobState)) {
+      this.logger.warn(
+        `Skipping ${task.kind} task ${task.id}: job ${task.jobId} is ${job?.state ?? 'missing'}`,
+      );
+      return;
+    }
     const kind = task.kind as TaskKind;
     switch (kind) {
       case 'PLAN':
