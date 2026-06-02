@@ -30,6 +30,7 @@ import {
 } from './orchestrator.model.js';
 import {
   buildPrBody,
+  buildStatusReport,
   implementCommitMessage,
   parseCommand,
   reviseCommitMessage,
@@ -96,7 +97,7 @@ export class OrchestratorService {
     });
 
     await this.queue.enqueue({ jobId: job.id, kind: 'PLAN' });
-    
+
     await this.safeComment(
       ref,
       evt.issueNumber,
@@ -117,11 +118,37 @@ export class OrchestratorService {
     const command = parseCommand(evt.body, this.config.get('COMMAND_PREFIX'));
 
     if (command.kind === 'status') {
+      const [activeRun, reviewPassCount, activeTask, prRef] = await Promise.all([
+        this.prisma.agentRun.findFirst({
+          where: { jobId: job.id, status: 'RUNNING' },
+          orderBy: { createdAt: 'desc' },
+          select: { phase: true, createdAt: true },
+        }),
+        this.prisma.reviewPass.count({ where: { jobId: job.id } }),
+        this.prisma.queueTask.findFirst({
+          where: { jobId: job.id, status: { in: ['PENDING', 'RUNNING'] } },
+          orderBy: { createdAt: 'desc' },
+          select: { attempts: true, maxAttempts: true, lastError: true },
+        }),
+        this.prisma.pullRequestRef.findUnique({
+          where: { jobId: job.id },
+          select: { prNumber: true },
+        }),
+      ]);
       await this.safeComment(
         ref,
         evt.issueNumber,
-        `Current status: **${job.state}**` +
-          (job.confidence != null ? ` (last review confidence ${job.confidence}/100)` : ''),
+        buildStatusReport({
+          state: job.state,
+          confidence: job.confidence,
+          error: job.error,
+          prNumber: prRef?.prNumber ?? null,
+          activeRunPhase: activeRun?.phase ?? null,
+          activeRunStartedAt: activeRun?.createdAt ?? null,
+          reviewPassCount,
+          activeTask,
+          commandPrefix: this.config.get('COMMAND_PREFIX'),
+        }),
       );
       return;
     }
