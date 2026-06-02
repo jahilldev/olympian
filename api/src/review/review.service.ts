@@ -15,19 +15,17 @@ export class ReviewService {
     private readonly config: AppConfigService,
   ) {}
 
-  async nextPassNumber(jobId: string): Promise<number> {
-    const last = await this.prisma.reviewPass.findFirst({
-      where: { jobId },
-      orderBy: { passNumber: 'desc' },
-    });
-    return (last?.passNumber ?? 0) + 1;
-  }
-
   async persist(jobId: string, passNumber: number, result: ReviewResult): Promise<void> {
-    await this.prisma.reviewPass.create({
-      data: {
+    await this.prisma.reviewPass.upsert({
+      where: { jobId_passNumber: { jobId, passNumber } },
+      create: {
         jobId,
         passNumber,
+        confidence: result.confidence,
+        verdict: result.verdict,
+        issues: JSON.stringify(result.issues),
+      },
+      update: {
         confidence: result.confidence,
         verdict: result.verdict,
         issues: JSON.stringify(result.issues),
