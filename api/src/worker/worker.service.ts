@@ -78,6 +78,11 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
 
   private async process(task: QueueTask): Promise<void> {
     this.logger.log(`Processing task ${task.id} (${task.kind}) for job ${task.jobId}`);
+    const heartbeatMs = Math.floor(this.config.get('QUEUE_LOCK_TTL_MS') / 3);
+    const heartbeat = setInterval(
+      () => void this.queue.refreshLock(task.id, WORKER_ID),
+      heartbeatMs,
+    );
     try {
       await this.orchestrator.processTask(task);
       await this.queue.complete(task.id);
@@ -91,6 +96,8 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
             this.logger.error(`failed to escalate exhausted task: ${(err as Error).message}`),
           );
       }
+    } finally {
+      clearInterval(heartbeat);
     }
   }
 

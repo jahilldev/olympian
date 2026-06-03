@@ -92,6 +92,14 @@ export class QueueService {
     });
   }
 
+  /** Refresh the lock timestamp for a task still owned by this worker. No-op if the task was reclaimed by another worker or is no longer RUNNING. */
+  async refreshLock(taskId: string, workerId: string): Promise<void> {
+    await this.prisma.queueTask.updateMany({
+      where: { id: taskId, lockedBy: workerId, status: 'RUNNING' },
+      data: { lockedAt: new Date() },
+    });
+  }
+
   /**
    * Mark a task failed. Retries with exponential backoff while attempts remain;
    * otherwise settles as FAILED. Returns true if it will be retried.
