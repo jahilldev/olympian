@@ -30,6 +30,9 @@ export function buildPlanPrompt(ctx: PlanPromptContext): string {
         ctx.feedback.map((f, i) => `${i + 1}. ${f}`).join('\n'),
     );
   }
+  if (ctx.attachments) {
+    parts.push(ctx.attachments);
+  }
   parts.push(PLAN_OUTPUT_CONTRACT);
   return parts.join('\n\n');
 }
@@ -45,6 +48,9 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
   ];
   if (ctx.guidance) {
     parts.push(`Additional guidance you MUST address in this attempt:\n${ctx.guidance}`);
+  }
+  if (ctx.attachments) {
+    parts.push(ctx.attachments);
   }
   parts.push(IMPLEMENT_OUTPUT_CONTRACT);
   return parts.join('\n\n');

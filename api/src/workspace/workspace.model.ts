@@ -20,3 +20,8 @@ export interface DiffSummary {
   deletions: number;
   isDirty: boolean;
 }
+
+export interface DownloadedAttachment {
+  filename: string;
+  relativePath: string;
+}

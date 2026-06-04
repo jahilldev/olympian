@@ -21,9 +21,11 @@ import { formatIssues, parseReview } from '../review/review.utility.js';
 import { GithubService } from '../github/github.service.js';
 import {
   APPROVAL_PERMISSIONS,
+  type AttachmentRef,
   type RepoRef,
   type ReviewFeedback,
 } from '../github/github.model.js';
+import { extractAttachmentUrls } from '../github/github.utility.js';
 import {
   type IssueCommentEvent,
   type IssueLabeledEvent,
@@ -32,6 +34,7 @@ import {
 import {
   buildPrBody,
   buildStatusReport,
+  formatDownloadedAttachments,
   implementCommitMessage,
   parseCommand,
   reviseCommitMessage,
@@ -354,6 +357,15 @@ export class OrchestratorService {
         })
       : [];
 
+    const attachmentRefs = extractAttachmentUrls(
+      [job.issueBody, ...feedback.map((f) => f.body)].join('\n'),
+    );
+    const downloaded = await this.workspace.downloadAttachments(
+      ws.dir,
+      this.ghId(installation),
+      attachmentRefs,
+    );
+
     const prompt = buildPlanPrompt({
       repoFullName: job.repoFullName,
       issueNumber: job.issueNumber,
@@ -361,6 +373,7 @@ export class OrchestratorService {
       issueBody: job.issueBody,
       priorPlan: lastRevision?.content,
       feedback: feedback.map((f) => f.body),
+      attachments: formatDownloadedAttachments(downloaded),
     });
     const res = await this.agent.run({ jobId, phase: 'PLAN', cwd: ws.dir, prompt });
     if (res.status !== 'SUCCEEDED' || res.stdout.trim().length === 0) {
@@ -410,10 +423,17 @@ export class OrchestratorService {
 
     const plan = await this.approvedPlan(jobId);
     let guidance: string | undefined;
+    const reviewBodies: string[] = [];
     if (job.prNumber) {
       const fb = await this.github.getReviewFeedback(this.refFor(job, installation), job.prNumber);
       guidance = this.formatPrFeedback(fb);
+      reviewBodies.push(...fb.map((f) => f.body));
     }
+    const attachmentRefs = extractAttachmentUrls(
+      [job.issueBody, ...reviewBodies].join('\n'),
+    );
+    const downloaded = await this.workspace.downloadAttachments(ws.dir, ghId, attachmentRefs);
+    const attachments = formatDownloadedAttachments(downloaded);
 
     const maxIters = this.config.get('MAX_IMPLEMENTATION_ITERATIONS');
     let committedSomething = false;
@@ -425,6 +445,7 @@ export class OrchestratorService {
         plan,
         attempt,
         guidance,
+        attachments,
       });
       const res = await this.agent.run({ jobId, phase: 'IMPLEMENT', cwd: ws.dir, prompt });
       if (res.status !== 'SUCCEEDED') {

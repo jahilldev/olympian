@@ -24,6 +24,9 @@ logs/
 # agent workspaces (cloned repos / worktrees)
 .workspaces/
 
+# downloaded issue/comment attachments (per-workspace, not source)
+.attachments/
+
 # isolated, project-local Hermes home (config/credentials/sessions/state)
 # anchored to root so api/.hermes/ (the packaged default config) can be tracked
 /.hermes/

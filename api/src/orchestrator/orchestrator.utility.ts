@@ -1,4 +1,5 @@
 import { type Command } from './orchestrator.model.js';
+import { type DownloadedAttachment } from '../workspace/workspace.model.js';
 
 const APPROVE_VERBS = new Set(['approve', 'approved', 'lgtm', 'ship', 'go']);
 const CANCEL_VERBS = new Set(['cancel', 'stop', 'abort']);
@@ -162,4 +163,14 @@ export function buildStatusReport(ctx: StatusContext): string {
   }
 
   return lines.join('\n');
+}
+
+/** Formats a list of downloaded workspace-relative attachment paths for inclusion in a prompt. */
+export function formatDownloadedAttachments(attachments: DownloadedAttachment[]): string | undefined {
+  if (attachments.length === 0) return undefined;
+  return (
+    'The following files were attached to the issue or comments and have been downloaded to your workspace:\n' +
+    attachments.map((a) => `- \`${a.relativePath}\``).join('\n') +
+    '\nUse them as reference material or incorporate them into the implementation as appropriate.'
+  );
 }

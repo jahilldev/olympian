@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { AppConfigService } from '../config/config.service.js';
 import { GithubService } from '../github/github.service.js';
-import { type DiffSummary, type Workspace, type WorkspacePrepareInput } from './workspace.model.js';
+import { type AttachmentRef } from '../github/github.model.js';
+import { type DiffSummary, type DownloadedAttachment, type Workspace, type WorkspacePrepareInput } from './workspace.model.js';
 import {
   authenticatedRemoteUrl,
   changedFilesFromStatus,
@@ -147,6 +149,46 @@ export class WorkspaceService {
   async cleanup(jobId: string): Promise<void> {
     const dir = workspaceDir(this.config.get('WORKSPACE_ROOT'), jobId);
     await rm(dir, { recursive: true, force: true });
+  }
+
+  /**
+   * Downloads GitHub-hosted attachments into a `.attachments/` sub-directory of the
+   * workspace. Skips files already present (idempotent across phases). Returns the set of
+   * successfully downloaded files with their workspace-relative paths.
+   */
+  async downloadAttachments(
+    dir: string,
+    installationId: number,
+    refs: AttachmentRef[],
+  ): Promise<DownloadedAttachment[]> {
+    if (refs.length === 0) return [];
+    const token = await this.app.getInstallationToken(installationId);
+    const attachDir = join(dir, '.attachments');
+    await mkdir(attachDir, { recursive: true });
+    const results: DownloadedAttachment[] = [];
+    for (const ref of refs) {
+      const dest = join(attachDir, ref.filename);
+      const relativePath = `.attachments/${ref.filename}`;
+      if (existsSync(dest)) {
+        results.push({ filename: ref.filename, relativePath });
+        continue;
+      }
+      try {
+        const response = await fetch(ref.url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          this.logger.warn(`attachment download failed (${response.status}): ${ref.url}`);
+          continue;
+        }
+        await writeFile(dest, Buffer.from(await response.arrayBuffer()));
+        results.push({ filename: ref.filename, relativePath });
+        this.logger.log(`downloaded attachment ${ref.filename} for workspace ${dir}`);
+      } catch (e) {
+        this.logger.warn(`attachment download error: ${(e as Error).message}`);
+      }
+    }
+    return results;
   }
 
   private async configureIdentity(git: SimpleGit): Promise<void> {

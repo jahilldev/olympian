@@ -52,6 +52,7 @@ export interface PlanPromptContext {
   issueBody: string;
   priorPlan?: string;
   feedback?: string[];
+  attachments?: string;
 }
 
 export interface ImplementPromptContext {
@@ -62,6 +63,7 @@ export interface ImplementPromptContext {
   attempt: number;
   /** Pre-formatted extra guidance: prior review issues or PR-review feedback. */
   guidance?: string;
+  attachments?: string;
 }
 
 export interface RevisePromptContext {

@@ -41,3 +41,8 @@ export interface ReviewFeedback {
   path?: string;
   line?: number;
 }
+
+export interface AttachmentRef {
+  url: string;
+  filename: string;
+}
