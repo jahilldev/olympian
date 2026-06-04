@@ -151,6 +151,7 @@ export class OrchestratorService {
           commandPrefix: this.config.get('COMMAND_PREFIX'),
         }),
       );
+      await this.safeCommentReaction(ref, evt.commentId, 'eyes');
       return;
     }
 
@@ -172,6 +173,7 @@ export class OrchestratorService {
         actor: 'HUMAN',
       });
       await this.safeComment(ref, evt.issueNumber, `Cancelled. Re-label the issue to start over.`);
+      await this.safeCommentReaction(ref, evt.commentId, 'eyes');
       return;
     }
 
@@ -195,6 +197,7 @@ export class OrchestratorService {
         evt.issueNumber,
         `Plan approved — implementing now. I'll open a draft PR when it's ready.`,
       );
+      await this.safeCommentReaction(ref, evt.commentId, 'eyes');
       return;
     }
 
@@ -209,6 +212,7 @@ export class OrchestratorService {
       );
       return;
     }
+    await this.safeCommentReaction(ref, evt.commentId, 'eyes');
     await this.prisma.planFeedback.create({
       data: {
         jobId: job.id,
@@ -254,6 +258,7 @@ export class OrchestratorService {
         actor: 'HUMAN',
       });
       await this.safeComment(ref, evt.prNumber, `Approved — Hermes is done here. 🎉`);
+      await this.safeReaction(ref, evt.prNumber, 'eyes');
       await this.workspace.cleanup(job.id).catch(() => undefined);
       return;
     }
@@ -268,6 +273,7 @@ export class OrchestratorService {
         evt.prNumber,
         `On it — addressing the requested changes and I'll push an update.`,
       );
+      await this.safeReaction(ref, evt.prNumber, 'eyes');
     }
   }
 
@@ -713,6 +719,18 @@ export class OrchestratorService {
       await this.github.createIssueReaction(ref, issueNumber, content);
     } catch (e) {
       this.logger.warn(`failed to add reaction: ${(e as Error).message}`);
+    }
+  }
+
+  private async safeCommentReaction(
+    ref: RepoRef,
+    commentId: number,
+    content: Parameters<GithubService['createCommentReaction']>[2],
+  ): Promise<void> {
+    try {
+      await this.github.createCommentReaction(ref, commentId, content);
+    } catch (e) {
+      this.logger.warn(`failed to add comment reaction: ${(e as Error).message}`);
     }
   }
 }
