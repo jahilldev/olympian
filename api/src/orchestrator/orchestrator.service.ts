@@ -516,7 +516,8 @@ export class OrchestratorService {
       if (res.status !== 'SUCCEEDED') {
         throw new Error(`review agent ${res.status}; ${res.stderr.slice(0, 300)}`);
       }
-      result = parseReview(res.stdout) ?? {
+      const parsed = parseReview(res.stdout);
+      result = parsed ?? {
         confidence: 0,
         verdict: 'FAIL',
         issues: [
@@ -532,7 +533,10 @@ export class OrchestratorService {
       if (this.review.meetsThreshold(result)) {
         break;
       }
-      if (pass < maxPasses) {
+      // Only revise when the review produced parseable, actionable issues. If the output
+      // couldn't be parsed there is nothing for the revise agent to act on — it would spin
+      // and time out. Re-reviewing the unchanged code on the next pass is the right move.
+      if (pass < maxPasses && parsed !== null) {
         await this.jobs.transition(jobId, 'REVISING', {
           reason: `addressing review pass ${pass}`,
           actor: 'AGENT',
@@ -545,9 +549,15 @@ export class OrchestratorService {
           prompt: revisePrompt,
         });
         if (rev.status !== 'SUCCEEDED') {
-          throw new Error(`revise agent ${rev.status}; ${rev.stderr.slice(0, 300)}`);
+          // Don't let a failed/timed-out revise kill the whole task — the workspace is
+          // unchanged (or partially changed) and a fresh review pass is more useful than
+          // a full task retry that restarts the loop from pass 1.
+          this.logger.warn(
+            `[job ${jobId}] revise pass ${pass} ${rev.status}; continuing to next review pass`,
+          );
+        } else {
+          await this.workspace.commitAll(ws.dir, reviseCommitMessage(pass));
         }
-        await this.workspace.commitAll(ws.dir, reviseCommitMessage(pass));
       }
     }
 
