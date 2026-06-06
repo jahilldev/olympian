@@ -151,6 +151,11 @@ export class WorkspaceService {
     await rm(dir, { recursive: true, force: true });
   }
 
+  /** Returns the absolute path of the job's workspace directory. */
+  dir(jobId: string): string {
+    return workspaceDir(this.config.get('WORKSPACE_ROOT'), jobId);
+  }
+
   /**
    * Downloads GitHub-hosted attachments into a `.attachments/` sub-directory of the
    * workspace. Skips files already present (idempotent across phases). Returns the set of

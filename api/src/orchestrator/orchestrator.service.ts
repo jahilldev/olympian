@@ -11,6 +11,7 @@ import { HermesAgentService } from '../agent/agent.service.js';
 import {
   buildImplementPrompt,
   buildPlanPrompt,
+  buildPrBodyPrompt,
   buildRevisePrompt,
 } from '../agent/agent.prompts.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
@@ -501,7 +502,12 @@ export class OrchestratorService {
     const maxPasses = this.review.maxPasses;
     let result: ReviewResult | null = null;
 
-    for (let pass = 1; pass <= maxPasses; pass++) {
+    // Pass numbers are globally incrementing per job across task retries so the paper trail is
+    // preserved and ordering by passNumber desc always returns the most recent pass.
+    const priorPasses = await this.prisma.reviewPass.count({ where: { jobId } });
+
+    for (let iter = 1; iter <= maxPasses; iter++) {
+      const pass = priorPasses + iter;
       // Idempotent: a no-op when already SELF_REVIEWING, REVISING -> SELF_REVIEWING otherwise.
       await this.jobs.transition(jobId, 'SELF_REVIEWING', {
         reason: `review pass ${pass}`,
@@ -546,7 +552,7 @@ export class OrchestratorService {
       // Only revise when the review produced parseable, actionable issues. If the output
       // couldn't be parsed there is nothing for the revise agent to act on — it would spin
       // and time out. Re-reviewing the unchanged code on the next pass is the right move.
-      if (pass < maxPasses && parsed !== null) {
+      if (iter < maxPasses && parsed !== null) {
         await this.jobs.transition(jobId, 'REVISING', {
           reason: `addressing review pass ${pass}`,
           actor: 'AGENT',
@@ -609,12 +615,29 @@ export class OrchestratorService {
       lastReview.verdict === 'PASS' &&
       lastReview.confidence >= this.review.threshold;
     const unresolved = lastReview ? formatIssues(JSON.parse(lastReview.issues)) : undefined;
-    const plan = await this.approvedPlan(jobId);
 
     if (!job.prNumber) {
+      const prBodyRes = await this.agent.run({
+        jobId,
+        phase: 'PR_BODY',
+        cwd: this.workspace.dir(jobId),
+        prompt: buildPrBodyPrompt({
+          repoFullName: job.repoFullName,
+          issueNumber: job.issueNumber,
+          issueTitle: job.issueTitle,
+          issueBody: job.issueBody,
+          baseBranch: base,
+          branchName,
+        }),
+      });
+      const agentSummary =
+        prBodyRes.status === 'SUCCEEDED' && prBodyRes.stdout.trim().length > 0
+          ? prBodyRes.stdout.trim().slice(0, 8_000)
+          : `Resolves #${job.issueNumber}: ${job.issueTitle}`;
+
       const body = buildPrBody({
         issueNumber: job.issueNumber,
-        plan,
+        agentSummary,
         confidence: lastReview?.confidence ?? null,
         threshold: this.review.threshold,
         meetsThreshold: meets,
