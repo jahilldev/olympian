@@ -64,6 +64,14 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
 
   private async tick(): Promise<void> {
     await this.refreshMetrics();
+    const exhausted = await this.queue.expireExhaustedStale();
+    for (const task of exhausted) {
+      await this.orchestrator
+        .onTaskExhausted(task.jobId, task.lastError ?? 'stale lock with no retries remaining')
+        .catch((err) =>
+          this.logger.error(`failed to escalate exhausted stale task: ${(err as Error).message}`),
+        );
+    }
     const capacity = this.config.get('WORKER_CONCURRENCY') - this.inflight;
     if (capacity <= 0) {
       return;

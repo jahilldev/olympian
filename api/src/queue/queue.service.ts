@@ -71,6 +71,9 @@ export class QueueService {
           SELECT "jobId" FROM "QueueTask"
           WHERE "status" = 'RUNNING' AND ("lockedAt" IS NULL OR "lockedAt" >= ${staleBefore})
         )
+        -- Don't reclaim stale tasks that have already exhausted their retry budget;
+        -- expireExhaustedStale() handles those separately so onTaskExhausted fires.
+        AND NOT ("status" = 'RUNNING' AND "attempts" >= "maxAttempts")
         ORDER BY "priority" DESC, "runAt" ASC
         LIMIT ${limit}
       )
@@ -135,6 +138,33 @@ export class QueueService {
       );
     }
     return willRetry;
+  }
+
+  /**
+   * Atomically fail any stale RUNNING tasks that have reached their attempt limit.
+   * Returns the affected rows so the caller can escalate each to onTaskExhausted.
+   */
+  async expireExhaustedStale(): Promise<Array<{ id: string; jobId: string; lastError: string | null }>> {
+    const now = new Date();
+    const staleBefore = new Date(now.getTime() - this.config.get('QUEUE_LOCK_TTL_MS'));
+    const rows = await this.prisma.$queryRaw<Array<{ id: string; jobId: string; lastError: string | null }>>(Prisma.sql`
+      UPDATE "QueueTask"
+      SET "status" = 'FAILED',
+          "lockedAt" = NULL,
+          "lockedBy" = NULL,
+          "updatedAt" = ${now}
+      WHERE "status" = 'RUNNING'
+        AND "lockedAt" IS NOT NULL
+        AND "lockedAt" < ${staleBefore}
+        AND "attempts" >= "maxAttempts"
+      RETURNING "id", "jobId", "lastError";
+    `);
+    for (const row of rows) {
+      this.logger.error(
+        `Task ${row.id} for job ${row.jobId} expired with no retries remaining after stale lock`,
+      );
+    }
+    return rows;
   }
 
   /** Cancel all outstanding (PENDING/RUNNING) tasks for a job. */
