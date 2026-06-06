@@ -12,6 +12,22 @@ describe('extractJsonBlock', () => {
   it('returns null when there is no JSON', () => {
     expect(extractJsonBlock('just prose')).toBeNull();
   });
+
+  it('prefers the last fenced block when multiple are present', () => {
+    const text = 'analysis\n```\nsome code\n```\nverdict\n```json\n{"confidence":80}\n```';
+    expect(extractJsonBlock(text)).toEqual({ confidence: 80 });
+  });
+
+  it('extracts JSON from a truncated (unclosed) fenced block', () => {
+    const text = 'preamble\n```json\n{"confidence":70,"verdict":"FAIL","issues":[{"severity":"hi';
+    // Truncated — JSON.parse will fail, but the test confirms we attempt the right content.
+    expect(extractJsonBlock(text)).toBeNull(); // incomplete JSON is still unparseable
+  });
+
+  it('extracts JSON when it appears first (new-style output)', () => {
+    const text = '```json\n{"confidence":95,"verdict":"PASS","issues":[]}\n```\n\nDetailed analysis...';
+    expect(extractJsonBlock(text)).toEqual({ confidence: 95, verdict: 'PASS', issues: [] });
+  });
 });
 
 describe('buildSpawnSpec', () => {

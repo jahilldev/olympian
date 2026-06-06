@@ -116,6 +116,8 @@ export interface StatusContext {
   reviewPassCount: number;
   activeTask?: { attempts: number; maxAttempts: number; lastError?: string | null } | null;
   commandPrefix: string;
+  lastReviewIssues?: string;
+  lastReviewIssueCount?: number;
 }
 
 export function buildStatusReport(ctx: StatusContext): string {
@@ -151,6 +153,18 @@ export function buildStatusReport(ctx: StatusContext): string {
     lines.push(`- **Last error:** \`${ctx.activeTask.lastError.slice(0, 300)}\``);
   } else if (ctx.state === 'FAILED' && ctx.error) {
     lines.push('', `**Last error:** \`${ctx.error.slice(0, 300)}\``);
+  }
+
+  if (ctx.lastReviewIssues && ctx.lastReviewIssueCount) {
+    const n = ctx.lastReviewIssueCount;
+    lines.push(
+      '',
+      `<details><summary>Last review findings (${n} issue${n === 1 ? '' : 's'})</summary>`,
+      '',
+      ctx.lastReviewIssues,
+      '',
+      '</details>',
+    );
   }
 
   if (ctx.state === 'AWAITING_PLAN_APPROVAL') {

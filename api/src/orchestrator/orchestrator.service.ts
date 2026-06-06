@@ -16,7 +16,7 @@ import {
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
-import { type ReviewResult } from '../review/review.model.js';
+import { type ReviewIssue, type ReviewResult } from '../review/review.model.js';
 import { formatIssues, parseReview } from '../review/review.utility.js';
 import { GithubService } from '../github/github.service.js';
 import {
@@ -122,7 +122,7 @@ export class OrchestratorService {
     const command = parseCommand(evt.body, this.config.get('COMMAND_PREFIX'));
 
     if (command.kind === 'status') {
-      const [activeRun, reviewPassCount, activeTask, prRef] = await Promise.all([
+      const [activeRun, reviewPassCount, activeTask, prRef, lastReviewPass] = await Promise.all([
         this.prisma.agentRun.findFirst({
           where: { jobId: job.id, status: 'RUNNING' },
           orderBy: { createdAt: 'desc' },
@@ -138,7 +138,15 @@ export class OrchestratorService {
           where: { jobId: job.id },
           select: { prNumber: true },
         }),
+        this.prisma.reviewPass.findFirst({
+          where: { jobId: job.id },
+          orderBy: { passNumber: 'desc' },
+          select: { issues: true },
+        }),
       ]);
+      const lastIssues: ReviewIssue[] = lastReviewPass
+        ? (JSON.parse(lastReviewPass.issues) as ReviewIssue[])
+        : [];
       await this.safeComment(
         ref,
         evt.issueNumber,
@@ -152,6 +160,8 @@ export class OrchestratorService {
           reviewPassCount,
           activeTask,
           commandPrefix: this.config.get('COMMAND_PREFIX'),
+          lastReviewIssues: lastIssues.length > 0 ? formatIssues(lastIssues) : undefined,
+          lastReviewIssueCount: lastIssues.length > 0 ? lastIssues.length : undefined,
         }),
       );
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');

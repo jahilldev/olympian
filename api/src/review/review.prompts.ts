@@ -7,7 +7,7 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
     `Files changed on this branch:\n${ctx.changedFiles.map((f) => `- ${f}`).join('\n') || '(none detected)'}`,
-    `Respond with ONLY a JSON object inside a \`\`\`json code block, matching exactly:
+    `Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text:
 \`\`\`json
 {
   "confidence": <integer 0-100, your confidence the change is correct and complete>,
@@ -18,6 +18,6 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
   ]
 }
 \`\`\`
-Set "verdict" to "PASS" only if confidence >= ${ctx.threshold} and there are no high/critical issues. List every concrete problem in "issues"; use an empty array if there are none.`,
+Set "verdict" to "PASS" only if confidence >= ${ctx.threshold} and there are no high/critical issues. List every concrete problem in "issues"; use an empty array if there are none. You may include detailed reasoning after the JSON block.`,
   ].join('\n\n');
 }

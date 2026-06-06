@@ -165,16 +165,29 @@ export function spawnProcess(
  * back to the outermost {...}. Returns null when nothing parseable is found.
  */
 export function extractJsonBlock(text: string): unknown | null {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidates: string[] = [];
 
-  if (fenced) {
-    candidates.push(fenced[1]);
+  // Prefer the LAST opened fence — in old-style output the JSON verdict is at the end.
+  // Also tolerates a missing closing ``` (truncated stdout).
+  const lastJsonFence = text.lastIndexOf('```json');
+  const lastPlainFence = text.lastIndexOf('```\n');
+  const lastFenceIdx = Math.max(lastJsonFence, lastPlainFence);
+  if (lastFenceIdx !== -1) {
+    const afterFence = text.slice(lastFenceIdx).replace(/^```(?:json)?[ \t]*\n?/, '');
+    const closeIdx = afterFence.indexOf('```');
+    const content = (closeIdx !== -1 ? afterFence.slice(0, closeIdx) : afterFence).trim();
+    if (content) candidates.push(content);
   }
 
+  // Also try the first complete fenced block (for new-style output where JSON comes first).
+  const firstFenced = text.match(/```(?:json)?[ \t]*\n([\s\S]*?)```/i);
+  if (firstFenced?.[1]) {
+    candidates.push(firstFenced[1]);
+  }
+
+  // Last-resort: outermost { ... } pair.
   const first = text.indexOf('{');
   const last = text.lastIndexOf('}');
-
   if (first !== -1 && last > first) {
     candidates.push(text.slice(first, last + 1));
   }
