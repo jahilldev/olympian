@@ -150,6 +150,27 @@ export class QueueService {
     return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
   }
 
+  /**
+   * Called once on startup. Any tasks left in RUNNING state by the previous process
+   * are immediately reset to PENDING so they are picked up on the next poll cycle
+   * rather than waiting up to QUEUE_LOCK_TTL_MS for the stale-lock reclaim path.
+   * AgentRun records stuck in RUNNING are also closed out so the status command
+   * doesn't report a phantom in-progress phase.
+   */
+  async reclaimOrphaned(): Promise<void> {
+    const { count } = await this.prisma.queueTask.updateMany({
+      where: { status: 'RUNNING' },
+      data: { status: 'PENDING', runAt: new Date(), lockedAt: null, lockedBy: null },
+    });
+    if (count > 0) {
+      this.logger.warn(`Reclaimed ${count} orphaned task(s) from previous process`);
+    }
+    await this.prisma.agentRun.updateMany({
+      where: { status: 'RUNNING' },
+      data: { status: 'FAILED' },
+    });
+  }
+
   countPending(kind?: TaskKind): Promise<number> {
     return this.prisma.queueTask.count({
       where: { status: 'PENDING', ...(kind ? { kind } : {}) },

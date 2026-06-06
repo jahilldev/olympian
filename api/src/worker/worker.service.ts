@@ -28,11 +28,12 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly orchestrator: OrchestratorService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     if (!this.config.get('WORKER_ENABLED')) {
       this.logger.warn('Worker disabled (WORKER_ENABLED=false)');
       return;
     }
+    await this.queue.reclaimOrphaned();
     this.logger.log(
       `Worker ${WORKER_ID} starting (concurrency ${this.config.get('WORKER_CONCURRENCY')})`,
     );
