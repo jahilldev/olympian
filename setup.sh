@@ -29,10 +29,9 @@ WorkingDirectory=${REPO_ROOT}
 
 Environment="PATH=${NODE_BIN_DIR}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-ExecStartPre=${NPM} ci --include=dev
+ExecStartPre=${NPM} ci
 ExecStartPre=${NPM} run setup
 ExecStartPre=${NPM} run build
-ExecStartPre=${NPM} prune --omit=dev
 
 ExecStart=/usr/bin/env NODE_ENV=production ${NPM} start
 
