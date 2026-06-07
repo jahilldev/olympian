@@ -115,7 +115,11 @@ export class OrchestratorService {
       return;
     }
     const repoFullName = `${evt.owner}/${evt.repo}`;
-    const job = await this.jobs.findByRepoIssue(repoFullName, evt.issueNumber);
+    // For comments on a PR thread, evt.issueNumber is the PR number — not the original
+    // issue number — so fall back to a prNumber lookup when the issue lookup misses.
+    const job =
+      (await this.jobs.findByRepoIssue(repoFullName, evt.issueNumber)) ??
+      (await this.prisma.job.findFirst({ where: { repoFullName, prNumber: evt.issueNumber } }));
     if (!job) {
       return;
     }
@@ -188,6 +192,35 @@ export class OrchestratorService {
       });
       await this.safeComment(ref, evt.issueNumber, `Cancelled. Re-label the issue to start over.`);
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+      return;
+    }
+
+    // /hermes revise on a PR thread: store feedback and enqueue IMPLEMENT only when
+    // the job is parked (AWAITING_PR_APPROVAL). If an agent is already running the
+    // feedback is persisted and will be picked up on the next handleImplement call.
+    if (command.kind === 'revise' && job.prNumber) {
+      await this.prisma.prRevisionFeedback.create({
+        data: { jobId: job.id, author: evt.author, body: command.text || evt.body },
+      });
+      await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+      if (job.state === 'AWAITING_PR_APPROVAL') {
+        await this.jobs.transition(job.id, 'IMPLEMENTING', {
+          reason: `revision requested by @${evt.author}`,
+          actor: 'HUMAN',
+        });
+        await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
+        await this.safeComment(
+          ref,
+          evt.issueNumber,
+          `On it — I'll address the feedback and push an update.`,
+        );
+      } else {
+        await this.safeComment(
+          ref,
+          evt.issueNumber,
+          `Feedback noted — I'll incorporate it into the current run.`,
+        );
+      }
       return;
     }
 
@@ -436,9 +469,24 @@ export class OrchestratorService {
     let guidance: string | undefined;
     const reviewBodies: string[] = [];
     if (job.prNumber) {
-      const fb = await this.github.getReviewFeedback(this.refFor(job, installation), job.prNumber);
-      guidance = this.formatPrFeedback(fb);
-      reviewBodies.push(...fb.map((f) => f.body));
+      const [reviewFb, prRevisions] = await Promise.all([
+        this.github.getReviewFeedback(this.refFor(job, installation), job.prNumber),
+        this.prisma.prRevisionFeedback.findMany({
+          where: { jobId },
+          orderBy: { createdAt: 'asc' },
+        }),
+      ]);
+      const parts: string[] = [];
+      if (reviewFb.length > 0) parts.push(this.formatPrFeedback(reviewFb));
+      if (prRevisions.length > 0) {
+        parts.push(
+          prRevisions
+            .map((r) => `@${r.author} requested: ${r.body}`)
+            .join('\n\n'),
+        );
+      }
+      guidance = parts.join('\n\n') || undefined;
+      reviewBodies.push(...reviewFb.map((f) => f.body), ...prRevisions.map((r) => r.body));
     }
     const attachmentRefs = extractAttachmentUrls(
       [job.issueBody, ...reviewBodies].join('\n'),

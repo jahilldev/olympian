@@ -9,7 +9,7 @@ import {
   type IssuesPayload,
   type PullRequestReviewPayload,
 } from './webhook.model.js';
-import { isBotUser, isPullRequestThread } from './webhook.utility.js';
+import { isBotUser } from './webhook.utility.js';
 
 /**
  * Routes verified GitHub webhook deliveries to the orchestrator. Deliveries are
@@ -88,7 +88,7 @@ export class WebhookService {
   }
 
   private async onIssueComment(p: IssueCommentPayload): Promise<void> {
-    if (p.action !== 'created' || !p.installation || isPullRequestThread(p.issue)) {
+    if (p.action !== 'created' || !p.installation) {
       return;
     }
     await this.orchestrator.onIssueComment({

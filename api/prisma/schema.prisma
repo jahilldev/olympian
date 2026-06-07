@@ -53,6 +53,7 @@ model Job {
   transitions JobStateTransition[]
   plans       PlanRevision[]
   feedback    PlanFeedback[]
+  prFeedback  PrRevisionFeedback[]
   runs        AgentRun[]
   reviews     ReviewPass[]
   pr          PullRequestRef?
@@ -98,6 +99,19 @@ model PlanFeedback {
   body            String
   githubCommentId BigInt?
   createdAt       DateTime @default(now())
+
+  @@index([jobId])
+}
+
+// Feedback submitted via /hermes revise on a PR thread. Persisted across retry
+// cycles so the agent always incorporates it, even if posted while a run was active.
+model PrRevisionFeedback {
+  id        String   @id @default(cuid())
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId     String
+  author    String
+  body      String
+  createdAt DateTime @default(now())
 
   @@index([jobId])
 }
