@@ -14,7 +14,7 @@ echo "Installing ${SERVICE_NAME} systemd service..."
 echo "  User:             ${SERVICE_USER}"
 echo "  WorkingDirectory: ${REPO_ROOT}"
 echo "  Node:             ${NODE_BIN_DIR}/node"
-echo "  npm:              ${NPM}"
+echo "  NPM:              ${NPM}"
 echo ""
 
 sudo install -m 644 /dev/stdin "${SERVICE_FILE}" <<EOF
