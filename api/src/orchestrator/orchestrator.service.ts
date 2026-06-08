@@ -133,7 +133,7 @@ export class OrchestratorService {
           orderBy: { createdAt: 'desc' },
           select: { phase: true, createdAt: true },
         }),
-        this.prisma.reviewPass.count({ where: { jobId: job.id } }),
+        this.prisma.reviewPass.count({ where: { jobId: job.id, cycle: job.reviewCycle } }),
         this.prisma.queueTask.findFirst({
           where: { jobId: job.id, status: { in: ['PENDING', 'RUNNING'] } },
           orderBy: { createdAt: 'desc' },
@@ -144,7 +144,7 @@ export class OrchestratorService {
           select: { prNumber: true },
         }),
         this.prisma.reviewPass.findFirst({
-          where: { jobId: job.id },
+          where: { jobId: job.id, cycle: job.reviewCycle },
           orderBy: { passNumber: 'desc' },
           select: { issues: true },
         }),
@@ -532,6 +532,7 @@ export class OrchestratorService {
       reason: 'implementation complete',
       actor: 'AGENT',
     });
+    await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
     await this.queue.enqueue({ jobId, kind: 'REVIEW' });
   }
 
@@ -549,10 +550,11 @@ export class OrchestratorService {
     const plan = await this.approvedPlan(jobId);
     const maxPasses = this.review.maxPasses;
     let result: ReviewResult | null = null;
+    const cycle = job.reviewCycle;
 
-    // Pass numbers are globally incrementing per job across task retries so the paper trail is
-    // preserved and ordering by passNumber desc always returns the most recent pass.
-    const priorPasses = await this.prisma.reviewPass.count({ where: { jobId } });
+    // Count only passes in the current cycle so the loop cap applies per-cycle,
+    // and retries within the same cycle continue from where they left off.
+    const priorPasses = await this.prisma.reviewPass.count({ where: { jobId, cycle } });
 
     for (let iter = 1; iter <= maxPasses; iter++) {
       const pass = priorPasses + iter;
@@ -592,7 +594,7 @@ export class OrchestratorService {
           },
         ],
       };
-      await this.review.persist(jobId, pass, result);
+      await this.review.persist({ jobId, cycle, passNumber: pass, result });
 
       if (this.review.meetsThreshold(result)) {
         break;
@@ -655,7 +657,7 @@ export class OrchestratorService {
     await this.jobs.update(jobId, { headSha });
 
     const lastReview = await this.prisma.reviewPass.findFirst({
-      where: { jobId },
+      where: { jobId, cycle: job.reviewCycle },
       orderBy: { passNumber: 'desc' },
     });
     const meets =

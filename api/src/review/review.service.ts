@@ -15,11 +15,18 @@ export class ReviewService {
     private readonly config: AppConfigService,
   ) {}
 
-  async persist(jobId: string, passNumber: number, result: ReviewResult): Promise<void> {
+  async persist(opts: {
+    jobId: string;
+    cycle: number;
+    passNumber: number;
+    result: ReviewResult;
+  }): Promise<void> {
+    const { jobId, cycle, passNumber, result } = opts;
     await this.prisma.reviewPass.upsert({
-      where: { jobId_passNumber: { jobId, passNumber } },
+      where: { jobId_cycle_passNumber: { jobId, cycle, passNumber } },
       create: {
         jobId,
+        cycle,
         passNumber,
         confidence: result.confidence,
         verdict: result.verdict,

@@ -45,6 +45,7 @@ model Job {
   prNumber       Int?
   headSha        String?
   confidence     Int? // latest review confidence (0-100)
+  reviewCycle    Int              @default(0) // incremented each time handleImplement completes
   attempts       Int              @default(0)
   error          String?
   createdAt      DateTime         @default(now())
@@ -139,13 +140,14 @@ model ReviewPass {
   id         String   @id @default(cuid())
   job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId      String
-  passNumber Int
+  cycle      Int      @default(1) // which implementation round (matches Job.reviewCycle)
+  passNumber Int      // pass within this cycle
   confidence Int
   verdict    String // ReviewVerdict union
   issues     String // serialized JSON: [{ severity, title, detail, file? }]
   createdAt  DateTime @default(now())
 
-  @@unique([jobId, passNumber])
+  @@unique([jobId, cycle, passNumber])
   @@index([jobId])
 }
 
