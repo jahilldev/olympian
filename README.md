@@ -117,7 +117,7 @@ separately (the script prints the exact command), e.g.:
 
 ```bash
 HERMES_HOME="$(pwd)/.hermes/home" hermes model   # provider setup wizard, scoped to the isolated home
-# …or set HERMES_MODEL / HERMES_PROVIDER + an API key in api/.env
+# …or set HERMES_PRIMARY_MODEL / HERMES_PRIMARY_PROVIDER + an API key in api/.env
 ```
 
 ### 3. Camofox browser (optional)
@@ -180,7 +180,8 @@ defaults live in [`api/.env.example`](api/.env.example). Key knobs:
 | `WORKER_CONCURRENCY` | Parallel jobs (default 2). |
 | `VERIFY_COMMAND` | Optional tests/build command used as an acceptance gate. |
 | `SANDBOX_MODE` | `none` or `docker`. |
-| `HERMES_BIN` / `HERMES_HOME` / `HERMES_MODEL` / `HERMES_MAX_TURNS` | Hermes invocation. |
+| `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL` / `HERMES_MAX_TURNS` | Hermes invocation. |
+| `HERMES_REVIEW_MODEL` / `HERMES_REVIEW_PROVIDER` | Optional independent model for the self-review cycle. |
 
 ## Docker
 

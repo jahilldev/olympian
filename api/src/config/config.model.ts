@@ -25,8 +25,8 @@ export const envSchema = z.object({
   // hermes
   HERMES_BIN: z.string().default('hermes'),
   HERMES_HOME: z.string().optional(),
-  HERMES_MODEL: z.string().optional(),
-  HERMES_PROVIDER: z.string().optional(),
+  HERMES_PRIMARY_MODEL: z.string().optional(),
+  HERMES_PRIMARY_PROVIDER: z.string().optional(),
   HERMES_REVIEW_MODEL: z.string().optional(),
   HERMES_REVIEW_PROVIDER: z.string().optional(),
   HERMES_TIMEOUT_MS: intFromString(7_200_000),

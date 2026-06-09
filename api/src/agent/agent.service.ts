@@ -21,8 +21,8 @@ export class HermesAgentService {
   ) {}
 
   async run(opts: AgentRunOptions): Promise<AgentRunResult> {
-    const model = opts.model ?? this.config.get('HERMES_MODEL') ?? undefined;
-    const provider = opts.provider ?? this.config.get('HERMES_PROVIDER') ?? undefined;
+    const model = opts.model ?? this.config.get('HERMES_PRIMARY_MODEL') ?? undefined;
+    const provider = opts.provider ?? this.config.get('HERMES_PRIMARY_PROVIDER') ?? undefined;
     const sandboxMode = this.config.get('SANDBOX_MODE');
     const hermesHome = this.config.get('HERMES_HOME') || undefined;
 
