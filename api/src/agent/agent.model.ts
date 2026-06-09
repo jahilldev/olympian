@@ -19,6 +19,10 @@ export interface AgentRunOptions {
   skills?: string[];
   /** Override the default per-invocation timeout. */
   timeoutMs?: number;
+  /** Override the model for this specific invocation (e.g. a review-only model). */
+  model?: string;
+  /** Override the provider for this specific invocation. */
+  provider?: string;
 }
 
 export interface AgentRunResult {

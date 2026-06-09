@@ -21,7 +21,8 @@ export class HermesAgentService {
   ) {}
 
   async run(opts: AgentRunOptions): Promise<AgentRunResult> {
-    const model = this.config.get('HERMES_MODEL') || undefined;
+    const model = opts.model ?? this.config.get('HERMES_MODEL') ?? undefined;
+    const provider = opts.provider ?? this.config.get('HERMES_PROVIDER') ?? undefined;
     const sandboxMode = this.config.get('SANDBOX_MODE');
     const hermesHome = this.config.get('HERMES_HOME') || undefined;
 
@@ -37,7 +38,7 @@ export class HermesAgentService {
       cwd: opts.cwd,
       prompt: opts.prompt,
       model,
-      provider: this.config.get('HERMES_PROVIDER') || undefined,
+      provider,
       toolsets: opts.toolsets,
       skills: opts.skills,
     });
