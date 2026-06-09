@@ -108,7 +108,7 @@ export class WebhookService {
       return;
     }
     const state = p.review.state.toLowerCase();
-    if (state !== 'approved' && state !== 'changes_requested') {
+    if (state !== 'approved' && state !== 'changes_requested' && state !== 'commented') {
       return;
     }
     await this.orchestrator.onPullRequestReview({

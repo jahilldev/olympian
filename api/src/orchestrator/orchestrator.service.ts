@@ -309,7 +309,7 @@ export class OrchestratorService {
       await this.workspace.cleanup(job.id).catch(() => undefined);
       return;
     }
-    if (evt.state === 'changes_requested') {
+    if (evt.state === 'changes_requested' || evt.state === 'commented') {
       await this.jobs.transition(job.id, 'IMPLEMENTING', {
         reason: `changes requested by @${evt.author}`,
         actor: 'HUMAN',
