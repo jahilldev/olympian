@@ -72,7 +72,8 @@ export interface ImplementPromptContext {
 
 export interface RevisePromptContext {
   plan: string;
-  issuesText: string;
+  issuesText?: string;
+  testOutput?: string;
 }
 
 export interface PrBodyPromptContext {

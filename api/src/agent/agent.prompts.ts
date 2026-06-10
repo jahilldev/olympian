@@ -59,12 +59,18 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
 }
 
 export function buildRevisePrompt(ctx: RevisePromptContext): string {
-  return [
-    `You are Hermes, an autonomous engineer. A review of your changes found issues that must be fixed. Edit the files in the working directory to resolve every issue below; do not regress already-correct work.`,
+  const parts: string[] = [
+    `You are Hermes, an autonomous engineer. Your recent changes need fixes. Edit the files in the working directory to address every issue below; do not regress already-correct work.`,
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
-    `--- REVIEW ISSUES TO FIX ---\n${ctx.issuesText}\n--- END ISSUES ---`,
-    `When finished, end your reply with a short summary of the fixes. The orchestrator will commit your changes — do not run git yourself.`,
-  ].join('\n\n');
+  ];
+  if (ctx.testOutput) {
+    parts.push(`--- FAILING TEST OUTPUT ---\n${ctx.testOutput}\n--- END TEST OUTPUT ---`);
+  }
+  if (ctx.issuesText) {
+    parts.push(`--- REVIEW ISSUES TO FIX ---\n${ctx.issuesText}\n--- END ISSUES ---`);
+  }
+  parts.push(`When finished, end your reply with a short summary of the fixes. The orchestrator will commit your changes — do not run git yourself.`);
+  return parts.join('\n\n');
 }
 
 export function buildPrBodyPrompt(ctx: PrBodyPromptContext): string {

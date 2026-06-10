@@ -371,8 +371,7 @@ export class OrchestratorService {
       case 'OPEN_PR':
         return this.handleOpenPr(task.jobId);
       case 'REVISE':
-        // Revisions run inline within REVIEW; nothing to do as a standalone task.
-        return;
+        return this.handleRevise(task.jobId);
     }
   }
 
@@ -567,39 +566,85 @@ export class OrchestratorService {
     });
     const plan = await this.approvedPlan(jobId);
     const hasBrowser = !!process.env.CAMOFOX_URL;
-    const maxIters = this.config.get('MAX_TEST_ITERATIONS');
 
-    let priorOutput: string | undefined;
-    for (let attempt = 1; attempt <= maxIters; attempt++) {
-      const prompt = buildTestPrompt({
+    const res = await this.agent.run({
+      jobId,
+      phase: 'TEST',
+      cwd: ws.dir,
+      prompt: buildTestPrompt({
         repoFullName: job.repoFullName,
         issueTitle: job.issueTitle,
         plan,
         hasBrowser,
-        priorOutput,
-      });
-      const res = await this.agent.run({
-        jobId,
-        phase: 'TEST',
-        cwd: ws.dir,
-        prompt,
-        toolsets: hasBrowser ? 'browser' : undefined,
-      });
-      await this.workspace.commitAll(ws.dir, `test: fix failing tests (attempt ${attempt})`);
-      if (res.status === 'SUCCEEDED') {
-        break;
-      }
-      priorOutput = (res.stderr || res.stdout).slice(0, 4000);
-      this.logger.warn(
-        `[job ${jobId}] test attempt ${attempt} ${res.status}; ${attempt < maxIters ? 'retrying' : 'proceeding to review'}`,
-      );
-    }
-
-    await this.jobs.transition(jobId, 'SELF_REVIEWING', {
-      reason: 'testing complete',
-      actor: 'AGENT',
+      }),
+      toolsets: hasBrowser ? 'browser' : undefined,
     });
-    await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+    await this.workspace.commitAll(ws.dir, 'test: run test suite');
+
+    if (res.status === 'SUCCEEDED') {
+      await this.jobs.transition(jobId, 'SELF_REVIEWING', { reason: 'tests passed', actor: 'AGENT' });
+      await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+    } else {
+      this.logger.warn(`[job ${jobId}] test ${res.status}; routing to revise`);
+      await this.jobs.transition(jobId, 'REVISING', { reason: 'tests failed', actor: 'AGENT' });
+      await this.queue.enqueue({ jobId, kind: 'REVISE' });
+    }
+  }
+
+  private async handleRevise(jobId: string): Promise<void> {
+    const { job, ref } = await this.context(jobId);
+    const ws = await this.workspace.prepare({
+      jobId,
+      installationId: this.ghIdFromRef(ref),
+      owner: job.repoOwner,
+      repo: job.repoName,
+      branchName:
+        job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber),
+    });
+    const plan = await this.approvedPlan(jobId);
+
+    // Gather whatever context is available: failing test output and/or review issues.
+    const [lastTestRun, lastFailedReview] = await Promise.all([
+      this.prisma.agentRun.findFirst({
+        where: { jobId, phase: 'TEST' },
+        orderBy: { createdAt: 'desc' },
+        select: { status: true, stdout: true, stderr: true },
+      }),
+      this.prisma.reviewPass.findFirst({
+        where: { jobId, cycle: job.reviewCycle, verdict: 'FAIL' },
+        orderBy: { passNumber: 'desc' },
+        select: { issues: true },
+      }),
+    ]);
+
+    const testOutput =
+      lastTestRun && lastTestRun.status !== 'SUCCEEDED'
+        ? (lastTestRun.stderr || lastTestRun.stdout).slice(0, 4000)
+        : undefined;
+
+    const issues = lastFailedReview
+      ? (JSON.parse(lastFailedReview.issues) as ReviewIssue[])
+      : [];
+    const issuesText = issues.length > 0 ? formatIssues(issues) : undefined;
+
+    const revisionNumber =
+      (await this.prisma.agentRun.count({ where: { jobId, phase: 'REVISE' } })) + 1;
+    const rev = await this.agent.run({
+      jobId,
+      phase: 'REVISE',
+      cwd: ws.dir,
+      prompt: buildRevisePrompt({ plan, issuesText, testOutput }),
+    });
+    if (rev.status === 'SUCCEEDED') {
+      await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
+    } else {
+      // Don't let a failed/timed-out revise kill the whole task — the workspace is
+      // unchanged (or partially changed) and a fresh test pass is more useful than
+      // a full task retry.
+      this.logger.warn(`[job ${jobId}] revise ${rev.status}; proceeding to test`);
+    }
+    await this.jobs.transition(jobId, 'TESTING', { reason: 'revision complete', actor: 'AGENT' });
+    await this.queue.enqueue({ jobId, kind: 'TEST' });
   }
 
   private async handleReview(jobId: string): Promise<void> {
@@ -615,115 +660,75 @@ export class OrchestratorService {
     const base = ws.baseBranch;
     const plan = await this.approvedPlan(jobId);
     const maxPasses = this.review.maxPasses;
-    let result: ReviewResult | null = null;
     const cycle = job.reviewCycle;
 
-    // Count only passes in the current cycle so the loop cap applies per-cycle,
-    // and retries within the same cycle continue from where they left off.
+    // Count only passes in the current cycle so the cap applies per-cycle and task
+    // retries continue from where they left off rather than restarting from pass 1.
     const priorPasses = await this.prisma.reviewPass.count({ where: { jobId, cycle } });
+    const pass = priorPasses + 1;
 
-    for (let iter = 1; iter <= maxPasses; iter++) {
-      const pass = priorPasses + iter;
-      // Run tests before each review pass. The test agent fixes what it can; any
-      // remaining failures become evidence for the review agent.
-      const hasBrowser = !!process.env.CAMOFOX_URL;
-      const testRes = await this.agent.run({
-        jobId,
-        phase: 'TEST',
-        cwd: ws.dir,
-        prompt: buildTestPrompt({
-          repoFullName: job.repoFullName,
-          issueTitle: job.issueTitle,
-          plan,
-          hasBrowser,
-        }),
-        toolsets: hasBrowser ? 'browser' : undefined,
-      });
-      await this.workspace.commitAll(ws.dir, `test: fix failing tests (review pass ${pass})`);
-      if (testRes.status !== 'SUCCEEDED') {
-        this.logger.warn(`[job ${jobId}] inline test pass ${pass} ${testRes.status}; proceeding to review`);
-      }
-      // Idempotent: a no-op when already SELF_REVIEWING, REVISING -> SELF_REVIEWING otherwise.
-      await this.jobs.transition(jobId, 'SELF_REVIEWING', {
-        reason: `review pass ${pass}`,
+    await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+      reason: `review pass ${pass}`,
+      actor: 'AGENT',
+    });
+    const changedFiles = await this.workspace.branchChangedFiles(ws.dir, base);
+    const reviewPrompt = buildReviewPrompt({
+      repoFullName: job.repoFullName,
+      issueTitle: job.issueTitle,
+      issueBody: job.issueBody,
+      plan,
+      baseBranch: base,
+      changedFiles,
+      threshold: this.review.threshold,
+    });
+    const res = await this.agent.run({
+      jobId,
+      phase: 'REVIEW',
+      cwd: ws.dir,
+      prompt: reviewPrompt,
+      model: this.config.get('HERMES_REVIEW_MODEL') || undefined,
+      provider: this.config.get('HERMES_REVIEW_PROVIDER') || undefined,
+    });
+    if (res.status !== 'SUCCEEDED') {
+      throw new Error(`review agent ${res.status}; ${res.stderr.slice(0, 300)}`);
+    }
+    const parsed = parseReview(res.stdout);
+    const result: ReviewResult = parsed ?? {
+      confidence: 0,
+      verdict: 'FAIL',
+      issues: [
+        {
+          severity: 'high',
+          title: 'Unparseable review output',
+          detail: res.stdout.slice(0, 800),
+        },
+      ],
+    };
+    await this.review.persist({ jobId, cycle, passNumber: pass, result });
+
+    if (this.review.meetsThreshold(result)) {
+      await this.jobs.transition(jobId, 'OPENING_PR', { reason: 'review complete', actor: 'AGENT' });
+      await this.queue.enqueue({ jobId, kind: 'OPEN_PR' });
+      return;
+    }
+
+    // Only revise when the review produced parseable, actionable issues and passes remain.
+    // If the output couldn't be parsed there is nothing for the revise agent to act on.
+    if (pass < maxPasses && parsed !== null) {
+      await this.jobs.transition(jobId, 'REVISING', {
+        reason: `addressing review pass ${pass}`,
         actor: 'AGENT',
       });
-      const changedFiles = await this.workspace.branchChangedFiles(ws.dir, base);
-      const reviewPrompt = buildReviewPrompt({
-        repoFullName: job.repoFullName,
-        issueTitle: job.issueTitle,
-        issueBody: job.issueBody,
-        plan,
-        baseBranch: base,
-        changedFiles,
-        threshold: this.review.threshold,
-      });
-      const res = await this.agent.run({
-        jobId,
-        phase: 'REVIEW',
-        cwd: ws.dir,
-        prompt: reviewPrompt,
-        model: this.config.get('HERMES_REVIEW_MODEL') || undefined,
-        provider: this.config.get('HERMES_REVIEW_PROVIDER') || undefined,
-      });
-      if (res.status !== 'SUCCEEDED') {
-        throw new Error(`review agent ${res.status}; ${res.stderr.slice(0, 300)}`);
-      }
-      const parsed = parseReview(res.stdout);
-      result = parsed ?? {
-        confidence: 0,
-        verdict: 'FAIL',
-        issues: [
-          {
-            severity: 'high',
-            title: 'Unparseable review output',
-            detail: res.stdout.slice(0, 800),
-          },
-        ],
-      };
-      await this.review.persist({ jobId, cycle, passNumber: pass, result });
-
-      if (this.review.meetsThreshold(result)) {
-        break;
-      }
-      // Only revise when the review produced parseable, actionable issues. If the output
-      // couldn't be parsed there is nothing for the revise agent to act on — it would spin
-      // and time out. Re-reviewing the unchanged code on the next pass is the right move.
-      if (iter < maxPasses && parsed !== null) {
-        await this.jobs.transition(jobId, 'REVISING', {
-          reason: `addressing review pass ${pass}`,
-          actor: 'AGENT',
-        });
-        const revisePrompt = buildRevisePrompt({ plan, issuesText: formatIssues(result.issues) });
-        const rev = await this.agent.run({
-          jobId,
-          phase: 'REVISE',
-          cwd: ws.dir,
-          prompt: revisePrompt,
-        });
-        if (rev.status !== 'SUCCEEDED') {
-          // Don't let a failed/timed-out revise kill the whole task — the workspace is
-          // unchanged (or partially changed) and a fresh review pass is more useful than
-          // a full task retry that restarts the loop from pass 1.
-          this.logger.warn(
-            `[job ${jobId}] revise pass ${pass} ${rev.status}; continuing to next review pass`,
-          );
-        } else {
-          await this.workspace.commitAll(ws.dir, reviseCommitMessage(pass));
-        }
-      }
+      await this.queue.enqueue({ jobId, kind: 'REVISE' });
+      return;
     }
 
-    // The loop always ends after a review pass (revisions only happen mid-loop),
-    // so the job is in SELF_REVIEWING here. The cap path still opens a draft PR.
-    if (result && !this.review.meetsThreshold(result)) {
-      await this.safeComment(
-        ref,
-        job.issueNumber,
-        `Self-review didn't reach the confidence threshold after ${maxPasses} passes (best ${result.confidence}/100). Opening a draft PR for human review.`,
-      );
-    }
-    await this.jobs.transition(jobId, 'OPENING_PR', { reason: 'review complete', actor: 'AGENT' });
+    await this.safeComment(
+      ref,
+      job.issueNumber,
+      `Self-review didn't reach the confidence threshold after ${pass} passes (best ${result.confidence}/100). Opening a draft PR for human review.`,
+    );
+    await this.jobs.transition(jobId, 'OPENING_PR', { reason: 'review cap reached', actor: 'AGENT' });
     await this.queue.enqueue({ jobId, kind: 'OPEN_PR' });
   }
 
