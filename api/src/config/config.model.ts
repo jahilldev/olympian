@@ -37,6 +37,7 @@ export const envSchema = z.object({
   MAX_PLAN_REVISIONS: intFromString(10),
   MAX_IMPLEMENTATION_ITERATIONS: intFromString(5),
   MAX_REVIEW_PASSES: intFromString(5),
+  MAX_TEST_ITERATIONS: intFromString(3),
   COMMAND_PREFIX: z.string().default('/hermes'),
 
   // queue / worker

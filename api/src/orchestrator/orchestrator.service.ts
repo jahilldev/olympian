@@ -13,6 +13,7 @@ import {
   buildPlanPrompt,
   buildPrBodyPrompt,
   buildRevisePrompt,
+  buildTestPrompt,
 } from '../agent/agent.prompts.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
@@ -22,7 +23,6 @@ import { formatIssues, parseReview } from '../review/review.utility.js';
 import { GithubService } from '../github/github.service.js';
 import {
   APPROVAL_PERMISSIONS,
-  type AttachmentRef,
   type RepoRef,
   type ReviewFeedback,
 } from '../github/github.model.js';
@@ -364,6 +364,8 @@ export class OrchestratorService {
         return this.handlePlan(task.jobId);
       case 'IMPLEMENT':
         return this.handleImplement(task.jobId);
+      case 'TEST':
+        return this.handleTest(task.jobId);
       case 'REVIEW':
         return this.handleReview(task.jobId);
       case 'OPEN_PR':
@@ -545,11 +547,58 @@ export class OrchestratorService {
     if (!committedSomething && !(await this.workspace.hasCommitsAhead(ws.dir, ws.baseBranch))) {
       throw new Error('agent produced no changes');
     }
-    await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+    await this.jobs.transition(jobId, 'TESTING', {
       reason: 'implementation complete',
       actor: 'AGENT',
     });
     await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
+    await this.queue.enqueue({ jobId, kind: 'TEST' });
+  }
+
+  private async handleTest(jobId: string): Promise<void> {
+    const { job, ref } = await this.context(jobId);
+    const ws = await this.workspace.prepare({
+      jobId,
+      installationId: this.ghIdFromRef(ref),
+      owner: job.repoOwner,
+      repo: job.repoName,
+      branchName:
+        job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber),
+    });
+    const plan = await this.approvedPlan(jobId);
+    const hasBrowser = !!process.env.CAMOFOX_URL;
+    const maxIters = this.config.get('MAX_TEST_ITERATIONS');
+
+    let priorOutput: string | undefined;
+    for (let attempt = 1; attempt <= maxIters; attempt++) {
+      const prompt = buildTestPrompt({
+        repoFullName: job.repoFullName,
+        issueTitle: job.issueTitle,
+        plan,
+        hasBrowser,
+        priorOutput,
+      });
+      const res = await this.agent.run({
+        jobId,
+        phase: 'TEST',
+        cwd: ws.dir,
+        prompt,
+        toolsets: hasBrowser ? 'browser' : undefined,
+      });
+      await this.workspace.commitAll(ws.dir, `test: fix failing tests (attempt ${attempt})`);
+      if (res.status === 'SUCCEEDED') {
+        break;
+      }
+      priorOutput = (res.stderr || res.stdout).slice(0, 4000);
+      this.logger.warn(
+        `[job ${jobId}] test attempt ${attempt} ${res.status}; ${attempt < maxIters ? 'retrying' : 'proceeding to review'}`,
+      );
+    }
+
+    await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+      reason: 'testing complete',
+      actor: 'AGENT',
+    });
     await this.queue.enqueue({ jobId, kind: 'REVIEW' });
   }
 
@@ -575,6 +624,25 @@ export class OrchestratorService {
 
     for (let iter = 1; iter <= maxPasses; iter++) {
       const pass = priorPasses + iter;
+      // Run tests before each review pass. The test agent fixes what it can; any
+      // remaining failures become evidence for the review agent.
+      const hasBrowser = !!process.env.CAMOFOX_URL;
+      const testRes = await this.agent.run({
+        jobId,
+        phase: 'TEST',
+        cwd: ws.dir,
+        prompt: buildTestPrompt({
+          repoFullName: job.repoFullName,
+          issueTitle: job.issueTitle,
+          plan,
+          hasBrowser,
+        }),
+        toolsets: hasBrowser ? 'browser' : undefined,
+      });
+      await this.workspace.commitAll(ws.dir, `test: fix failing tests (review pass ${pass})`);
+      if (testRes.status !== 'SUCCEEDED') {
+        this.logger.warn(`[job ${jobId}] inline test pass ${pass} ${testRes.status}; proceeding to review`);
+      }
       // Idempotent: a no-op when already SELF_REVIEWING, REVISING -> SELF_REVIEWING otherwise.
       await this.jobs.transition(jobId, 'SELF_REVIEWING', {
         reason: `review pass ${pass}`,

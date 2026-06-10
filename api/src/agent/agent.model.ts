@@ -1,4 +1,4 @@
-export const AGENT_PHASES = ['PLAN', 'IMPLEMENT', 'REVIEW', 'REVISE', 'PR_BODY'] as const;
+export const AGENT_PHASES = ['PLAN', 'IMPLEMENT', 'TEST', 'REVIEW', 'REVISE', 'PR_BODY'] as const;
 export type AgentPhase = (typeof AGENT_PHASES)[number];
 
 export type AgentRunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT';
@@ -82,4 +82,12 @@ export interface PrBodyPromptContext {
   issueBody: string;
   baseBranch: string;
   branchName: string;
+}
+
+export interface TestPromptContext {
+  repoFullName: string;
+  issueTitle: string;
+  plan: string;
+  hasBrowser: boolean;
+  priorOutput?: string;
 }

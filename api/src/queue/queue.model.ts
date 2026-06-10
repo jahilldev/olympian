@@ -1,4 +1,4 @@
-export const TASK_KINDS = ['PLAN', 'IMPLEMENT', 'REVIEW', 'REVISE', 'OPEN_PR'] as const;
+export const TASK_KINDS = ['PLAN', 'IMPLEMENT', 'TEST', 'REVIEW', 'REVISE', 'OPEN_PR'] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
 export const TASK_STATUSES = ['PENDING', 'RUNNING', 'DONE', 'FAILED'] as const;

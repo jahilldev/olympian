@@ -3,6 +3,7 @@ import {
   type PlanPromptContext,
   type PrBodyPromptContext,
   type RevisePromptContext,
+  type TestPromptContext,
 } from './agent.model.js';
 
 const PLAN_OUTPUT_CONTRACT = `Respond with ONLY the implementation plan as GitHub-flavored Markdown.
@@ -74,4 +75,30 @@ export function buildPrBodyPrompt(ctx: PrBodyPromptContext): string {
     `Write the body for the GitHub pull request. Write it as an experienced developer would — first person, concise, describing what was done and any key decisions. Do not reproduce the implementation plan verbatim. Do not add a \`Closes #N\` line or any AI-generated footer; those are added automatically.`,
     `Output ONLY the PR body as GitHub-flavored Markdown. No preamble, no explanation — just the content.`,
   ].join('\n\n');
+}
+
+export function buildTestPrompt(ctx: TestPromptContext): string {
+  const parts: string[] = [
+    `You are Hermes, an autonomous engineer working in a clone of \`${ctx.repoFullName}\`. Your task is to ensure the test suite passes for the changes made to resolve: **${ctx.issueTitle}**.`,
+    `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
+    `Instructions:
+1. Discover the test suite by inspecting the project structure (look for \`package.json\` test scripts, \`pytest.ini\`, \`jest.config.*\`, \`vitest.config.*\`, \`go.mod\`, \`Makefile\`, etc.).
+2. Run the tests and capture the output.
+3. If tests fail, diagnose the root cause from the output and fix the code.
+4. Re-run until all tests pass or you have exhausted your budget.`,
+  ];
+  if (ctx.hasBrowser) {
+    parts.push(
+      `A browser is available. Use browser tools to manually exercise the key user flows described in the plan's acceptance criteria.`,
+    );
+  }
+  if (ctx.priorOutput) {
+    parts.push(
+      `The previous test run ended with this output — use it as your starting point:\n\`\`\`\n${ctx.priorOutput.slice(0, 4000)}\n\`\`\``,
+    );
+  }
+  parts.push(
+    `When done, write a brief summary: which tests ran, which passed, which failed (if any), and what fixes you applied. The orchestrator will commit any file changes — do not run git yourself.`,
+  );
+  return parts.join('\n\n');
 }
