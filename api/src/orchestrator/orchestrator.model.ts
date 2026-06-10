@@ -30,6 +30,19 @@ export interface PrReviewEvent {
   prNumber: number;
   state: PrReviewState;
   author: string;
+  body: string;
+  isBot: boolean;
+}
+
+export interface PrReviewCommentEvent {
+  installationId: number;
+  owner: string;
+  repo: string;
+  prNumber: number;
+  author: string;
+  body: string;
+  path: string;
+  line: number | null;
   isBot: boolean;
 }
 

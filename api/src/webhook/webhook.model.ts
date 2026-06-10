@@ -37,6 +37,14 @@ export interface PullRequestReviewPayload {
   installation?: GithubInstallationRef;
 }
 
+export interface PullRequestReviewCommentPayload {
+  action: string;
+  comment: { id: number; body: string; user: GithubUser; path: string; line: number | null; original_line: number | null };
+  pull_request: { number: number };
+  repository: GithubRepo;
+  installation?: GithubInstallationRef;
+}
+
 export interface InstallationPayload {
   action: string;
   installation: { id: number; account: { login: string; type: string } };

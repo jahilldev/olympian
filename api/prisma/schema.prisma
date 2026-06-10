@@ -112,6 +112,8 @@ model PrRevisionFeedback {
   jobId     String
   author    String
   body      String
+  path      String?  // file path for inline review comments
+  line      Int?     // line number for inline review comments
   createdAt DateTime @default(now())
 
   @@index([jobId])

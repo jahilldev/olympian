@@ -30,6 +30,7 @@ import { extractAttachmentUrls } from '../github/github.utility.js';
 import {
   type IssueCommentEvent,
   type IssueLabeledEvent,
+  type PrReviewCommentEvent,
   type PrReviewEvent,
 } from './orchestrator.model.js';
 import {
@@ -310,6 +311,9 @@ export class OrchestratorService {
       return;
     }
     if (evt.state === 'changes_requested' || evt.state === 'commented') {
+      await this.prisma.prRevisionFeedback.create({
+        data: { jobId: job.id, author: evt.author, body: evt.body },
+      });
       await this.jobs.transition(job.id, 'IMPLEMENTING', {
         reason: `changes requested by @${evt.author}`,
         actor: 'HUMAN',
@@ -325,6 +329,26 @@ export class OrchestratorService {
   }
 
   // ── Queue task processing ──────────────────────────────────────────────────
+
+  async onPrReviewComment(evt: PrReviewCommentEvent): Promise<void> {
+    if (evt.isBot) {
+      return;
+    }
+    const repoFullName = `${evt.owner}/${evt.repo}`;
+    const job = await this.prisma.job.findFirst({
+      where: { repoFullName, prNumber: evt.prNumber },
+    });
+    if (!job || job.state !== 'AWAITING_PR_APPROVAL') {
+      return;
+    }
+    const { ref } = await this.context(job.id);
+    if (!(await this.isAuthorized(ref, evt.author))) {
+      return;
+    }
+    await this.prisma.prRevisionFeedback.create({
+      data: { jobId: job.id, author: evt.author, body: evt.body, path: evt.path, line: evt.line },
+    });
+  }
 
   async processTask(task: QueueTask): Promise<void> {
     const job = await this.jobs.findById(task.jobId);
@@ -469,24 +493,17 @@ export class OrchestratorService {
     let guidance: string | undefined;
     const reviewBodies: string[] = [];
     if (job.prNumber) {
-      const [reviewFb, prRevisions] = await Promise.all([
-        this.github.getReviewFeedback(this.refFor(job, installation), job.prNumber),
-        this.prisma.prRevisionFeedback.findMany({
-          where: { jobId },
-          orderBy: { createdAt: 'asc' },
-        }),
-      ]);
-      const parts: string[] = [];
-      if (reviewFb.length > 0) parts.push(this.formatPrFeedback(reviewFb));
+      const prRevisions = await this.prisma.prRevisionFeedback.findMany({
+        where: { jobId },
+        orderBy: { createdAt: 'asc' },
+      });
       if (prRevisions.length > 0) {
-        parts.push(
-          prRevisions
-            .map((r) => `@${r.author} requested: ${r.body}`)
-            .join('\n\n'),
+        const formatted = this.formatPrFeedback(
+          prRevisions.map((r) => ({ author: r.author, body: r.body, path: r.path ?? undefined, line: r.line ?? undefined })),
         );
+        guidance = formatted;
+        reviewBodies.push(...prRevisions.map((r) => r.body));
       }
-      guidance = parts.join('\n\n') || undefined;
-      reviewBodies.push(...reviewFb.map((f) => f.body), ...prRevisions.map((r) => r.body));
     }
     const attachmentRefs = extractAttachmentUrls(
       [job.issueBody, ...reviewBodies].join('\n'),

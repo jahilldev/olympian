@@ -7,6 +7,7 @@ import {
   type InstallationPayload,
   type IssueCommentPayload,
   type IssuesPayload,
+  type PullRequestReviewCommentPayload,
   type PullRequestReviewPayload,
 } from './webhook.model.js';
 import { isBotUser } from './webhook.utility.js';
@@ -63,6 +64,8 @@ export class WebhookService {
         return this.onIssueComment(payload as IssueCommentPayload);
       case 'pull_request_review':
         return this.onPullRequestReview(payload as PullRequestReviewPayload);
+      case 'pull_request_review_comment':
+        return this.onPullRequestReviewComment(payload as PullRequestReviewCommentPayload);
       case 'installation':
         return this.onInstallation(payload as InstallationPayload);
       default:
@@ -118,7 +121,25 @@ export class WebhookService {
       prNumber: p.pull_request.number,
       state,
       author: p.review.user.login,
+      body: p.review.body ?? '',
       isBot: isBotUser(p.review.user.type),
+    });
+  }
+
+  private async onPullRequestReviewComment(p: PullRequestReviewCommentPayload): Promise<void> {
+    if (p.action !== 'created' || !p.installation) {
+      return;
+    }
+    await this.orchestrator.onPrReviewComment({
+      installationId: p.installation.id,
+      owner: p.repository.owner.login,
+      repo: p.repository.name,
+      prNumber: p.pull_request.number,
+      author: p.comment.user.login,
+      body: p.comment.body,
+      path: p.comment.path,
+      line: p.comment.line ?? p.comment.original_line ?? null,
+      isBot: isBotUser(p.comment.user.type),
     });
   }
 
