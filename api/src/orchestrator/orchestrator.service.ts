@@ -619,7 +619,7 @@ export class OrchestratorService {
 
     const testOutput =
       lastTestRun && lastTestRun.status !== 'SUCCEEDED'
-        ? (lastTestRun.stderr || lastTestRun.stdout).slice(0, 4000)
+        ? (lastTestRun.stderr || lastTestRun.stdout || '').slice(0, 4000)
         : undefined;
 
     const issues = lastFailedReview
