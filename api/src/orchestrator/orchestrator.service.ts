@@ -632,8 +632,6 @@ export class OrchestratorService {
           phase: 'REVISE',
           cwd: ws.dir,
           prompt: revisePrompt,
-          model: this.config.get('HERMES_REVIEW_MODEL') || undefined,
-          provider: this.config.get('HERMES_REVIEW_PROVIDER') || undefined,
         });
         if (rev.status !== 'SUCCEEDED') {
           // Don't let a failed/timed-out revise kill the whole task — the workspace is
