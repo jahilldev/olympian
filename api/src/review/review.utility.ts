@@ -22,23 +22,25 @@ const reviewSchema = z.object({
  */
 export function parseReview(stdout: string): ReviewResult | null {
   const raw = extractJsonBlock(stdout);
-  if (!raw) {
-    return null;
-  }
   const parsed = reviewSchema.safeParse(raw);
-  if (!parsed.success) {
+
+  if (!raw || !parsed.success) {
     return null;
   }
+
   const data = parsed.data;
   const issues: ReviewIssue[] = data.issues;
   const hasBlocking = issues.some((i) => i.severity === 'high' || i.severity === 'critical');
+
   // Trust an explicit verdict; otherwise derive a conservative one.
   const verdict = data.verdict ?? (hasBlocking ? 'FAIL' : 'PASS');
+
   return { confidence: data.confidence, verdict, issues, summary: data.summary };
 }
 
 export function meetsThreshold(result: ReviewResult, threshold: number): boolean {
   const hasBlocking = result.issues.some((i) => i.severity === 'high' || i.severity === 'critical');
+  
   return result.verdict === 'PASS' && result.confidence >= threshold && !hasBlocking;
 }
 
@@ -47,6 +49,7 @@ export function formatIssues(issues: ReviewIssue[]): string {
   if (issues.length === 0) {
     return '(no specific issues listed)';
   }
+
   return issues
     .map((i, n) => {
       const loc = i.file ? ` (${i.file})` : '';
@@ -67,6 +70,7 @@ export function formatIssuesMarkdown(issues: ReviewIssue[]): string {
   if (issues.length === 0) {
     return '_(no specific issues listed)_';
   }
+  
   return issues
     .map((i) => {
       const emoji = SEVERITY_EMOJI[i.severity] ?? '⚪';
