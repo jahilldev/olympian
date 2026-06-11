@@ -46,7 +46,7 @@ export interface PrReviewCommentEvent {
   isBot: boolean;
 }
 
-export type CommandKind = 'approve' | 'revise' | 'cancel' | 'status' | 'none';
+export type CommandKind = 'approve' | 'revise' | 'cancel' | 'status' | 'retry' | 'none';
 
 export interface Command {
   kind: CommandKind;

@@ -4,6 +4,7 @@ import { type DownloadedAttachment } from '../workspace/workspace.model.js';
 const APPROVE_VERBS = new Set(['approve', 'approved', 'lgtm', 'ship', 'go']);
 const CANCEL_VERBS = new Set(['cancel', 'stop', 'abort']);
 const REVISE_VERBS = new Set(['revise', 'iterate', 'change', 'update']);
+const RETRY_VERBS = new Set(['retry', 'restart', 'resume']);
 
 /**
  * Parses a `<prefix> <verb> [text]` command out of a comment body. Returns
@@ -28,6 +29,9 @@ export function parseCommand(body: string, prefix: string): Command {
     }
     if (v === 'status') {
       return { kind: 'status' };
+    }
+    if (RETRY_VERBS.has(v)) {
+      return { kind: 'retry' };
     }
     if (REVISE_VERBS.has(v)) {
       return { kind: 'revise', text: args.join(' ') };

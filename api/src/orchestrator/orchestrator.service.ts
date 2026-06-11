@@ -196,6 +196,46 @@ export class OrchestratorService {
       return;
     }
 
+    if (command.kind === 'retry') {
+      if (job.state !== 'FAILED') {
+        await this.safeComment(
+          ref,
+          evt.issueNumber,
+          `Nothing to retry — job is currently in **${job.state}** state.`,
+        );
+        await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+        return;
+      }
+      const lastTask = await this.prisma.queueTask.findFirst({
+        where: { jobId: job.id },
+        orderBy: { createdAt: 'desc' },
+        select: { kind: true },
+      });
+      const retryKind = (lastTask?.kind ?? 'REVIEW') as TaskKind;
+      const retryStateMap: Record<TaskKind, JobState> = {
+        PLAN: 'PLANNING',
+        IMPLEMENT: 'IMPLEMENTING',
+        TEST: 'TESTING',
+        REVIEW: 'SELF_REVIEWING',
+        REVISE: 'REVISING',
+        OPEN_PR: 'OPENING_PR',
+      };
+      const targetState = retryStateMap[retryKind];
+      await this.jobs.update(job.id, { error: null });
+      await this.jobs.transition(job.id, targetState, {
+        reason: `retried by @${evt.author}`,
+        actor: 'HUMAN',
+      });
+      await this.queue.enqueue({ jobId: job.id, kind: retryKind });
+      await this.safeComment(
+        ref,
+        evt.issueNumber,
+        `Retrying from the **${retryKind}** phase.`,
+      );
+      await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+      return;
+    }
+
     // /hermes revise on a PR thread: store feedback and enqueue IMPLEMENT only when
     // the job is parked (AWAITING_PR_APPROVAL). If an agent is already running the
     // feedback is persisted and will be picked up on the next handleImplement call.
