@@ -785,14 +785,19 @@ export class OrchestratorService {
       return;
     }
 
-    // Only revise when the review produced parseable, actionable issues and passes remain.
-    // If the output couldn't be parsed there is nothing for the revise agent to act on.
-    if (pass < maxPasses && parsed !== null) {
-      await this.jobs.transition(jobId, 'REVISING', {
-        reason: `addressing review pass ${pass}`,
-        actor: 'AGENT',
-      });
-      await this.queue.enqueue({ jobId, kind: 'REVISE' });
+    // Only revise when the review produced parseable, actionable issues.
+    // If the output couldn't be parsed, retry the review so the agent gets another chance
+    // to emit valid JSON rather than bailing out early.
+    if (pass < maxPasses) {
+      if (parsed !== null) {
+        await this.jobs.transition(jobId, 'REVISING', {
+          reason: `addressing review pass ${pass}`,
+          actor: 'AGENT',
+        });
+        await this.queue.enqueue({ jobId, kind: 'REVISE' });
+      } else {
+        await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+      }
       return;
     }
 
