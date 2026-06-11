@@ -10,7 +10,7 @@ from html.parser import HTMLParser
 logger = logging.getLogger(__name__)
 
 # Tags whose content (including children) is silently dropped.
-_STRIP_TAGS = frozenset({"script", "style", "iframe", "header", "footer"})
+_STRIP_TAGS = frozenset({"script", "style", "iframe", "header", "footer", "nav"})
 
 _HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 
