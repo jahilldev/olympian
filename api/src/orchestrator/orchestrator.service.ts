@@ -573,7 +573,12 @@ export class OrchestratorService {
         guidance,
         attachments,
       });
-      const res = await this.agent.run({ jobId, phase: 'IMPLEMENT', cwd: ws.dir, prompt });
+      const res = await this.agent.run({
+        jobId,
+        phase: 'IMPLEMENT',
+        cwd: ws.dir,
+        prompt,
+      });
       if (res.status !== 'SUCCEEDED') {
         throw new Error(`implementation agent ${res.status}; ${res.stderr.slice(0, 300)}`);
       }
@@ -628,7 +633,6 @@ export class OrchestratorService {
       }),
       model: this.config.get('HERMES_TESTING_MODEL') || undefined,
       provider: this.config.get('HERMES_TESTING_PROVIDER') || undefined,
-      toolsets: hasBrowser ? 'browser' : undefined,
     });
     await this.workspace.commitAll(ws.dir, 'test: run test suite');
 

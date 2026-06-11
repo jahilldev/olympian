@@ -92,13 +92,13 @@ export function buildTestPrompt(ctx: TestPromptContext): string {
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
     `Instructions:
 1. Discover the test suite by inspecting the project structure (look for \`package.json\` test scripts, \`pytest.ini\`, \`jest.config.*\`, \`vitest.config.*\`, \`go.mod\`, \`Makefile\`, etc.).
-2. Run the tests and capture the output.
-3. If tests fail, diagnose the root cause from the output and fix the code.
-4. Re-run until all tests pass or you have exhausted your budget.`,
+2. Run the tests and capture the full output.
+3. **Try to run the application itself** — start the dev server, CLI, or process and verify it launches without errors. For web/browser applications, open the running app in the browser and exercise the key user flows from the acceptance criteria. For CLI tools, invoke the main commands and check the output.
+4. Report the results. Do NOT modify any source files — if tests fail or the application errors, document what went wrong and stop. Fixes are handled in a separate step.`,
   ];
   if (ctx.hasBrowser) {
     parts.push(
-      `A browser is available. Use browser tools to manually exercise the key user flows described in the plan's acceptance criteria.`,
+      `A Camofox browser is available for step 5. Use it to open the running application and manually verify the acceptance criteria — click through real user flows, not just check that the page loads.`,
     );
   }
   if (ctx.priorOutput) {
@@ -107,7 +107,7 @@ export function buildTestPrompt(ctx: TestPromptContext): string {
     );
   }
   parts.push(
-    `When done, write a brief summary: which tests ran, which passed, which failed (if any), and what fixes you applied. The orchestrator will commit any file changes — do not run git yourself.`,
+    `When done, write a brief summary of what ran, what passed, and what failed or errored (if anything). The orchestrator will commit any incidental file changes — do not run git yourself.`,
   );
   return parts.join('\n\n');
 }
