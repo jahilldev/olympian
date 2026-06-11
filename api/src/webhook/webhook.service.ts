@@ -28,32 +28,51 @@ export class WebhookService {
     private readonly orchestrator: OrchestratorService,
   ) {}
 
-  async handle(
+  /**
+   * Records the delivery for idempotency and returns true if it should be
+   * dispatched. Call this synchronously before returning 202 to GitHub.
+   */
+  async record(
     event: string,
     deliveryId: string,
     rawBody: string,
     payload: unknown,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const action = (payload as { action?: string }).action;
+    
     this.metrics.recordWebhook(event, action);
 
+    
     const existing = await this.prisma.webhookEvent.findUnique({ where: { deliveryId } });
+    
     if (existing?.processedAt) {
       this.logger.debug(`Duplicate delivery ${deliveryId} already processed; skipping`);
-      return;
+      return false;
     }
+
     if (!existing) {
       await this.prisma.webhookEvent.create({
         data: { deliveryId, event, action, payload: rawBody },
       });
     }
+    
+    return true;
+  }
 
-    await this.route(event, payload);
-
-    await this.prisma.webhookEvent.update({
-      where: { deliveryId },
-      data: { processedAt: new Date() },
-    });
+  /**
+   * Routes and marks the delivery processed. Intended to be called
+   * fire-and-forget after record() returns true.
+   */
+  async dispatch(event: string, deliveryId: string, payload: unknown): Promise<void> {
+    try {
+      await this.route(event, payload);
+      await this.prisma.webhookEvent.update({
+        where: { deliveryId },
+        data: { processedAt: new Date() },
+      });
+    } catch (e) {
+      this.logger.error(`Delivery ${deliveryId} routing failed: ${(e as Error).message}`);
+    }
   }
 
   private async route(event: string, payload: unknown): Promise<void> {

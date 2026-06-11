@@ -45,8 +45,12 @@ export class WebhookController {
       throw new BadRequestException('missing event or delivery headers');
     }
 
-    await this.webhooks.handle(event, delivery, raw, req.body as unknown);
-   
+    const shouldProcess = await this.webhooks.record(event, delivery, raw, req.body as unknown);
+    
+    if (shouldProcess) {
+      void this.webhooks.dispatch(event, delivery, req.body as unknown);
+    }
+    
     return { ok: true };
   }
 }
