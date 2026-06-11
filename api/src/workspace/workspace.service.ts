@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import { simpleGit, type SimpleGit } from 'simple-git';
@@ -44,6 +44,7 @@ export class WorkspaceService {
       await git.checkout(input.branchName).catch(async () => {
         await git.checkoutBranch(input.branchName, `origin/${base}`);
       });
+      await this.writeLocalExcludes(dir);
       return { dir, branch: input.branchName, baseBranch: base };
     }
 
@@ -54,10 +55,24 @@ export class WorkspaceService {
     await this.configureIdentity(repoGit);
     const base = input.baseBranch ?? (await this.defaultBranch(repoGit));
     await repoGit.checkoutLocalBranch(input.branchName);
+    await this.writeLocalExcludes(dir);
     this.logger.log(
       `[job ${input.jobId}] cloned ${input.owner}/${input.repo} -> ${dir} (${input.branchName} from ${base})`,
     );
     return { dir, branch: input.branchName, baseBranch: base };
+  }
+
+  /**
+   * Appends agent scratch-file patterns to .git/info/exclude so they are never
+   * staged or committed. This file is repo-local and never tracked by git.
+   */
+  private async writeLocalExcludes(dir: string): Promise<void> {
+    const excludePath = join(dir, '.git', 'info', 'exclude');
+    const patterns = [
+      '# --- olympian agent scratch space (auto-added) ---',
+      '.olympian/',
+    ].join('\n');
+    await appendFile(excludePath, `\n${patterns}\n`);
   }
 
   async diffSummary(dir: string): Promise<DiffSummary> {

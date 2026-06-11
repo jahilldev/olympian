@@ -107,7 +107,7 @@ export function buildTestPrompt(ctx: TestPromptContext): string {
     );
   }
   parts.push(
-    `When done, write a brief summary of what ran, what passed, and what failed or errored (if anything). The orchestrator will commit any incidental file changes — do not run git yourself.`,
+    `When done, write a brief summary of what ran, what passed, and what failed or errored (if anything). Use \`.olympian/\` as a scratch directory for any temporary files (diffs, logs, etc.) — it is excluded from commits automatically. Do not run git yourself.`,
   );
   return parts.join('\n\n');
 }
