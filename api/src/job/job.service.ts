@@ -20,6 +20,7 @@ export class JobService {
 
   async create(input: CreateJobInput): Promise<Job> {
     const fullName = repoFullName(input.repoOwner, input.repoName);
+
     const job = await this.prisma.job.create({
       data: {
         installationId: input.installationId,
@@ -34,8 +35,10 @@ export class JobService {
         transitions: { create: { fromState: null, toState: 'TRIAGED', actor: 'SYSTEM' } },
       },
     });
+
     this.metrics.recordTransition(null, 'TRIAGED');
     this.logger.log(`Created job ${job.id} for ${fullName}#${input.issueNumber}`);
+
     return job;
   }
 
@@ -63,12 +66,15 @@ export class JobService {
   async transition(jobId: string, to: JobState, opts: TransitionOptions = {}): Promise<Job> {
     const job = await this.getById(jobId);
     const from = job.state as JobState;
+
     if (from === to) {
       return job;
     }
+
     if (!canTransition(from, to)) {
       throw new ConflictException(`Illegal job transition ${from} -> ${to} (job ${jobId})`);
     }
+
     const updated = await this.prisma.job.update({
       where: { id: jobId },
       data: {
@@ -83,13 +89,16 @@ export class JobService {
         },
       },
     });
+
     this.metrics.recordTransition(from, to);
     this.logger.log(`Job ${jobId}: ${from} -> ${to}${opts.reason ? ` (${opts.reason})` : ''}`);
+
     return updated;
   }
 
   async fail(jobId: string, message: string, actor: 'AGENT' | 'SYSTEM' = 'SYSTEM'): Promise<Job> {
     await this.prisma.job.update({ where: { id: jobId }, data: { error: message } });
+
     return this.transition(jobId, 'FAILED', { reason: message.slice(0, 500), actor });
   }
 
@@ -102,6 +111,7 @@ export class JobService {
       where: { id: jobId },
       data: { attempts: { increment: 1 } },
     });
+
     return job.attempts;
   }
 
@@ -115,6 +125,7 @@ export class JobService {
 
   async countsByState(): Promise<Record<string, number>> {
     const rows = await this.prisma.job.groupBy({ by: ['state'], _count: { _all: true } });
+
     return Object.fromEntries(rows.map((r) => [r.state, r._count._all]));
   }
 }
