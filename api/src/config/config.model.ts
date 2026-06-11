@@ -32,6 +32,8 @@ export const envSchema = z.object({
   HERMES_TESTING_MODEL: z.string().optional(),
   HERMES_TESTING_PROVIDER: z.string().optional(),
   HERMES_TIMEOUT_MS: intFromString(7_200_000),
+  // Kill if no stdout/stderr for this long — catches hung models without penalising slow ones.
+  HERMES_IDLE_TIMEOUT_MS: intFromString(600_000),
 
   // orchestration policy
   TRIGGER_LABEL: z.string().default('hermes'),
