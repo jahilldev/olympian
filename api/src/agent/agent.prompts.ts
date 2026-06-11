@@ -52,6 +52,7 @@ export function buildPlanPrompt(ctx: PlanPromptContext): string {
 }
 
 const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working directory using your tools. Run the project's tests/build if available to validate your work.
+Use \`.olympian/\` as a scratch directory for any temporary files (build logs, notes, debug output) — it is excluded from commits automatically.
 When finished, end your reply with a short Markdown summary of what you changed and which acceptance criteria are now met. The orchestrator will commit your file changes — do not run git yourself.`;
 
 export function buildImplementPrompt(ctx: ImplementPromptContext): string {
@@ -77,7 +78,9 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
   if (ctx.humanFeedback) {
-    parts.push(`--- HUMAN PR REVIEW FEEDBACK (highest priority — every point must be addressed) ---\n${ctx.humanFeedback}\n--- END FEEDBACK ---`);
+    parts.push(
+      `--- HUMAN PR REVIEW FEEDBACK (highest priority — every point must be addressed) ---\n${ctx.humanFeedback}\n--- END FEEDBACK ---`,
+    );
   }
   if (ctx.testOutput) {
     parts.push(`--- FAILING TEST OUTPUT ---\n${ctx.testOutput}\n--- END TEST OUTPUT ---`);
@@ -85,7 +88,9 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   if (ctx.issuesText) {
     parts.push(`--- REVIEW ISSUES TO FIX ---\n${ctx.issuesText}\n--- END ISSUES ---`);
   }
-  parts.push(`When finished, end your reply with a short summary of the fixes. The orchestrator will commit your changes — do not run git yourself.`);
+  parts.push(
+    `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself.`,
+  );
   return parts.join('\n\n');
 }
 
