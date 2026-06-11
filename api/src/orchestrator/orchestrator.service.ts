@@ -240,8 +240,17 @@ export class OrchestratorService {
     // the job is parked (AWAITING_PR_APPROVAL). If an agent is already running the
     // feedback is persisted and will be picked up on the next handleImplement call.
     if (command.kind === 'revise' && job.prNumber) {
+      const prefix = this.config.get('COMMAND_PREFIX');
+      const strippedBody = evt.body
+        .split('\n')
+        .filter((l) => !l.trim().toLowerCase().startsWith(prefix.toLowerCase()))
+        .join('\n')
+        .trim();
+      const feedbackBody = command.text
+        ? `${command.text}${strippedBody ? `\n\n${strippedBody}` : ''}`
+        : strippedBody || evt.body;
       await this.prisma.prRevisionFeedback.create({
-        data: { jobId: job.id, author: evt.author, body: command.text || evt.body },
+        data: { jobId: job.id, author: evt.author, body: feedbackBody },
       });
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
       if (job.state === 'AWAITING_PR_APPROVAL') {
