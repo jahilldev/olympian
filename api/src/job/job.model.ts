@@ -37,7 +37,7 @@ export const ALLOWED_TRANSITIONS: Record<JobState, JobState[]> = {
   AWAITING_PR_APPROVAL: ['IMPLEMENTING', 'DONE'],
   DONE: [],
   FAILED: ['PLANNING', 'IMPLEMENTING', 'TESTING', 'SELF_REVIEWING', 'REVISING', 'OPENING_PR'],
-  CANCELLED: [],
+  CANCELLED: ['PLANNING'],
 };
 
 export interface TransitionOptions {

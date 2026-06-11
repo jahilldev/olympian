@@ -1,5 +1,10 @@
 import { type Command } from './orchestrator.model.js';
+import { PLAN_REQUIRED_SECTIONS } from './orchestrator.model.js';
 import { type DownloadedAttachment } from '../workspace/workspace.model.js';
+
+export function missingPlanSections(content: string): string[] {
+  return PLAN_REQUIRED_SECTIONS.filter((s) => !content.includes(s));
+}
 
 const APPROVE_VERBS = new Set(['approve', 'approved', 'lgtm', 'ship', 'go']);
 const CANCEL_VERBS = new Set(['cancel', 'stop', 'abort']);

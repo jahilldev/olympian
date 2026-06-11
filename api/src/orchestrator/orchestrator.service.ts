@@ -38,6 +38,7 @@ import {
   buildStatusReport,
   formatDownloadedAttachments,
   implementCommitMessage,
+  missingPlanSections,
   parseCommand,
   reviseCommitMessage,
 } from './orchestrator.utility.js';
@@ -84,10 +85,23 @@ export class OrchestratorService {
 
     const repoFullName = `${evt.owner}/${evt.repo}`;
     const existing = await this.jobs.findByRepoIssue(repoFullName, evt.issueNumber);
-    
+
     if (existing) {
-      this.logger.debug(
-        `Job already exists for ${repoFullName}#${evt.issueNumber}; ignoring label`,
+      const state = existing.state as JobState;
+      if (!TERMINAL_STATES.has(state) || state === 'DONE') {
+        this.logger.debug(
+          `Job already exists for ${repoFullName}#${evt.issueNumber} in state ${state}; ignoring label`,
+        );
+        return;
+      }
+      // FAILED or CANCELLED: restart from scratch.
+      await this.jobs.update(existing.id, { error: null });
+      await this.jobs.transition(existing.id, 'PLANNING', { reason: 're-labeled', actor: 'HUMAN' });
+      await this.queue.enqueue({ jobId: existing.id, kind: 'PLAN' });
+      await this.safeComment(
+        ref,
+        evt.issueNumber,
+        `Hermes is restarting this issue and will draft a fresh implementation plan.`,
       );
       return;
     }
@@ -494,8 +508,12 @@ export class OrchestratorService {
       attachments: formatDownloadedAttachments(downloaded),
     });
     const res = await this.agent.run({ jobId, phase: 'PLAN', cwd: ws.dir, prompt });
-    if (res.status !== 'SUCCEEDED' || res.stdout.trim().length < 500) {
-      throw new Error(`planning failed (${res.status}); output too short or failed: ${res.stderr.slice(0, 300)}`);
+    const missing = missingPlanSections(res.stdout);
+    if (res.status !== 'SUCCEEDED' || res.stdout.trim().length < 500 || missing.length > 0) {
+      const reason = missing.length > 0
+        ? `missing required sections: ${missing.join(', ')}`
+        : 'output too short or agent failed';
+      throw new Error(`planning failed (${res.status}); ${reason}: ${res.stderr.slice(0, 200)}`);
     }
 
     const nextRevision = (lastRevision?.revision ?? 0) + 1;

@@ -1,3 +1,11 @@
+export const PLAN_REQUIRED_SECTIONS = [
+  '## Summary',
+  '## Approach',
+  '## Files to change',
+  '## Acceptance criteria',
+  '## Risks',
+] as const;
+
 export interface IssueLabeledEvent {
   installationId: number;
   accountLogin: string;
