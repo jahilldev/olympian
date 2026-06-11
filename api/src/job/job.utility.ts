@@ -2,7 +2,7 @@ import { ALLOWED_TRANSITIONS, type JobState, TERMINAL_STATES } from './job.model
 
 /** Whether `to` is a legal next state from `from`. */
 export function canTransition(from: JobState, to: JobState): boolean {
-  if (TERMINAL_STATES.has(from)) {
+  if (TERMINAL_STATES.has(from) && from !== 'FAILED') {
     return false;
   }
   // Bail-outs are always allowed from any non-terminal state.
