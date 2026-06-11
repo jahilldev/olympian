@@ -63,6 +63,9 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     `You are Hermes, an autonomous engineer. Your recent changes need fixes. Edit the files in the working directory to address every issue below; do not regress already-correct work.`,
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
+  if (ctx.humanFeedback) {
+    parts.push(`--- HUMAN PR REVIEW FEEDBACK (highest priority — every point must be addressed) ---\n${ctx.humanFeedback}\n--- END FEEDBACK ---`);
+  }
   if (ctx.testOutput) {
     parts.push(`--- FAILING TEST OUTPUT ---\n${ctx.testOutput}\n--- END TEST OUTPUT ---`);
   }

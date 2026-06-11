@@ -644,7 +644,7 @@ export class OrchestratorService {
     const plan = await this.approvedPlan(jobId);
 
     // Gather whatever context is available: failing test output and/or review issues.
-    const [lastTestRun, lastFailedReview] = await Promise.all([
+    const [lastTestRun, lastFailedReview, prFeedback] = await Promise.all([
       this.prisma.agentRun.findFirst({
         where: { jobId, phase: 'TEST' },
         orderBy: { createdAt: 'desc' },
@@ -654,6 +654,10 @@ export class OrchestratorService {
         where: { jobId, cycle: job.reviewCycle, verdict: 'FAIL' },
         orderBy: { passNumber: 'desc' },
         select: { issues: true },
+      }),
+      this.prisma.prRevisionFeedback.findMany({
+        where: { jobId },
+        orderBy: { createdAt: 'asc' },
       }),
     ]);
 
@@ -666,6 +670,10 @@ export class OrchestratorService {
       ? (JSON.parse(lastFailedReview.issues) as ReviewIssue[])
       : [];
     const issuesText = issues.length > 0 ? formatIssues(issues) : undefined;
+    const humanFeedback =
+      prFeedback.length > 0
+        ? this.formatPrFeedback(prFeedback.map((r) => ({ author: r.author, body: r.body, path: r.path ?? undefined, line: r.line ?? undefined })))
+        : undefined;
 
     const revisionNumber =
       (await this.prisma.agentRun.count({ where: { jobId, phase: 'REVISE' } })) + 1;
@@ -673,7 +681,7 @@ export class OrchestratorService {
       jobId,
       phase: 'REVISE',
       cwd: ws.dir,
-      prompt: buildRevisePrompt({ plan, issuesText, testOutput }),
+      prompt: buildRevisePrompt({ plan, issuesText, testOutput, humanFeedback }),
     });
     if (rev.status === 'SUCCEEDED') {
       await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
@@ -707,6 +715,15 @@ export class OrchestratorService {
     const priorPasses = await this.prisma.reviewPass.count({ where: { jobId, cycle } });
     const pass = priorPasses + 1;
 
+    const prFeedback = await this.prisma.prRevisionFeedback.findMany({
+      where: { jobId },
+      orderBy: { createdAt: 'asc' },
+    });
+    const humanFeedback =
+      prFeedback.length > 0
+        ? this.formatPrFeedback(prFeedback.map((r) => ({ author: r.author, body: r.body, path: r.path ?? undefined, line: r.line ?? undefined })))
+        : undefined;
+
     await this.jobs.transition(jobId, 'SELF_REVIEWING', {
       reason: `review pass ${pass}`,
       actor: 'AGENT',
@@ -720,6 +737,7 @@ export class OrchestratorService {
       baseBranch: base,
       changedFiles,
       threshold: this.review.threshold,
+      humanFeedback,
     });
     const res = await this.agent.run({
       jobId,

@@ -24,4 +24,5 @@ export interface ReviewPromptContext {
   baseBranch: string;
   changedFiles: string[];
   threshold: number;
+  humanFeedback?: string;
 }

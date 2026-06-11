@@ -1,11 +1,16 @@
 import { type ReviewPromptContext } from './review.model.js';
 
 export function buildReviewPrompt(ctx: ReviewPromptContext): string {
-  return [
+  const parts: string[] = [
     `You are Hermes acting as a rigorous senior code reviewer for \`${ctx.repoFullName}\`. The working directory contains a branch with changes committed on top of \`${ctx.baseBranch}\`. Review the diff of this branch against \`${ctx.baseBranch}\` (use git to inspect it).`,
     `Judge whether the changes correctly and completely resolve the issue, satisfy the plan's acceptance criteria, and meet a professional bar for correctness, security, and tests.`,
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
+  ];
+  if (ctx.humanFeedback) {
+    parts.push(`--- HUMAN PR REVIEW FEEDBACK (highest priority — verify every point is addressed) ---\n${ctx.humanFeedback}\n--- END FEEDBACK ---`);
+  }
+  parts.push(
     `Files changed on this branch:\n${ctx.changedFiles.map((f) => `- ${f}`).join('\n') || '(none detected)'}`,
     `Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text:
 \`\`\`json
@@ -19,5 +24,6 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
 }
 \`\`\`
 Set "verdict" to "PASS" only if confidence >= ${ctx.threshold} and there are no high/critical issues. List every concrete problem in "issues"; use an empty array if there are none. You may include detailed reasoning after the JSON block.`,
-  ].join('\n\n');
+  );
+  return parts.join('\n\n');
 }
