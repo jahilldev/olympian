@@ -76,7 +76,7 @@ npm run typecheck   # tsc --noEmit
 All environment variables are validated at boot (`src/config/config.model.ts`); the full
 list with defaults lives in [`.env.example`](.env.example). Common knobs: `TRIGGER_LABEL`,
 `REVIEW_CONFIDENCE_THRESHOLD`, `WORKER_CONCURRENCY`, `SANDBOX_MODE`, `VERIFY_COMMAND`,
-`HERMES_BIN` / `HERMES_PRIMARY_MODEL` / `HERMES_REVIEW_MODEL` / `HERMES_MAX_TURNS`.
+`HERMES_BIN` / `HERMES_PRIMARY_MODEL` / `HERMES_REVIEW_MODEL` / `HERMES_TESTING_MODEL` / `HERMES_MAX_TURNS`.
 
 ## Docker
 

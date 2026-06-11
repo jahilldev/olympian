@@ -182,6 +182,7 @@ defaults live in [`api/.env.example`](api/.env.example). Key knobs:
 | `SANDBOX_MODE` | `none` or `docker`. |
 | `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL` / `HERMES_MAX_TURNS` | Hermes invocation. |
 | `HERMES_REVIEW_MODEL` / `HERMES_REVIEW_PROVIDER` | Optional independent model for the self-review cycle. |
+| `HERMES_TESTING_MODEL` / `HERMES_TESTING_PROVIDER` | Optional lighter-weight model for the testing step. Falls back to `HERMES_PRIMARY_MODEL`. |
 
 ## Docker
 

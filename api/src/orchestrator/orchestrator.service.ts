@@ -626,6 +626,8 @@ export class OrchestratorService {
         plan,
         hasBrowser,
       }),
+      model: this.config.get('HERMES_TESTING_MODEL') || undefined,
+      provider: this.config.get('HERMES_TESTING_PROVIDER') || undefined,
       toolsets: hasBrowser ? 'browser' : undefined,
     });
     await this.workspace.commitAll(ws.dir, 'test: run test suite');
