@@ -2,10 +2,6 @@ import { type Command } from './orchestrator.model.js';
 import { PLAN_REQUIRED_SECTIONS } from './orchestrator.model.js';
 import { type DownloadedAttachment } from '../workspace/workspace.model.js';
 
-export function missingPlanSections(content: string): string[] {
-  return PLAN_REQUIRED_SECTIONS.filter((s) => !content.includes(s));
-}
-
 const APPROVE_VERBS = new Set(['approve', 'approved', 'lgtm', 'ship', 'go']);
 const CANCEL_VERBS = new Set(['cancel', 'stop', 'abort']);
 const REVISE_VERBS = new Set(['revise', 'iterate', 'change', 'update']);
@@ -50,6 +46,10 @@ export function parseCommand(body: string, prefix: string): Command {
 export function acceptanceCriteria(plan: string): string | undefined {
   const match = plan.match(/##\s*Acceptance criteria\s*\n([\s\S]*?)(?:\n##\s|\s*$)/i);
   return match ? match[1].trim() : undefined;
+}
+
+export function missingPlanSections(content: string): string[] {
+  return PLAN_REQUIRED_SECTIONS.filter((s) => !content.includes(s));
 }
 
 export function implementCommitMessage(
