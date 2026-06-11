@@ -45,9 +45,11 @@ export class JobService {
 
   async getById(id: string): Promise<Job> {
     const job = await this.findById(id);
+
     if (!job) {
       throw new NotFoundException(`Job ${id} not found`);
     }
+
     return job;
   }
 
