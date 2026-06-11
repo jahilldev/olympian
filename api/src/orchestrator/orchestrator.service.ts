@@ -494,8 +494,8 @@ export class OrchestratorService {
       attachments: formatDownloadedAttachments(downloaded),
     });
     const res = await this.agent.run({ jobId, phase: 'PLAN', cwd: ws.dir, prompt });
-    if (res.status !== 'SUCCEEDED' || res.stdout.trim().length === 0) {
-      throw new Error(`planning failed (${res.status}); ${res.stderr.slice(0, 300)}`);
+    if (res.status !== 'SUCCEEDED' || res.stdout.trim().length < 500) {
+      throw new Error(`planning failed (${res.status}); output too short or failed: ${res.stderr.slice(0, 300)}`);
     }
 
     const nextRevision = (lastRevision?.revision ?? 0) + 1;

@@ -6,7 +6,9 @@ import {
   type TestPromptContext,
 } from './agent.model.js';
 
-const PLAN_OUTPUT_CONTRACT = `Respond with ONLY the implementation plan as GitHub-flavored Markdown.
+const PLAN_OUTPUT_CONTRACT = `Your response MUST be the complete, detailed implementation plan — not a statement of intent, not a summary of what you will do next. Explore the codebase with your tools first, then output the full plan in a single response.
+
+Respond with ONLY the implementation plan as GitHub-flavored Markdown.
 Structure it as:
 ## Summary
 ## Approach
@@ -18,7 +20,7 @@ Do NOT write any code or edit any files in this step — produce the plan only.`
 export function buildPlanPrompt(ctx: PlanPromptContext): string {
   const parts: string[] = [
     `You are Hermes, an autonomous engineer. You are working in a clone of the repository \`${ctx.repoFullName}\`. Explore the codebase as needed to ground your plan in how this project actually works.`,
-    `Produce a detailed implementation plan for the following GitHub issue.`,
+    `Produce a detailed implementation plan for the following GitHub issue. The full issue description is provided below — do NOT fetch it from GitHub or any URL.`,
     `--- ISSUE #${ctx.issueNumber}: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
   ];
   if (ctx.priorPlan) {
@@ -47,6 +49,7 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
     `You are Hermes, an autonomous engineer working in a clone of \`${ctx.repoFullName}\`. Implement the approved plan to fully resolve the issue. This is implementation attempt ${ctx.attempt}.`,
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
+    `The full issue description and plan are provided above — do NOT fetch them from GitHub or any external URL.`,
   ];
   if (ctx.guidance) {
     parts.push(`Additional guidance you MUST address in this attempt:\n${ctx.guidance}`);
