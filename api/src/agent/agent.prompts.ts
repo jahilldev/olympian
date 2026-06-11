@@ -33,21 +33,26 @@ export function buildPlanPrompt(ctx: PlanPromptContext): string {
     `Produce a detailed implementation plan for the following GitHub issue. The full issue description is provided below — do NOT fetch it from GitHub or any URL.`,
     `--- ISSUE #${ctx.issueNumber}: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
   ];
+
   if (ctx.priorPlan) {
     parts.push(
       `You previously proposed this plan:\n--- PRIOR PLAN ---\n${ctx.priorPlan}\n--- END PRIOR PLAN ---`,
     );
   }
+
   if (ctx.feedback && ctx.feedback.length > 0) {
     parts.push(
       `A human reviewer gave the following feedback. Revise the plan to fully address it:\n` +
         ctx.feedback.map((f, i) => `${i + 1}. ${f}`).join('\n'),
     );
   }
+
   if (ctx.attachments) {
     parts.push(ctx.attachments);
   }
+
   parts.push(PLAN_OUTPUT_CONTRACT);
+
   return parts.join('\n\n');
 }
 
@@ -62,13 +67,17 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
     `The full issue description and plan are provided above — do NOT fetch them from GitHub or any external URL.`,
   ];
+
   if (ctx.guidance) {
     parts.push(`Additional guidance you MUST address in this attempt:\n${ctx.guidance}`);
   }
+
   if (ctx.attachments) {
     parts.push(ctx.attachments);
   }
+
   parts.push(IMPLEMENT_OUTPUT_CONTRACT);
+
   return parts.join('\n\n');
 }
 
@@ -77,20 +86,25 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     `You are Hermes, an autonomous engineer. Your recent changes need fixes. Edit the files in the working directory to address every issue below; do not regress already-correct work.`,
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
+
   if (ctx.humanFeedback) {
     parts.push(
       `--- HUMAN PR REVIEW FEEDBACK (highest priority — every point must be addressed) ---\n${ctx.humanFeedback}\n--- END FEEDBACK ---`,
     );
   }
+
   if (ctx.testOutput) {
     parts.push(`--- FAILING TEST OUTPUT ---\n${ctx.testOutput}\n--- END TEST OUTPUT ---`);
   }
+
   if (ctx.issuesText) {
     parts.push(`--- REVIEW ISSUES TO FIX ---\n${ctx.issuesText}\n--- END ISSUES ---`);
   }
+
   parts.push(
     `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself.`,
   );
+
   return parts.join('\n\n');
 }
 
@@ -114,18 +128,22 @@ export function buildTestPrompt(ctx: TestPromptContext): string {
 3. **Try to run the application itself** — start the dev server, CLI, or process and verify it launches without errors. For web/browser applications, open the running app in the browser and exercise the key user flows from the acceptance criteria. For CLI tools, invoke the main commands and check the output.
 4. Report the results. Do NOT modify any source files — if tests fail or the application errors, document what went wrong and stop. Fixes are handled in a separate step.`,
   ];
+
   if (ctx.hasBrowser) {
     parts.push(
       `A Camofox browser is available for step 5. Use it to open the running application and manually verify the acceptance criteria — click through real user flows, not just check that the page loads.`,
     );
   }
+
   if (ctx.priorOutput) {
     parts.push(
       `The previous test run ended with this output — use it as your starting point:\n\`\`\`\n${ctx.priorOutput.slice(0, 4000)}\n\`\`\``,
     );
   }
+
   parts.push(
     `When done, write a brief summary of what ran, what passed, and what failed or errored (if anything). Use \`.olympian/\` as a scratch directory for any temporary files (diffs, logs, etc.) — it is excluded from commits automatically. Do not run git yourself.`,
   );
+
   return parts.join('\n\n');
 }
