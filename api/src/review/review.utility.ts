@@ -54,3 +54,24 @@ export function formatIssues(issues: ReviewIssue[]): string {
     })
     .join('\n');
 }
+
+const SEVERITY_EMOJI: Record<ReviewIssue['severity'], string> = {
+  critical: '🔴',
+  high: '🟠',
+  medium: '🟡',
+  low: '🔵',
+};
+
+/** GitHub Markdown rendering of issues for human-readable status comments. */
+export function formatIssuesMarkdown(issues: ReviewIssue[]): string {
+  if (issues.length === 0) {
+    return '_(no specific issues listed)_';
+  }
+  return issues
+    .map((i) => {
+      const emoji = SEVERITY_EMOJI[i.severity] ?? '⚪';
+      const loc = i.file ? ` \`${i.file}\`` : '';
+      return `${emoji} **${i.severity} —** **${i.title}**${loc}\n${i.detail}`;
+    })
+    .join('\n\n');
+}

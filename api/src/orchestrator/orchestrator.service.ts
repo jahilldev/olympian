@@ -19,7 +19,7 @@ import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
 import { type ReviewIssue, type ReviewResult } from '../review/review.model.js';
-import { formatIssues, parseReview } from '../review/review.utility.js';
+import { formatIssues, formatIssuesMarkdown, parseReview } from '../review/review.utility.js';
 import { GithubService } from '../github/github.service.js';
 import {
   APPROVAL_PERMISSIONS,
@@ -166,7 +166,7 @@ export class OrchestratorService {
           reviewPassCount,
           activeTask,
           commandPrefix: this.config.get('COMMAND_PREFIX'),
-          lastReviewIssues: lastIssues.length > 0 ? formatIssues(lastIssues) : undefined,
+          lastReviewIssues: lastIssues.length > 0 ? formatIssuesMarkdown(lastIssues) : undefined,
           lastReviewIssueCount: lastIssues.length > 0 ? lastIssues.length : undefined,
         }),
       );
