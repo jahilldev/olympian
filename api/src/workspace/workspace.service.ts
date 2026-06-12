@@ -73,6 +73,7 @@ export class WorkspaceService {
     await repoGit.checkoutLocalBranch(input.branchName);
 
     await this.writeLocalExcludes(dir);
+
     this.logger.log(
       `[job ${input.jobId}] cloned ${input.owner}/${input.repo} -> ${dir} (${input.branchName} from ${base})`,
     );
@@ -88,9 +89,11 @@ export class WorkspaceService {
     const excludePath = join(dir, '.git', 'info', 'exclude');
     const marker = '# --- olympian agent scratch space (auto-added) ---';
     const existing = await readFile(excludePath, 'utf8').catch(() => '');
+
     if (existing.includes(marker)) {
       return;
     }
+
     await appendFile(excludePath, `\n${marker}\n.olympian/\n`);
   }
 
@@ -240,30 +243,42 @@ export class WorkspaceService {
     if (refs.length === 0) return [];
     const token = await this.app.getInstallationToken(installationId);
     const attachDir = join(dir, '.attachments');
+
     await mkdir(attachDir, { recursive: true });
+
     const results: DownloadedAttachment[] = [];
+
     for (const ref of refs) {
       const dest = join(attachDir, ref.filename);
       const relativePath = `.attachments/${ref.filename}`;
+
       if (existsSync(dest)) {
         results.push({ filename: ref.filename, relativePath });
+
         continue;
       }
+
       try {
         const response = await fetch(ref.url, {
           headers: { Authorization: `Bearer ${token}` },
         });
+
         if (!response.ok) {
           this.logger.warn(`attachment download failed (${response.status}): ${ref.url}`);
+
           continue;
         }
+
         await writeFile(dest, Buffer.from(await response.arrayBuffer()));
+
         results.push({ filename: ref.filename, relativePath });
+
         this.logger.log(`downloaded attachment ${ref.filename} for workspace ${dir}`);
       } catch (e) {
         this.logger.warn(`attachment download error: ${(e as Error).message}`);
       }
     }
+
     return results;
   }
 
@@ -275,6 +290,7 @@ export class WorkspaceService {
   private async defaultBranch(git: SimpleGit): Promise<string> {
     try {
       const ref = await git.revparse(['--abbrev-ref', 'origin/HEAD']);
+
       return ref.trim().replace(/^origin\//, '') || 'main';
     } catch {
       return 'main';
