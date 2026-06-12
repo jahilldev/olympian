@@ -708,10 +708,13 @@ export class OrchestratorService {
       }
       // Process exited cleanly but the structured verdict said tests failed.
       const result = parseTestResult(lastTestRun.stdout ?? '');
-      if (result && !result.passed) {
-        return (lastTestRun.stdout ?? '').slice(0, 4000);
+      if (!result || result.passed) return undefined;
+      const lines = [`Summary: ${result.summary}`];
+      if (result.failures.length > 0) {
+        lines.push('Failures:');
+        result.failures.forEach((f, i) => lines.push(`${i + 1}. ${f.name}\n   ${f.detail}`));
       }
-      return undefined;
+      return lines.join('\n');
     })();
 
     const issues = lastFailedReview ? (JSON.parse(lastFailedReview.issues) as ReviewIssue[]) : [];
