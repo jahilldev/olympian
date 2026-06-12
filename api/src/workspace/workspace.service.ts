@@ -1,13 +1,18 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, rm, appendFile, writeFile } from 'node:fs/promises';
+import { mkdir, rm, appendFile, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { AppConfigService } from '../config/config.service.js';
 import { GithubService } from '../github/github.service.js';
 import { type AttachmentRef } from '../github/github.model.js';
-import { type DiffSummary, type DownloadedAttachment, type Workspace, type WorkspacePrepareInput } from './workspace.model.js';
+import {
+  type DiffSummary,
+  type DownloadedAttachment,
+  type Workspace,
+  type WorkspacePrepareInput,
+} from './workspace.model.js';
 import {
   authenticatedRemoteUrl,
   changedFilesFromStatus,
@@ -37,28 +42,41 @@ export class WorkspaceService {
 
     if (existsSync(`${dir}/.git`)) {
       const git = simpleGit(dir);
+
       await git.remote(['set-url', 'origin', remote]);
       await git.fetch(['origin']);
       await this.configureIdentity(git);
+
       const base = input.baseBranch ?? (await this.defaultBranch(git));
+
       await git.checkout(input.branchName).catch(async () => {
         await git.checkoutBranch(input.branchName, `origin/${base}`);
       });
+
       await this.writeLocalExcludes(dir);
+
       return { dir, branch: input.branchName, baseBranch: base };
     }
 
     await mkdir(root, { recursive: true });
+
     const git = simpleGit();
+
     await git.clone(remote, dir, ['--depth', '1', '--no-single-branch']);
+
     const repoGit = simpleGit(dir);
+
     await this.configureIdentity(repoGit);
+
     const base = input.baseBranch ?? (await this.defaultBranch(repoGit));
+
     await repoGit.checkoutLocalBranch(input.branchName);
+
     await this.writeLocalExcludes(dir);
     this.logger.log(
       `[job ${input.jobId}] cloned ${input.owner}/${input.repo} -> ${dir} (${input.branchName} from ${base})`,
     );
+
     return { dir, branch: input.branchName, baseBranch: base };
   }
 
@@ -68,38 +86,48 @@ export class WorkspaceService {
    */
   private async writeLocalExcludes(dir: string): Promise<void> {
     const excludePath = join(dir, '.git', 'info', 'exclude');
-    const patterns = [
-      '# --- olympian agent scratch space (auto-added) ---',
-      '.olympian/',
-    ].join('\n');
-    await appendFile(excludePath, `\n${patterns}\n`);
+    const marker = '# --- olympian agent scratch space (auto-added) ---';
+    const existing = await readFile(excludePath, 'utf8').catch(() => '');
+    if (existing.includes(marker)) {
+      return;
+    }
+    await appendFile(excludePath, `\n${marker}\n.olympian/\n`);
   }
 
   async diffSummary(dir: string): Promise<DiffSummary> {
     const git = simpleGit(dir);
     const status = await git.status();
     const changedFiles = changedFilesFromStatus(status);
+
     let insertions = 0;
     let deletions = 0;
+
     try {
       const summary = await git.diffSummary();
+
       insertions = summary.insertions;
       deletions = summary.deletions;
     } catch {
       // diff summary is best-effort (won't see untracked files)
     }
+
     return { changedFiles, insertions, deletions, isDirty: changedFiles.length > 0 };
   }
 
   /** Stage everything and commit. Returns the new commit SHA, or null if nothing to commit. */
   async commitAll(dir: string, message: string): Promise<string | null> {
     const git = simpleGit(dir);
+
     await git.add(['-A']);
+
     const status = await git.status();
+
     if (status.staged.length === 0) {
       return null;
     }
+
     await git.commit(message);
+
     return (await git.revparse(['HEAD'])).trim();
   }
 
@@ -109,18 +137,24 @@ export class WorkspaceService {
     const dir = workspaceDir(root, input.jobId);
     const git = simpleGit(dir);
     const token = await this.app.getInstallationToken(input.installationId);
+
     await git.remote(['set-url', 'origin', authenticatedRemoteUrl(input.owner, input.repo, token)]);
     await git.push(['-u', 'origin', input.branchName]);
+
     const sha = (await git.revparse(['HEAD'])).trim();
+
     this.logger.log(`[job ${input.jobId}] pushed ${input.branchName} @ ${sha}`);
+
     return sha;
   }
 
   /** Files changed on the branch relative to its base (committed changes). */
   async branchChangedFiles(dir: string, baseBranch: string): Promise<string[]> {
     const git = simpleGit(dir);
+
     try {
       const out = await git.diff(['--name-only', `${baseBranch}...HEAD`]);
+
       return out
         .split('\n')
         .map((s) => s.trim())
@@ -141,28 +175,50 @@ export class WorkspaceService {
    */
   async runVerify(dir: string): Promise<{ ok: boolean; output: string } | null> {
     const command = this.config.get('VERIFY_COMMAND');
+
     if (!command || command.trim().length === 0) {
       return null;
     }
+
+    const VERIFY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
     return new Promise((resolve) => {
       let output = '';
+
       const child = spawn('sh', ['-c', command], { cwd: dir, env: process.env });
+
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        resolve({
+          ok: false,
+          output: `${output}\n[verify timed out after ${VERIFY_TIMEOUT_MS / 1000}s]`,
+        });
+      }, VERIFY_TIMEOUT_MS);
+
       const onData = (d: Buffer) => {
         if (output.length < 50_000) {
           output += d.toString();
         }
       };
+
       child.stdout.on('data', onData);
       child.stderr.on('data', onData);
-      child.on('error', (e) =>
-        resolve({ ok: false, output: `${output}\n[spawn error] ${e.message}` }),
-      );
-      child.on('close', (code) => resolve({ ok: code === 0, output }));
+
+      child.on('error', (e) => {
+        clearTimeout(timer);
+        resolve({ ok: false, output: `${output}\n[spawn error] ${e.message}` });
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        resolve({ ok: code === 0, output });
+      });
     });
   }
 
   async cleanup(jobId: string): Promise<void> {
     const dir = workspaceDir(this.config.get('WORKSPACE_ROOT'), jobId);
+
     await rm(dir, { recursive: true, force: true });
   }
 

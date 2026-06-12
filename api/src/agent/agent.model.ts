@@ -40,6 +40,8 @@ export interface SpawnSpec {
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
+  /** Set when running in docker mode; used to force-remove the container on kill. */
+  containerName?: string;
 }
 
 export interface RawSpawnResult {

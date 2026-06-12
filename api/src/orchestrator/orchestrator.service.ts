@@ -21,11 +21,7 @@ import { buildReviewPrompt } from '../review/review.prompts.js';
 import { type ReviewIssue, type ReviewResult } from '../review/review.model.js';
 import { formatIssues, formatIssuesMarkdown, parseReview } from '../review/review.utility.js';
 import { GithubService } from '../github/github.service.js';
-import {
-  APPROVAL_PERMISSIONS,
-  type RepoRef,
-  type ReviewFeedback,
-} from '../github/github.model.js';
+import { APPROVAL_PERMISSIONS, type RepoRef, type ReviewFeedback } from '../github/github.model.js';
 import { extractAttachmentUrls } from '../github/github.utility.js';
 import {
   type IssueCommentEvent,
@@ -70,7 +66,7 @@ export class OrchestratorService {
   async onIssueLabeled(evt: IssueLabeledEvent): Promise<void> {
     const installation = await this.upsertInstallation(evt);
     const triggerLabel = installation.triggerLabel ?? this.config.get('TRIGGER_LABEL');
-   
+
     if (evt.label !== triggerLabel) {
       return;
     }
@@ -241,11 +237,7 @@ export class OrchestratorService {
         actor: 'HUMAN',
       });
       await this.queue.enqueue({ jobId: job.id, kind: retryKind });
-      await this.safeComment(
-        ref,
-        evt.issueNumber,
-        `Retrying from the **${retryKind}** phase.`,
-      );
+      await this.safeComment(ref, evt.issueNumber, `Retrying from the **${retryKind}** phase.`);
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
       return;
     }
@@ -510,9 +502,10 @@ export class OrchestratorService {
     const res = await this.agent.run({ jobId, phase: 'PLAN', cwd: ws.dir, prompt });
     const missing = missingPlanSections(res.stdout);
     if (res.status !== 'SUCCEEDED' || res.stdout.trim().length < 500 || missing.length > 0) {
-      const reason = missing.length > 0
-        ? `missing required sections: ${missing.join(', ')}`
-        : 'output too short or agent failed';
+      const reason =
+        missing.length > 0
+          ? `missing required sections: ${missing.join(', ')}`
+          : 'output too short or agent failed';
       throw new Error(`planning failed (${res.status}); ${reason}: ${res.stderr.slice(0, 200)}`);
     }
 
@@ -567,15 +560,18 @@ export class OrchestratorService {
       });
       if (prRevisions.length > 0) {
         const formatted = this.formatPrFeedback(
-          prRevisions.map((r) => ({ author: r.author, body: r.body, path: r.path ?? undefined, line: r.line ?? undefined })),
+          prRevisions.map((r) => ({
+            author: r.author,
+            body: r.body,
+            path: r.path ?? undefined,
+            line: r.line ?? undefined,
+          })),
         );
         guidance = formatted;
         reviewBodies.push(...prRevisions.map((r) => r.body));
       }
     }
-    const attachmentRefs = extractAttachmentUrls(
-      [job.issueBody, ...reviewBodies].join('\n'),
-    );
+    const attachmentRefs = extractAttachmentUrls([job.issueBody, ...reviewBodies].join('\n'));
     const downloaded = await this.workspace.downloadAttachments(ws.dir, ghId, attachmentRefs);
     const attachments = formatDownloadedAttachments(downloaded);
 
@@ -655,7 +651,10 @@ export class OrchestratorService {
     await this.workspace.commitAll(ws.dir, 'test: run test suite');
 
     if (res.status === 'SUCCEEDED') {
-      await this.jobs.transition(jobId, 'SELF_REVIEWING', { reason: 'tests passed', actor: 'AGENT' });
+      await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+        reason: 'tests passed',
+        actor: 'AGENT',
+      });
       await this.queue.enqueue({ jobId, kind: 'REVIEW' });
     } else {
       this.logger.warn(`[job ${jobId}] test ${res.status}; routing to revise`);
@@ -699,37 +698,44 @@ export class OrchestratorService {
         ? (lastTestRun.stderr || lastTestRun.stdout || '').slice(0, 4000)
         : undefined;
 
-    const issues = lastFailedReview
-      ? (JSON.parse(lastFailedReview.issues) as ReviewIssue[])
-      : [];
+    const issues = lastFailedReview ? (JSON.parse(lastFailedReview.issues) as ReviewIssue[]) : [];
     const issuesText = issues.length > 0 ? formatIssues(issues) : undefined;
+
     const humanFeedback =
       prFeedback.length > 0
-        ? this.formatPrFeedback(prFeedback.map((r) => ({ author: r.author, body: r.body, path: r.path ?? undefined, line: r.line ?? undefined })))
+        ? this.formatPrFeedback(
+            prFeedback.map((r) => ({
+              author: r.author,
+              body: r.body,
+              path: r.path ?? undefined,
+              line: r.line ?? undefined,
+            })),
+          )
         : undefined;
 
     const revisionNumber =
       (await this.prisma.agentRun.count({ where: { jobId, phase: 'REVISE' } })) + 1;
+
     const rev = await this.agent.run({
       jobId,
       phase: 'REVISE',
       cwd: ws.dir,
       prompt: buildRevisePrompt({ plan, issuesText, testOutput, humanFeedback }),
     });
+
     if (rev.status === 'SUCCEEDED') {
       await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
     } else {
-      // Don't let a failed/timed-out revise kill the whole task — the workspace is
-      // unchanged (or partially changed) and a fresh test pass is more useful than
-      // a full task retry.
-      this.logger.warn(`[job ${jobId}] revise ${rev.status}; proceeding to test`);
+      throw new Error(`revise agent ${rev.status}; ${rev.stderr.slice(0, 300)}`);
     }
+
     await this.jobs.transition(jobId, 'TESTING', { reason: 'revision complete', actor: 'AGENT' });
     await this.queue.enqueue({ jobId, kind: 'TEST' });
   }
 
   private async handleReview(jobId: string): Promise<void> {
     const { job, ref } = await this.context(jobId);
+
     const ws = await this.workspace.prepare({
       jobId,
       installationId: this.ghIdFromRef(ref),
@@ -738,6 +744,7 @@ export class OrchestratorService {
       branchName:
         job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber),
     });
+
     const base = ws.baseBranch;
     const plan = await this.approvedPlan(jobId);
     const maxPasses = this.review.maxPasses;
@@ -752,16 +759,26 @@ export class OrchestratorService {
       where: { jobId },
       orderBy: { createdAt: 'asc' },
     });
+
     const humanFeedback =
       prFeedback.length > 0
-        ? this.formatPrFeedback(prFeedback.map((r) => ({ author: r.author, body: r.body, path: r.path ?? undefined, line: r.line ?? undefined })))
+        ? this.formatPrFeedback(
+            prFeedback.map((r) => ({
+              author: r.author,
+              body: r.body,
+              path: r.path ?? undefined,
+              line: r.line ?? undefined,
+            })),
+          )
         : undefined;
 
     await this.jobs.transition(jobId, 'SELF_REVIEWING', {
       reason: `review pass ${pass}`,
       actor: 'AGENT',
     });
+
     const changedFiles = await this.workspace.branchChangedFiles(ws.dir, base);
+
     const reviewPrompt = buildReviewPrompt({
       repoFullName: job.repoFullName,
       issueTitle: job.issueTitle,
@@ -772,6 +789,7 @@ export class OrchestratorService {
       threshold: this.review.threshold,
       humanFeedback,
     });
+
     const res = await this.agent.run({
       jobId,
       phase: 'REVIEW',
@@ -780,10 +798,13 @@ export class OrchestratorService {
       model: this.config.get('HERMES_REVIEW_MODEL') || undefined,
       provider: this.config.get('HERMES_REVIEW_PROVIDER') || undefined,
     });
+
     if (res.status !== 'SUCCEEDED') {
       throw new Error(`review agent ${res.status}; ${res.stderr.slice(0, 300)}`);
     }
+
     const parsed = parseReview(res.stdout);
+
     const result: ReviewResult = parsed ?? {
       confidence: 0,
       verdict: 'FAIL',
@@ -795,11 +816,17 @@ export class OrchestratorService {
         },
       ],
     };
+
     await this.review.persist({ jobId, cycle, passNumber: pass, result });
 
     if (this.review.meetsThreshold(result)) {
-      await this.jobs.transition(jobId, 'OPENING_PR', { reason: 'review complete', actor: 'AGENT' });
+      await this.jobs.transition(jobId, 'OPENING_PR', {
+        reason: 'review complete',
+        actor: 'AGENT',
+      });
+
       await this.queue.enqueue({ jobId, kind: 'OPEN_PR' });
+
       return;
     }
 
@@ -812,6 +839,7 @@ export class OrchestratorService {
           reason: `addressing review pass ${pass}`,
           actor: 'AGENT',
         });
+
         await this.queue.enqueue({ jobId, kind: 'REVISE' });
       } else {
         await this.queue.enqueue({ jobId, kind: 'REVIEW' });
@@ -824,16 +852,25 @@ export class OrchestratorService {
       job.issueNumber,
       `Self-review didn't reach the confidence threshold after ${pass} passes (best ${result.confidence}/100). Opening a draft PR for human review.`,
     );
-    await this.jobs.transition(jobId, 'OPENING_PR', { reason: 'review cap reached', actor: 'AGENT' });
+
+    await this.jobs.transition(jobId, 'OPENING_PR', {
+      reason: 'review cap reached',
+      actor: 'AGENT',
+    });
+
     await this.queue.enqueue({ jobId, kind: 'OPEN_PR' });
   }
 
   private async handleOpenPr(jobId: string): Promise<void> {
     const { job, installation, ref } = await this.context(jobId);
+
     const ghId = this.ghId(installation);
+
     const branchName =
       job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber);
+
     const base = await this.github.getDefaultBranch(ref);
+
     const headSha = await this.workspace.push({
       jobId,
       installationId: ghId,
@@ -842,16 +879,19 @@ export class OrchestratorService {
       branchName,
       baseBranch: base,
     });
+
     await this.jobs.update(jobId, { headSha });
 
     const lastReview = await this.prisma.reviewPass.findFirst({
       where: { jobId, cycle: job.reviewCycle },
       orderBy: { passNumber: 'desc' },
     });
+
     const meets =
       !!lastReview &&
       lastReview.verdict === 'PASS' &&
       lastReview.confidence >= this.review.threshold;
+
     const unresolved = lastReview ? formatIssues(JSON.parse(lastReview.issues)) : undefined;
 
     if (!job.prNumber) {
@@ -868,6 +908,7 @@ export class OrchestratorService {
           branchName,
         }),
       });
+
       const agentSummary =
         prBodyRes.status === 'SUCCEEDED' && prBodyRes.stdout.trim().length > 0
           ? prBodyRes.stdout.trim().slice(0, 8_000)
@@ -881,12 +922,14 @@ export class OrchestratorService {
         meetsThreshold: meets,
         unresolvedIssues: unresolved,
       });
+
       const pr = await this.github.createDraftPullRequest(ref, {
         title: `[Hermes] ${job.issueTitle}`.slice(0, 250),
         head: branchName,
         base,
         body,
       });
+
       await this.prisma.pullRequestRef.create({
         data: {
           jobId,
@@ -897,7 +940,9 @@ export class OrchestratorService {
           headSha: pr.headSha,
         },
       });
+
       await this.jobs.update(jobId, { prNumber: pr.number, headSha: pr.headSha });
+
       await this.safeComment(
         ref,
         job.issueNumber,
@@ -905,12 +950,14 @@ export class OrchestratorService {
       );
     } else {
       await this.prisma.pullRequestRef.updateMany({ where: { jobId }, data: { headSha } });
+
       await this.safeComment(
         ref,
         job.prNumber,
         `Pushed an update addressing the latest feedback. Please re-review.`,
       );
     }
+
     await this.jobs.transition(jobId, 'AWAITING_PR_APPROVAL', {
       reason: 'draft PR ready',
       actor: 'AGENT',
@@ -926,9 +973,11 @@ export class OrchestratorService {
       where: { id: jobId },
       include: { installation: true },
     });
+
     if (!job) {
       throw new Error(`job ${jobId} not found`);
     }
+
     return { job, installation: job.installation, ref: this.refFor(job, job.installation) };
   }
 
@@ -965,18 +1014,22 @@ export class OrchestratorService {
       where: { jobId, status: 'APPROVED' },
       orderBy: { revision: 'desc' },
     });
+
     if (approved) {
       return approved.content;
     }
+
     const latest = await this.prisma.planRevision.findFirst({
       where: { jobId },
       orderBy: { revision: 'desc' },
     });
+
     return latest?.content ?? '(no plan recorded)';
   }
 
   private async isAuthorized(ref: RepoRef, username: string): Promise<boolean> {
     const permission = await this.github.getCollaboratorPermission(ref, username);
+
     return APPROVAL_PERMISSIONS.has(permission);
   }
 
@@ -984,6 +1037,7 @@ export class OrchestratorService {
     if (feedback.length === 0) {
       return 'A reviewer requested changes but left no specific comments; re-examine the diff for issues.';
     }
+
     return feedback
       .map(
         (f, i) =>
@@ -994,6 +1048,7 @@ export class OrchestratorService {
 
   private renderPlanComment(plan: string): string {
     const prefix = this.config.get('COMMAND_PREFIX');
+
     return [
       `### Hermes implementation plan`,
       ``,
