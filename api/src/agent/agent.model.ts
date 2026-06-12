@@ -97,3 +97,14 @@ export interface TestPromptContext {
   hasBrowser: boolean;
   priorOutput?: string;
 }
+
+export interface TestFailure {
+  name: string;
+  detail: string;
+}
+
+export interface TestResult {
+  passed: boolean;
+  summary: string;
+  failures: TestFailure[];
+}

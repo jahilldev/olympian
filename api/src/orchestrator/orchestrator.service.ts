@@ -23,6 +23,7 @@ import { formatIssues, formatIssuesMarkdown, parseReview } from '../review/revie
 import { GithubService } from '../github/github.service.js';
 import { APPROVAL_PERMISSIONS, type RepoRef, type ReviewFeedback } from '../github/github.model.js';
 import { extractAttachmentUrls } from '../github/github.utility.js';
+import { parseTestResult } from '../agent/agent.utility.js';
 import {
   type IssueCommentEvent,
   type IssueLabeledEvent,
@@ -652,15 +653,20 @@ export class OrchestratorService {
     });
     await this.workspace.commitAll(ws.dir, 'test: run test suite');
 
-    if (res.status === 'SUCCEEDED') {
+    const testResult = res.status === 'SUCCEEDED' ? parseTestResult(res.stdout) : null;
+
+    if (res.status === 'SUCCEEDED' && testResult?.passed === true) {
       await this.jobs.transition(jobId, 'SELF_REVIEWING', {
         reason: 'tests passed',
         actor: 'AGENT',
       });
       await this.queue.enqueue({ jobId, kind: 'REVIEW' });
     } else {
-      this.logger.warn(`[job ${jobId}] test ${res.status}; routing to revise`);
-      await this.jobs.transition(jobId, 'REVISING', { reason: 'tests failed', actor: 'AGENT' });
+      const reason = testResult
+        ? `tests failed: ${testResult.failures.map((f) => f.name).join(', ') || 'see summary'}`
+        : `test agent ${res.status}`;
+      this.logger.warn(`[job ${jobId}] ${reason}; routing to revise`);
+      await this.jobs.transition(jobId, 'REVISING', { reason, actor: 'AGENT' });
       await this.queue.enqueue({ jobId, kind: 'REVISE' });
     }
   }
@@ -695,10 +701,18 @@ export class OrchestratorService {
       }),
     ]);
 
-    const testOutput =
-      lastTestRun && lastTestRun.status !== 'SUCCEEDED'
-        ? (lastTestRun.stderr || lastTestRun.stdout || '').slice(0, 4000)
-        : undefined;
+    const testOutput = (() => {
+      if (!lastTestRun) return undefined;
+      if (lastTestRun.status !== 'SUCCEEDED') {
+        return (lastTestRun.stderr || lastTestRun.stdout || '').slice(0, 4000);
+      }
+      // Process exited cleanly but the structured verdict said tests failed.
+      const result = parseTestResult(lastTestRun.stdout ?? '');
+      if (result && !result.passed) {
+        return (lastTestRun.stdout ?? '').slice(0, 4000);
+      }
+      return undefined;
+    })();
 
     const issues = lastFailedReview ? (JSON.parse(lastFailedReview.issues) as ReviewIssue[]) : [];
     const issuesText = issues.length > 0 ? formatIssues(issues) : undefined;
