@@ -70,11 +70,18 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       }
     }
 
+    // Without a TTY, Python uses block buffering which starves the idle timer.
+    // PYTHONUNBUFFERED=1 forces line/byte flushing so output reaches the pipe immediately.
+    args.push('--env', 'PYTHONUNBUFFERED=1');
+
     // Forward CAMOFOX_URL into the container, rewriting localhost → host.docker.internal
     // so the agent can reach a Camofox server running on the host.
     const camofoxUrl = process.env.CAMOFOX_URL;
     if (camofoxUrl) {
-      args.push('--env', `CAMOFOX_URL=${camofoxUrl.replace(/\/\/localhost(:|$)/g, '//host.docker.internal$1')}`);
+      args.push(
+        '--env',
+        `CAMOFOX_URL=${camofoxUrl.replace(/\/\/localhost(:|$)/g, '//host.docker.internal$1')}`,
+      );
     }
 
     args.push(p.dockerImage, 'hermes', ...hermesArgs(p));
