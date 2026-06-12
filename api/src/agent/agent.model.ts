@@ -17,10 +17,8 @@ export interface AgentRunOptions {
   toolsets?: string;
   /** Optional Hermes skills to preload (`--skills`, repeatable). */
   skills?: string[];
-  /** Override the hard (wall-clock) timeout for this invocation. */
+  /** Override the wall-clock timeout for this invocation. */
   timeoutMs?: number;
-  /** Override the idle timeout (silence threshold) for this invocation. */
-  idleTimeoutMs?: number;
   /** Override the model for this specific invocation (e.g. a review-only model). */
   model?: string;
   /** Override the provider for this specific invocation. */

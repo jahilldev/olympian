@@ -32,13 +32,6 @@ export const envSchema = z.object({
   HERMES_TESTING_MODEL: z.string().optional(),
   HERMES_TESTING_PROVIDER: z.string().optional(),
   HERMES_TIMEOUT_MS: intFromString(7_200_000),
-  // Idle timeout for PLAN and REVIEW phases: kill if no stdout/stderr for this long.
-  // Catches hung/dead model connections without penalising slow generation.
-  HERMES_PLAN_TIMEOUT_MS: intFromString(3_600_000),
-  // Idle timeout for IMPLEMENT, TEST, and REVISE phases. These agents run builds,
-  // test suites, and browser automation that can be legitimately silent for far
-  // longer than planning or review turns.
-  HERMES_WORK_TIMEOUT_MS: intFromString(7_200_000),
 
   // orchestration policy
   TRIGGER_LABEL: z.string().default('hermes'),

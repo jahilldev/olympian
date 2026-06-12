@@ -123,7 +123,7 @@ function cap(buf: string): string {
  */
 export function spawnProcess(
   spec: SpawnSpec,
-  opts: { cwd: string; hardTimeoutMs: number; idleTimeoutMs: number },
+  opts: { cwd: string; timeoutMs: number },
 ): Promise<RawSpawnResult> {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -153,17 +153,7 @@ export function spawnProcess(
       }
     };
 
-    // Absolute ceiling: kill regardless of activity after hardTimeoutMs.
-    const hardTimer = setTimeout(kill, opts.hardTimeoutMs);
-
-    // Idle cap: reset whenever the process emits output. Fires only when silent.
-    let idleTimer = setTimeout(kill, opts.idleTimeoutMs);
-
-    const resetIdle = () => {
-      clearTimeout(idleTimer);
-
-      idleTimer = setTimeout(kill, opts.idleTimeoutMs);
-    };
+    const timer = setTimeout(kill, opts.timeoutMs);
 
     const finish = (exitCode: number | null) => {
       if (settled) {
@@ -172,8 +162,7 @@ export function spawnProcess(
 
       settled = true;
 
-      clearTimeout(hardTimer);
-      clearTimeout(idleTimer);
+      clearTimeout(timer);
 
       resolve({
         exitCode,
@@ -185,8 +174,6 @@ export function spawnProcess(
     };
 
     child.stdout.on('data', (d: Buffer) => {
-      resetIdle();
-
       if (stdoutLen < STDOUT_CAP) {
         stdoutChunks.push(d);
         stdoutLen += d.length;
@@ -194,8 +181,6 @@ export function spawnProcess(
     });
 
     child.stderr.on('data', (d: Buffer) => {
-      resetIdle();
-
       if (stderrLen < STDOUT_CAP) {
         stderrChunks.push(d);
         stderrLen += d.length;

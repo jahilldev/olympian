@@ -92,8 +92,7 @@ export class HermesAgentService {
 
     const raw = await spawnProcess(spec, {
       cwd: opts.cwd,
-      hardTimeoutMs: opts.timeoutMs ?? this.config.get('HERMES_TIMEOUT_MS'),
-      idleTimeoutMs: opts.idleTimeoutMs ?? this.config.get('HERMES_PLAN_TIMEOUT_MS'),
+      timeoutMs: opts.timeoutMs ?? this.config.get('HERMES_TIMEOUT_MS'),
     });
 
     const status: AgentRunStatus = raw.timedOut

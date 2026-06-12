@@ -594,7 +594,6 @@ export class OrchestratorService {
         phase: 'IMPLEMENT',
         cwd: ws.dir,
         prompt,
-        idleTimeoutMs: this.config.get('HERMES_WORK_TIMEOUT_MS'),
       });
       if (res.status !== 'SUCCEEDED') {
         throw new Error(`implementation agent ${res.status}; ${res.stderr.slice(0, 300)}`);
@@ -650,7 +649,6 @@ export class OrchestratorService {
       }),
       model: this.config.get('HERMES_TESTING_MODEL') || undefined,
       provider: this.config.get('HERMES_TESTING_PROVIDER') || undefined,
-      idleTimeoutMs: this.config.get('HERMES_WORK_TIMEOUT_MS'),
     });
     await this.workspace.commitAll(ws.dir, 'test: run test suite');
 
@@ -736,7 +734,6 @@ export class OrchestratorService {
       phase: 'REVISE',
       cwd: ws.dir,
       prompt: buildRevisePrompt({ plan, issuesText, testOutput, humanFeedback }),
-      idleTimeoutMs: this.config.get('HERMES_WORK_TIMEOUT_MS'),
     });
 
     if (rev.status === 'SUCCEEDED') {
