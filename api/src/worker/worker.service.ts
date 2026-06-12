@@ -5,6 +5,7 @@ import { QueueService } from '../queue/queue.service.js';
 import { JobService } from '../job/job.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
 import { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import { HermesAgentService } from '../agent/agent.service.js';
 import { WORKER_ID } from './worker.model.js';
 
 /**
@@ -26,6 +27,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly jobs: JobService,
     private readonly metrics: MetricsService,
     private readonly orchestrator: OrchestratorService,
+    private readonly agent: HermesAgentService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -33,6 +35,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn('Worker disabled (WORKER_ENABLED=false)');
       return;
     }
+    this.agent.killOrphanedContainers();
     await this.queue.reclaimOrphaned();
     this.logger.log(
       `Worker ${WORKER_ID} starting (concurrency ${this.config.get('WORKER_CONCURRENCY')})`,
