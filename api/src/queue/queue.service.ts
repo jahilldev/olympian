@@ -25,10 +25,13 @@ export class QueueService {
     const existing = await this.prisma.queueTask.findFirst({
       where: { jobId: input.jobId, kind: input.kind, status: 'PENDING' },
     });
+
     if (existing) {
       this.logger.debug(`Skipping duplicate ${input.kind} task for job ${input.jobId}`);
+
       return existing;
     }
+
     return this.prisma.queueTask.create({
       data: {
         jobId: input.jobId,
@@ -48,6 +51,7 @@ export class QueueService {
     if (limit <= 0) {
       return [];
     }
+
     const now = new Date();
     const staleBefore = new Date(now.getTime() - this.config.get('QUEUE_LOCK_TTL_MS'));
 
@@ -83,7 +87,9 @@ export class QueueService {
     if (claimed.length === 0) {
       return [];
     }
+
     const ids = claimed.map((r) => r.id);
+
     // Re-read through the typed client so callers get proper field types.
     return this.prisma.queueTask.findMany({ where: { id: { in: ids } } });
   }
@@ -109,12 +115,16 @@ export class QueueService {
    */
   async fail(taskId: string, error: string): Promise<boolean> {
     const task = await this.prisma.queueTask.findUnique({ where: { id: taskId } });
+
     if (!task) {
       return false;
     }
+
     const willRetry = task.attempts < task.maxAttempts;
+
     if (willRetry) {
       const delay = backoffMs(task.attempts, this.config.get('QUEUE_BACKOFF_BASE_MS'));
+
       await this.prisma.queueTask.update({
         where: { id: taskId },
         data: {
@@ -125,6 +135,7 @@ export class QueueService {
           lastError: error.slice(0, 2000),
         },
       });
+
       this.logger.warn(
         `Task ${taskId} (${task.kind}) failed; retry ${task.attempts}/${task.maxAttempts} in ${delay}ms`,
       );
@@ -133,10 +144,12 @@ export class QueueService {
         where: { id: taskId },
         data: { status: 'FAILED', lockedAt: null, lockedBy: null, lastError: error.slice(0, 2000) },
       });
+
       this.logger.error(
         `Task ${taskId} (${task.kind}) failed permanently after ${task.attempts} attempts`,
       );
     }
+
     return willRetry;
   }
 
@@ -144,10 +157,15 @@ export class QueueService {
    * Atomically fail any stale RUNNING tasks that have reached their attempt limit.
    * Returns the affected rows so the caller can escalate each to onTaskExhausted.
    */
-  async expireExhaustedStale(): Promise<Array<{ id: string; jobId: string; lastError: string | null }>> {
+  async expireExhaustedStale(): Promise<
+    Array<{ id: string; jobId: string; lastError: string | null }>
+  > {
     const now = new Date();
     const staleBefore = new Date(now.getTime() - this.config.get('QUEUE_LOCK_TTL_MS'));
-    const rows = await this.prisma.$queryRaw<Array<{ id: string; jobId: string; lastError: string | null }>>(Prisma.sql`
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{ id: string; jobId: string; lastError: string | null }>
+    >(Prisma.sql`
       UPDATE "QueueTask"
       SET "status" = 'FAILED',
           "lockedAt" = NULL,
@@ -159,11 +177,13 @@ export class QueueService {
         AND "attempts" >= "maxAttempts"
       RETURNING "id", "jobId", "lastError";
     `);
+
     for (const row of rows) {
       this.logger.error(
         `Task ${row.id} for job ${row.jobId} expired with no retries remaining after stale lock`,
       );
     }
+
     return rows;
   }
 
@@ -177,6 +197,7 @@ export class QueueService {
 
   async depthByStatus(): Promise<Record<string, number>> {
     const rows = await this.prisma.queueTask.groupBy({ by: ['status'], _count: { _all: true } });
+
     return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
   }
 
@@ -192,9 +213,11 @@ export class QueueService {
       where: { status: 'RUNNING' },
       data: { status: 'PENDING', runAt: new Date(), lockedAt: null, lockedBy: null },
     });
+
     if (count > 0) {
       this.logger.warn(`Reclaimed ${count} orphaned task(s) from previous process`);
     }
+
     await this.prisma.agentRun.updateMany({
       where: { status: 'RUNNING' },
       data: { status: 'FAILED' },
