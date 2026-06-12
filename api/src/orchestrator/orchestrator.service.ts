@@ -13,8 +13,8 @@ import {
   buildPlanPrompt,
   buildPrBodyPrompt,
   buildRevisePrompt,
-  buildTestPrompt,
 } from '../agent/agent.prompts.js';
+import { buildTestPrompt } from '../testing/testing.prompts.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
@@ -23,7 +23,7 @@ import { formatIssues, formatIssuesMarkdown, parseReview } from '../review/revie
 import { GithubService } from '../github/github.service.js';
 import { APPROVAL_PERMISSIONS, type RepoRef, type ReviewFeedback } from '../github/github.model.js';
 import { extractAttachmentUrls } from '../github/github.utility.js';
-import { parseTestResult } from '../agent/agent.utility.js';
+import { TestingService } from '../testing/testing.service.js';
 import {
   type IssueCommentEvent,
   type IssueLabeledEvent,
@@ -59,6 +59,7 @@ export class OrchestratorService {
     private readonly agent: HermesAgentService,
     private readonly workspace: WorkspaceService,
     private readonly review: ReviewService,
+    private readonly testing: TestingService,
     private readonly github: GithubService,
   ) {}
 
@@ -653,7 +654,7 @@ export class OrchestratorService {
     });
     await this.workspace.commitAll(ws.dir, 'test: run test suite');
 
-    const testResult = res.status === 'SUCCEEDED' ? parseTestResult(res.stdout) : null;
+    const testResult = res.status === 'SUCCEEDED' ? this.testing.parse(res.stdout) : null;
 
     if (res.status === 'SUCCEEDED' && testResult?.passed === true) {
       await this.jobs.transition(jobId, 'SELF_REVIEWING', {
@@ -707,14 +708,9 @@ export class OrchestratorService {
         return (lastTestRun.stderr || lastTestRun.stdout || '').slice(0, 4000);
       }
       // Process exited cleanly but the structured verdict said tests failed.
-      const result = parseTestResult(lastTestRun.stdout ?? '');
+      const result = this.testing.parse(lastTestRun.stdout ?? '');
       if (!result || result.passed) return undefined;
-      const lines = [`Summary: ${result.summary}`];
-      if (result.failures.length > 0) {
-        lines.push('Failures:');
-        result.failures.forEach((f, i) => lines.push(`${i + 1}. ${f.name}\n   ${f.detail}`));
-      }
-      return lines.join('\n');
+      return this.testing.formatFailures(result);
     })();
 
     const issues = lastFailedReview ? (JSON.parse(lastFailedReview.issues) as ReviewIssue[]) : [];

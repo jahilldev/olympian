@@ -89,22 +89,3 @@ export interface PrBodyPromptContext {
   baseBranch: string;
   branchName: string;
 }
-
-export interface TestPromptContext {
-  repoFullName: string;
-  issueTitle: string;
-  plan: string;
-  hasBrowser: boolean;
-  priorOutput?: string;
-}
-
-export interface TestFailure {
-  name: string;
-  detail: string;
-}
-
-export interface TestResult {
-  passed: boolean;
-  summary: string;
-  failures: TestFailure[];
-}

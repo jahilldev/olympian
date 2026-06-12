@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { z } from 'zod';
-import { STDOUT_CAP, type RawSpawnResult, type SpawnSpec, type TestResult } from './agent.model.js';
+import { STDOUT_CAP, type RawSpawnResult, type SpawnSpec } from './agent.model.js';
 
 const HERMES_CONTAINER_HOME = '/root/.hermes';
 const CONTAINER_WORKDIR = '/workspace';
@@ -260,30 +259,4 @@ export function extractJsonBlock(text: string): unknown | null {
   }
 
   return null;
-}
-
-const testFailureSchema = z.object({
-  name: z.string().default(''),
-  detail: z.string().default(''),
-});
-
-const testResultSchema = z.object({
-  passed: z.boolean(),
-  summary: z.string().default(''),
-  failures: z.array(testFailureSchema).default([]),
-});
-
-/**
- * Parses the test agent's stdout into a structured result. Returns null when the
- * agent did not emit a valid JSON verdict (caller treats that as a failing run).
- */
-export function parseTestResult(stdout: string): TestResult | null {
-  const raw = extractJsonBlock(stdout);
-  const parsed = testResultSchema.safeParse(raw);
-
-  if (!raw || !parsed.success) {
-    return null;
-  }
-
-  return parsed.data;
 }
