@@ -219,8 +219,17 @@ export function spawnProcess(
 export function extractJsonBlock(text: string): unknown | null {
   const candidates: string[] = [];
 
-  // Prefer the LAST opened fence — in old-style output the JSON verdict is at the end.
-  // Also tolerates a missing closing ``` (truncated stdout).
+  // Prefer the FIRST complete fenced block — the review prompt instructs models to
+  // put their JSON verdict before any analysis, so this is almost always the right one.
+  const firstFenced = text.match(/```(?:json)?[ \t]*\n([\s\S]*?)```/i);
+
+  if (firstFenced?.[1]) {
+    candidates.push(firstFenced[1]);
+  }
+
+  // Fall back to the LAST opened fence to handle truncated stdout: the first-fence
+  // regex above requires a closing ``` and won't match if the output was cut off by
+  // STDOUT_CAP before the fence closed. The last-fence path tolerates a missing close.
   const lastJsonFence = text.lastIndexOf('```json');
   const lastPlainFence = text.lastIndexOf('```\n');
   const lastFenceIdx = Math.max(lastJsonFence, lastPlainFence);
@@ -231,13 +240,6 @@ export function extractJsonBlock(text: string): unknown | null {
     const content = (closeIdx !== -1 ? afterFence.slice(0, closeIdx) : afterFence).trim();
 
     if (content) candidates.push(content);
-  }
-
-  // Also try the first complete fenced block (for new-style output where JSON comes first).
-  const firstFenced = text.match(/```(?:json)?[ \t]*\n([\s\S]*?)```/i);
-
-  if (firstFenced?.[1]) {
-    candidates.push(firstFenced[1]);
   }
 
   // Last-resort: outermost { ... } pair.
