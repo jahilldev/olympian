@@ -22,6 +22,7 @@ export class ReviewService {
     result: ReviewResult;
   }): Promise<void> {
     const { jobId, cycle, passNumber, result } = opts;
+
     await this.prisma.reviewPass.upsert({
       where: { jobId_cycle_passNumber: { jobId, cycle, passNumber } },
       create: {
@@ -38,6 +39,7 @@ export class ReviewService {
         issues: JSON.stringify(result.issues),
       },
     });
+
     await this.prisma.job.update({ where: { id: jobId }, data: { confidence: result.confidence } });
   }
 
