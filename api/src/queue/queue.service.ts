@@ -20,10 +20,10 @@ export class QueueService {
     private readonly config: AppConfigService,
   ) {}
 
-  /** Enqueue a task, skipping if an equivalent PENDING/RUNNING task already exists. */
+  /** Enqueue a task, skipping if an equivalent PENDING task already exists. */
   async enqueue(input: EnqueueInput): Promise<QueueTask> {
     const existing = await this.prisma.queueTask.findFirst({
-      where: { jobId: input.jobId, kind: input.kind, status: { in: ['PENDING', 'RUNNING'] } },
+      where: { jobId: input.jobId, kind: input.kind, status: 'PENDING' },
     });
     if (existing) {
       this.logger.debug(`Skipping duplicate ${input.kind} task for job ${input.jobId}`);

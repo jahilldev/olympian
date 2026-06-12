@@ -25,5 +25,11 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
 \`\`\`
 Set "verdict" to "PASS" only if confidence >= ${ctx.threshold} and there are no high/critical issues. List every concrete problem in "issues"; use an empty array if there are none. You may include detailed reasoning after the JSON block.`,
   );
+  if (ctx.parseRetry) {
+    parts.push(
+      `IMPORTANT: Your previous response did not contain a valid \`\`\`json block and could not be parsed. ` +
+        `This time you MUST start your response with the JSON block above — do not write any preamble or narrative before it.`,
+    );
+  }
   return parts.join('\n\n');
 }

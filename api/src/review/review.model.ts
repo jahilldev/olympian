@@ -25,4 +25,6 @@ export interface ReviewPromptContext {
   changedFiles: string[];
   threshold: number;
   humanFeedback?: string;
+  /** Set when retrying after an unparseable response to prompt for JSON-only output. */
+  parseRetry?: boolean;
 }

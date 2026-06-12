@@ -755,7 +755,10 @@ export class OrchestratorService {
 
     // Count only passes in the current cycle so the cap applies per-cycle and task
     // retries continue from where they left off rather than restarting from pass 1.
-    const priorPasses = await this.prisma.reviewPass.count({ where: { jobId, cycle } });
+    const [priorPasses, priorUnparseable] = await Promise.all([
+      this.prisma.reviewPass.count({ where: { jobId, cycle } }),
+      this.prisma.reviewPass.count({ where: { jobId, cycle, confidence: 0 } }),
+    ]);
     const pass = priorPasses + 1;
 
     const prFeedback = await this.prisma.prRevisionFeedback.findMany({
@@ -791,6 +794,7 @@ export class OrchestratorService {
       changedFiles,
       threshold: this.review.threshold,
       humanFeedback,
+      parseRetry: priorUnparseable > 0,
     });
 
     const res = await this.agent.run({
@@ -833,10 +837,15 @@ export class OrchestratorService {
       return;
     }
 
+    // Count how many passes in this cycle produced no parseable JSON verdict.
+    // After 2 consecutive unparseable passes the model is unlikely to self-correct,
+    // so fall through to the draft-PR path rather than burning the entire pass budget.
+    const unparseablePasses = priorUnparseable + (parsed === null ? 1 : 0);
+
     // Only revise when the review produced parseable, actionable issues.
-    // If the output couldn't be parsed, retry the review so the agent gets another chance
-    // to emit valid JSON rather than bailing out early.
-    if (pass < maxPasses) {
+    // If the output couldn't be parsed, retry the review so the agent gets another
+    // chance to emit valid JSON — but cap unparseable retries at 2.
+    if (pass < maxPasses && (parsed !== null || unparseablePasses < 2)) {
       if (parsed !== null) {
         await this.jobs.transition(jobId, 'REVISING', {
           reason: `addressing review pass ${pass}`,
@@ -850,11 +859,12 @@ export class OrchestratorService {
       return;
     }
 
-    await this.safeComment(
-      ref,
-      job.issueNumber,
-      `Self-review didn't reach the confidence threshold after ${pass} passes (best ${result.confidence}/100). Opening a draft PR for human review.`,
-    );
+    const reason =
+      unparseablePasses >= 2
+        ? `Self-review produced unparseable output ${unparseablePasses} times in a row. Opening a draft PR for human review.`
+        : `Self-review didn't reach the confidence threshold after ${pass} passes (best ${result.confidence}/100). Opening a draft PR for human review.`;
+
+    await this.safeComment(ref, job.issueNumber, reason);
 
     await this.jobs.transition(jobId, 'OPENING_PR', {
       reason: 'review cap reached',
