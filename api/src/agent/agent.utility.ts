@@ -98,9 +98,14 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
     // host-side (or sibling-container) service. A per-run session ID is injected
     // separately by agent.service.ts after the AgentRun record is created.
     const langfusePort = process.env.PORT ?? '3030';
+
     args.push('--env', 'HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-olympian');
     args.push('--env', 'HERMES_LANGFUSE_SECRET_KEY=sk-lf-olympian');
-    args.push('--env', `HERMES_LANGFUSE_BASE_URL=http://host.docker.internal:${langfusePort}`);
+
+    args.push(
+      '--env',
+      `HERMES_LANGFUSE_BASE_URL=http://host.docker.internal:${langfusePort}/langfuse`,
+    );
 
     const containerName = `olympian-${randomUUID()}`;
 
@@ -119,7 +124,7 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       // Fixed Langfuse credentials — agent reaches Olympian's trace receiver at localhost.
       HERMES_LANGFUSE_PUBLIC_KEY: 'pk-lf-olympian',
       HERMES_LANGFUSE_SECRET_KEY: 'sk-lf-olympian',
-      HERMES_LANGFUSE_BASE_URL: `http://localhost:${port}`,
+      HERMES_LANGFUSE_BASE_URL: `http://localhost:${port}/langfuse`,
       ...(p.hermesHome ? { HERMES_HOME: p.hermesHome } : {}),
     },
   };

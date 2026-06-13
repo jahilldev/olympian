@@ -18,20 +18,21 @@
 browser
   │  GET /              → static HTML (SPA shell, served by NestJS ServeStaticModule)
   │  GET /ui/jobs       → JSON REST        (NestJS UiController)
-  │  GET /stream/…      → SSE              (NestJS LangfuseController)
-  │  POST /api/public/… → trace ingestion  (NestJS LangfuseController)
+  │  GET /stream/…           → SSE              (NestJS LangfuseController)
+  │  POST /langfuse/…        → trace ingestion  (NestJS LangfuseController)
   ▼
 NestJS (port 3030)
   ├─ ServeStaticModule    → serves app/dist/** as SPA (index.html fallback)
   ├─ UiController         → GET /ui/jobs, GET /ui/jobs/:id
-  ├─ LangfuseController   → POST /api/public/ingestion  (receives Langfuse batch events)
-  │                          GET /stream/runs/:runId     (SSE, fans out trace events)
+  ├─ LangfuseController   → POST /langfuse/api/public/ingestion  (receives Langfuse batch events)
+  │                          GET /stream/runs/:runId              (SSE, fans out trace events)
   ├─ LangfuseService      → in-memory event store keyed by run ID; fan-out to SSE subscribers
   └─ HermesAgentService   → injects HERMES_LANGFUSE_* + HERMES_LANGFUSE_SESSION_ID
                              into every agent invocation; no changes to spawnProcess needed
 hermes agent container
   └─ observability/langfuse plugin
-       → POST /api/public/ingestion on host.docker.internal:3030 (hardcoded, always-on)
+       → POST /langfuse/api/public/ingestion on host.docker.internal:3030 (always-on)
+         (SDK base URL is set to http://host.docker.internal:3030/langfuse; the SDK appends /api/public/ingestion)
 ```
 
 The Astro app is a **static-output SPA shell**. Astro generates one `index.html` and the asset bundle. NestJS's `ServeStaticModule` returns that `index.html` for every path that doesn't match a known API prefix. Preact handles client-side routing based on `window.location.pathname`.
@@ -231,9 +232,13 @@ export class UiModule {}
 
 Olympian acts as a Langfuse-compatible server. The hermes `observability/langfuse` plugin
 is baked into the agent image; it fires trace events (tool calls, LLM spans, completions)
-during execution and POSTs them to `POST /api/public/ingestion` using Basic Auth.
+during execution and POSTs them to `POST /langfuse/api/public/ingestion` using Basic Auth.
 Credentials are fixed: public key `pk-lf-olympian`, secret key `sk-lf-olympian` — always
 injected by the service, never read from `.env`.
+
+The Langfuse SDK constructs the full URL as `{HERMES_LANGFUSE_BASE_URL}/api/public/ingestion`.
+The base URL is set to `http://host.docker.internal:3030/langfuse`, so the full path is
+`/langfuse/api/public/ingestion`. The NestJS controller is mounted at `@Controller('langfuse/api/public')`.
 
 The module has two responsibilities:
 
@@ -268,7 +273,7 @@ export class LangfuseService {
     return pub === LANGFUSE_PUBLIC_KEY && sec === LANGFUSE_SECRET_KEY;
   }
 
-  /** Called for each item in the batch POSTed to /api/public/ingestion. */
+  /** Called for each item in the batch POSTed to /langfuse/api/public/ingestion. */
   ingest(sessionId: string, events: LangfuseEvent[]): void {
     if (!this.subjects.has(sessionId)) {
       this.subjects.set(sessionId, new Subject());
@@ -305,7 +310,7 @@ export class LangfuseService {
 
 #### `api/src/langfuse/langfuse.controller.ts`
 
-**`POST /api/public/ingestion`** — Langfuse batch ingestion
+**`POST /langfuse/api/public/ingestion`** — Langfuse batch ingestion
 
 - Validates Basic Auth credentials against `langfuseService.verifyCredentials()`; returns `401` on failure.
 - Parses the JSON body: `{ batch: Array<{ id, type, timestamp, body, metadata? }> }`.
@@ -773,7 +778,7 @@ WorkerService.tick()
               └─ docker run hermes-agent …
                     └─ hermes -z …
                           └─ observability/langfuse plugin
-                                └─ POST /api/public/ingestion
+                                └─ POST /langfuse/api/public/ingestion
                                      { batch: [{ type: 'span-create', body: { sessionId: run.id, … } }] }
                                           ▼
                                    LangfuseController  →  langfuseService.ingest(run.id, events)
