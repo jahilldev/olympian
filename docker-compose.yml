@@ -11,13 +11,21 @@ services:
       - ./api/.env
     environment:
       DATABASE_URL: file:/data/hermes.db
+      # Mount workspaces at the same absolute path inside and outside the container so
+      # that sibling agent containers spawned via the Docker socket (resolved by the host
+      # daemon) see the same path the service writes to.
+      WORKSPACE_ROOT: ${PWD}/workspaces
     volumes:
       - hermes-data:/data
-      # Persist agent workspaces (cloned repos) across restarts.
-      - hermes-workspaces:/app/.workspaces
+      # Same-path bind mount: host path == container path == WORKSPACE_ROOT above.
+      # Agent volume mounts (-v <jobDir>:/workspace) are resolved by the host daemon,
+      # so the source path must exist on the host — this ensures it does.
+      - ${PWD}/workspaces:${PWD}/workspaces
+      # Docker socket: lets the service spawn sibling agent containers on the host daemon
+      # without running a nested Docker daemon (sibling container pattern).
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - '3030:3030'
+      - "3030:3030"
 
 volumes:
   hermes-data:
-  hermes-workspaces:
