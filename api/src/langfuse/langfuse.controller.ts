@@ -19,14 +19,6 @@ import { type LangfuseEvent, type StreamPayload } from './langfuse.model.js';
 import { LangfuseService } from './langfuse.service.js';
 import { deserializeOtlpTraces } from './langfuse.utility.js';
 
-interface IngestionBatchItem {
-  id: string;
-  type: string;
-  timestamp: string;
-  body: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-}
-
 @Controller()
 export class LangfuseController {
   private readonly logger = new Logger(LangfuseController.name);
@@ -35,43 +27,6 @@ export class LangfuseController {
     private readonly langfuse: LangfuseService,
     private readonly prisma: PrismaService,
   ) {}
-
-  /**
-   * Langfuse batch ingestion endpoint. The Langfuse Python SDK constructs the
-   * full URL as {HERMES_LANGFUSE_BASE_URL}/api/public/ingestion — we set the
-   * base URL to http://…/langfuse, so the full path lands here.
-   */
-  @Post('langfuse/api/public/ingestion')
-  @HttpCode(HttpStatus.OK)
-  ingest(
-    @Headers('authorization') auth: string | undefined,
-    @Body() body: { batch?: IngestionBatchItem[] },
-  ): { successes: { id: string }[]; errors: unknown[] } {
-    if (!this.langfuse.verifyCredentials(auth)) {
-      throw new UnauthorizedException();
-    }
-
-    const batch = body.batch ?? [];
-    const successes: { id: string }[] = [];
-
-    for (const item of batch) {
-      const sessionId =
-        (item.body?.sessionId as string | undefined) ??
-        (item.metadata?.sessionId as string | undefined) ??
-        (item.body?.traceId as string | undefined);
-
-      if (sessionId) {
-        const ev: LangfuseEvent = { type: item.type, timestamp: item.timestamp, body: item.body };
-
-        this.langfuse.ingest(sessionId, [ev]);
-        this.logger.debug(`[${sessionId}] ingested ${item.type}`);
-      }
-
-      successes.push({ id: item.id });
-    }
-
-    return { successes, errors: [] };
-  }
 
   /**
    * OTLP/HTTP protobuf trace ingestion. Langfuse SDK v3+ uses OpenTelemetry natively
