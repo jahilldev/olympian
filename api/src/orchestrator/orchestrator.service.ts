@@ -637,6 +637,14 @@ export class OrchestratorService {
     const plan = await this.approvedPlan(jobId);
     const hasBrowser = !!process.env.CAMOFOX_URL;
 
+    // Pass the most recent prior test output so the agent can build on the previous
+    // run's findings rather than rediscovering the project from scratch each time.
+    const priorTestRun = await this.prisma.agentRun.findFirst({
+      where: { jobId, phase: 'TEST' },
+      orderBy: { createdAt: 'desc' },
+      select: { stdout: true },
+    });
+
     const res = await this.agent.run({
       jobId,
       phase: 'TEST',
@@ -646,6 +654,7 @@ export class OrchestratorService {
         issueTitle: job.issueTitle,
         plan,
         hasBrowser,
+        priorOutput: priorTestRun?.stdout ?? undefined,
       }),
       model: this.config.get('HERMES_TESTING_MODEL') || undefined,
       provider: this.config.get('HERMES_TESTING_PROVIDER') || undefined,
@@ -668,6 +677,16 @@ export class OrchestratorService {
       // Throw so the queue retries the TEST task rather than triggering a REVISE cycle.
       throw new Error(`test agent ${res.status} (exit ${res.exitCode}); retrying`);
     } else {
+      const testRunCount = await this.prisma.agentRun.count({ where: { jobId, phase: 'TEST' } });
+      const maxTestIters = this.config.get('MAX_TEST_ITERATIONS');
+
+      if (testRunCount >= maxTestIters) {
+        const reason = `tests failed after ${testRunCount} attempts`;
+        this.logger.warn(`[job ${jobId}] ${reason}; failing job`);
+        await this.jobs.transition(jobId, 'FAILED', { reason, actor: 'AGENT' });
+        return;
+      }
+
       const reason = testResult
         ? `tests failed: ${testResult.failures.map((f) => f.name).join(', ') || 'see summary'}`
         : `test agent ${res.status}`;
