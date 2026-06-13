@@ -201,8 +201,10 @@ export function deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: 
 
   while (!root.isAtEnd()) {
     const { field: f1, wire: w1 } = root.readTag();
+
     if (f1 !== 1 || w1 !== 2) {
       root.skip(w1);
+
       continue;
     } // resource_spans (field 1)
 
@@ -213,14 +215,20 @@ export function deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: 
 
     while (!rsReader.isAtEnd()) {
       const { field: f2, wire: w2 } = rsReader.readTag();
+
       if (f2 === 1 && w2 === 2) {
         // resource (field 1) — collect its attributes
         const resBuf = rsReader.readBytes();
         const resReader = new ProtoReader(resBuf);
+
         while (!resReader.isAtEnd()) {
           const { field: f3, wire: w3 } = resReader.readTag();
-          if (f3 === 1 && w3 === 2) resourceAttrBufs.push(resReader.readBytes());
-          else resReader.skip(w3);
+
+          if (f3 === 1 && w3 === 2) {
+            resourceAttrBufs.push(resReader.readBytes());
+          } else {
+            resReader.skip(w3);
+          }
         }
       } else if (f2 === 2 && w2 === 2) {
         scopeSpanBufs.push(rsReader.readBytes()); // scope_spans (field 2)
@@ -236,10 +244,13 @@ export function deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: 
 
     for (const ssBuf of scopeSpanBufs) {
       const ssReader = new ProtoReader(ssBuf);
+
       while (!ssReader.isAtEnd()) {
         const { field: f4, wire: w4 } = ssReader.readTag();
+
         if (f4 !== 2 || w4 !== 2) {
           ssReader.skip(w4);
+
           continue;
         } // spans (field 2)
 
