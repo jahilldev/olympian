@@ -96,12 +96,14 @@ export class LangfuseController {
     }
 
     let ingested = 0;
+
     try {
       // Dump first payload to disk for attribute-key debugging, then remove.
       try {
         const dumpPath = '/tmp/otlp-live.bin';
         if (!existsSync(dumpPath)) {
           writeFileSync(dumpPath, raw);
+
           this.logger.warn(`OTLP: dumped first payload (${raw.length} bytes) to ${dumpPath}`);
         }
       } catch {
@@ -118,6 +120,7 @@ export class LangfuseController {
       }
       for (const { sessionId, event } of spans) {
         this.langfuse.ingest(sessionId, [event]);
+
         ingested++;
       }
     } catch (err) {

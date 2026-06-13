@@ -91,15 +91,21 @@ export class HermesAgentService {
       },
     });
 
-    // Inject the run ID as the Langfuse session ID so the trace receiver can
-    // correlate incoming events to this specific AgentRun record.
+    // Inject the run ID as an OTLP resource attribute so the trace receiver can
+    // correlate incoming spans to this specific AgentRun record.
+    // OTEL_RESOURCE_ATTRIBUTES is read by the opentelemetry SDK at startup and
+    // merged into every span's resource, making session.id=<runId> visible in
+    // the binary protobuf payload without requiring any agent-side changes.
+    const sessionAttr = `session.id=${run.id}`;
     const imageArg = this.config.get('DOCKER_AGENT_IMAGE');
     const imageIdx = spec.args.indexOf(imageArg);
 
     if (imageIdx > -1) {
-      spec.args.splice(imageIdx, 0, '--env', `HERMES_LANGFUSE_SESSION_ID=${run.id}`);
+      spec.args.splice(imageIdx, 0, '--env', `OTEL_RESOURCE_ATTRIBUTES=${sessionAttr}`);
     } else if (spec.env) {
-      (spec.env as Record<string, string>).HERMES_LANGFUSE_SESSION_ID = run.id;
+      const env = spec.env as Record<string, string>;
+      const existing = env.OTEL_RESOURCE_ATTRIBUTES;
+      env.OTEL_RESOURCE_ATTRIBUTES = existing ? `${existing},${sessionAttr}` : sessionAttr;
     }
 
     this.logger.log(`[job ${opts.jobId}] agent ${opts.phase} starting: ${commandLine}`);
