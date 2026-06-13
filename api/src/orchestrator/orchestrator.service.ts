@@ -660,6 +660,13 @@ export class OrchestratorService {
         actor: 'AGENT',
       });
       await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+    } else if (
+      res.status === 'TIMED_OUT' ||
+      (res.status === 'FAILED' && (res.exitCode ?? 0) >= 128)
+    ) {
+      // Infrastructure failure (killed by signal or timed out) — not a code problem.
+      // Throw so the queue retries the TEST task rather than triggering a REVISE cycle.
+      throw new Error(`test agent ${res.status} (exit ${res.exitCode}); retrying`);
     } else {
       const reason = testResult
         ? `tests failed: ${testResult.failures.map((f) => f.name).join(', ') || 'see summary'}`
