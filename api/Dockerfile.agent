@@ -27,6 +27,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh \
     | bash -s -- --skip-setup --skip-browser
 
+# Install the Langfuse SDK into the Hermes venv so the observability plugin
+# can emit OTLP traces (POST /api/public/otel/v1/traces, application/x-protobuf).
+# The hermes wrapper unsets PYTHONPATH/PYTHONHOME before exec-ing the venv python,
+# so packages must live inside the venv — not in the system site-packages.
+RUN /usr/local/lib/hermes-agent/venv/bin/python3 -m ensurepip \
+    && /usr/local/lib/hermes-agent/venv/bin/python3 -m pip install --no-cache-dir langfuse
+
 # Bake in the default config (model, provider, base_url).
 # Rewrite localhost → host.docker.internal so Ollama is reachable from inside
 # the container (the orchestrator passes --add-host=host.docker.internal:host-gateway).

@@ -92,6 +92,22 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       );
     }
 
+    // Forward Langfuse observability credentials so the baked-in langfuse plugin
+    // can emit OTLP traces. The base URL is rewritten from localhost to
+    // host.docker.internal so the container can reach the Olympian trace server.
+    const langfusePublicKey = process.env.HERMES_LANGFUSE_PUBLIC_KEY;
+    const langfuseSecretKey = process.env.HERMES_LANGFUSE_SECRET_KEY;
+    const langfuseBaseUrl = process.env.HERMES_LANGFUSE_BASE_URL;
+
+    if (langfusePublicKey && langfuseSecretKey && langfuseBaseUrl) {
+      args.push('--env', `HERMES_LANGFUSE_PUBLIC_KEY=${langfusePublicKey}`);
+      args.push('--env', `HERMES_LANGFUSE_SECRET_KEY=${langfuseSecretKey}`);
+      args.push(
+        '--env',
+        `HERMES_LANGFUSE_BASE_URL=${langfuseBaseUrl.replace(/\/\/localhost(:|$)/g, '//host.docker.internal$1')}`,
+      );
+    }
+
     const containerName = `olympian-${randomUUID()}`;
 
     args.push('--name', containerName);
