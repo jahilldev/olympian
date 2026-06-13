@@ -162,10 +162,12 @@ Issue-comment commands (maintainers only — write access required):
 
 ## Sandboxing
 
-- `SANDBOX_MODE=none` (default) runs `hermes` as a subprocess in the job's worktree.
-- `SANDBOX_MODE=docker` runs each agent invocation inside `DOCKER_AGENT_IMAGE`, mounting
-  **only** that job's directory and the read-only Hermes config. Each job lives in its own
-  directory keyed by job id, so raising `WORKER_CONCURRENCY` runs N isolated jobs in parallel.
+- `SANDBOX_MODE=docker` (default) runs each agent invocation inside `DOCKER_AGENT_IMAGE`,
+  mounting **only** that job's directory and the persistent Hermes memory files. Each job
+  lives in its own directory keyed by job id, so raising `WORKER_CONCURRENCY` runs N
+  isolated jobs in parallel. Requires Docker and a pre-built agent image (see below).
+- `SANDBOX_MODE=none` runs `hermes` as a subprocess in the job's worktree. Useful for
+  local development without Docker.
 
 ## Configuration
 
@@ -187,11 +189,20 @@ defaults live in [`api/.env.example`](api/.env.example). Key knobs:
 ## Docker
 
 ```bash
-cd api && cp .env.example .env   # fill in values
-docker compose up --build        # from repo root: builds the api image
+# 1. Build the agent sandbox image (needed for SANDBOX_MODE=docker, the default).
+npm run hermes:docker
+
+# 2. Configure the service.
+cd api && cp .env.example .env   # fill in GitHub App + model values
+
+# 3. Start.
+docker compose up --build        # from repo root: builds the service image
 ```
 
-SQLite lives on a named volume; there is no separate database container.
+SQLite lives on a named volume (`hermes-data`); there is no separate database container.
+Agent workspaces are bind-mounted from `./workspaces/` in the repo root at the **same
+absolute path** inside the service container, so sibling agent containers spawned via
+the Docker socket can reference workspace directories by the same host path.
 
 ## Production (systemd)
 
