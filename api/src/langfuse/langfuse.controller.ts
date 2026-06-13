@@ -98,13 +98,25 @@ export class LangfuseController {
 
     let ingested = 0;
     try {
+      // Dump first payload to disk for attribute-key debugging, then remove.
+      try {
+        const fs = await import('node:fs');
+        const dumpPath = '/tmp/otlp-live.bin';
+        if (!fs.existsSync(dumpPath)) {
+          fs.writeFileSync(dumpPath, raw);
+          this.logger.warn(`OTLP: dumped first payload (${raw.length} bytes) to ${dumpPath}`);
+        }
+      } catch { /* ignore */ }
+
       const spans = deserializeOtlpTraces(raw);
+      if (spans.length === 0) {
+        this.logger.warn(`OTLP: 0 spans with session ID extracted from ${raw.length}-byte payload`);
+      } else {
+        this.logger.warn(`OTLP: ingested ${ingested} span(s) for session(s): ${[...new Set(spans.map(s => s.sessionId))].join(', ')}`);
+      }
       for (const { sessionId, event } of spans) {
         this.langfuse.ingest(sessionId, [event]);
         ingested++;
-      }
-      if (ingested > 0) {
-        this.logger.debug(`OTLP: ingested ${ingested} span(s)`);
       }
     } catch (err) {
       this.logger.warn(`OTLP parse error: ${(err as Error).message}`);

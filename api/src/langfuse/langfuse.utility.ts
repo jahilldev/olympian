@@ -201,7 +201,10 @@ export function deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: 
 
   while (!root.isAtEnd()) {
     const { field: f1, wire: w1 } = root.readTag();
-    if (f1 !== 1 || w1 !== 2) { root.skip(w1); continue; } // resource_spans (field 1)
+    if (f1 !== 1 || w1 !== 2) {
+      root.skip(w1);
+      continue;
+    } // resource_spans (field 1)
 
     const rsBuf = root.readBytes();
     const rsReader = new ProtoReader(rsBuf);
@@ -227,17 +230,22 @@ export function deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: 
     }
 
     const resourceAttrs = collectAttributes(resourceAttrBufs);
-    const resourceSessionId = SESSION_ID_KEYS.map(k => resourceAttrs[k] as string | undefined).find(Boolean);
+    const resourceSessionId = SESSION_ID_KEYS.map(
+      (k) => resourceAttrs[k] as string | undefined,
+    ).find(Boolean);
 
     for (const ssBuf of scopeSpanBufs) {
       const ssReader = new ProtoReader(ssBuf);
       while (!ssReader.isAtEnd()) {
         const { field: f4, wire: w4 } = ssReader.readTag();
-        if (f4 !== 2 || w4 !== 2) { ssReader.skip(w4); continue; } // spans (field 2)
+        if (f4 !== 2 || w4 !== 2) {
+          ssReader.skip(w4);
+          continue;
+        } // spans (field 2)
 
         const span = parseSpan(ssReader.readBytes());
         const sessionId =
-          SESSION_ID_KEYS.map(k => span.attributes[k] as string | undefined).find(Boolean) ??
+          SESSION_ID_KEYS.map((k) => span.attributes[k] as string | undefined).find(Boolean) ??
           resourceSessionId;
 
         if (!sessionId) continue; // no session ID — not from our agent, ignore
