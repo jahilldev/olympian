@@ -116,6 +116,7 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
   }
 
   const port = process.env.PORT ?? '3030';
+
   return {
     command: p.hermesBin,
     args: hermesArgs(p),
