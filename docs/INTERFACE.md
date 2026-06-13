@@ -266,13 +266,18 @@ export interface LangfuseEvent {
 }
 
 export type StreamPayload =
-  | { type: 'history'; events: LangfuseEvent[] }
-  | { type: 'event'; event: LangfuseEvent }
-  | { type: 'done'; status: string; exitCode: number | null; durationMs: number | null }
-  | { type: 'error'; message: string };
+  | { type: "history"; events: LangfuseEvent[] }
+  | { type: "event"; event: LangfuseEvent }
+  | {
+      type: "done";
+      status: string;
+      exitCode: number | null;
+      durationMs: number | null;
+    }
+  | { type: "error"; message: string };
 
-export const LANGFUSE_PUBLIC_KEY = 'pk-lf-olympian';
-export const LANGFUSE_SECRET_KEY = 'sk-lf-olympian';
+export const LANGFUSE_PUBLIC_KEY = "pk-lf-olympian";
+export const LANGFUSE_SECRET_KEY = "sk-lf-olympian";
 export const BUFFER_EVENTS = 1_000;
 ```
 
@@ -292,7 +297,12 @@ timestamp. Returns only spans for which a session ID could be resolved.
 ```typescript
 import { Injectable } from "@nestjs/common";
 import { Subject, Observable } from "rxjs";
-import { type LangfuseEvent, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, BUFFER_EVENTS } from "./langfuse.model.js";
+import {
+  type LangfuseEvent,
+  LANGFUSE_PUBLIC_KEY,
+  LANGFUSE_SECRET_KEY,
+  BUFFER_EVENTS,
+} from "./langfuse.model.js";
 
 @Injectable()
 export class LangfuseService {
@@ -412,17 +422,24 @@ After `this.prisma.agentRun.create(...)` returns `run`, and before calling `spaw
 // Inject the run ID as an OTLP resource attribute so the trace receiver can
 // correlate incoming spans to this specific AgentRun record.
 const sessionAttr = `session.id=${run.id}`;
-const imageArg = this.config.get('DOCKER_AGENT_IMAGE');
+const imageArg = this.config.get("DOCKER_AGENT_IMAGE");
 const imageIdx = spec.args.indexOf(imageArg);
 
 if (imageIdx > -1) {
   // docker mode: splice --env OTEL_RESOURCE_ATTRIBUTES before the image name
-  spec.args.splice(imageIdx, 0, '--env', `OTEL_RESOURCE_ATTRIBUTES=${sessionAttr}`);
+  spec.args.splice(
+    imageIdx,
+    0,
+    "--env",
+    `OTEL_RESOURCE_ATTRIBUTES=${sessionAttr}`,
+  );
 } else if (spec.env) {
   // system mode: merge into existing env object
   const env = spec.env as Record<string, string>;
   const existing = env.OTEL_RESOURCE_ATTRIBUTES;
-  env.OTEL_RESOURCE_ATTRIBUTES = existing ? `${existing},${sessionAttr}` : sessionAttr;
+  env.OTEL_RESOURCE_ATTRIBUTES = existing
+    ? `${existing},${sessionAttr}`
+    : sessionAttr;
 }
 ```
 
@@ -439,13 +456,13 @@ Add `UiModule` and `LangfuseModule` to the `imports` array in `app.module.ts`.
 **OTLP body parser (required before `app.listen`):**
 
 ```typescript
-import { raw } from 'express';
+import { raw } from "express";
 
 // OTLP/HTTP protobuf — must be registered before NestJS's JSON body parser
 // so the binary payload is preserved as a Buffer for the OTLP handler.
 app.use(
-  '/langfuse/api/public/otel/v1/traces',
-  raw({ type: 'application/x-protobuf', limit: '50mb' }),
+  "/langfuse/api/public/otel/v1/traces",
+  raw({ type: "application/x-protobuf", limit: "50mb" }),
 );
 ```
 
