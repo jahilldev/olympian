@@ -36,10 +36,6 @@ export const envSchema = z.object({
   // a hung foreground dev server will otherwise stall the job for hours.
   // Defaults to 30 min; raise for repos with very slow test suites.
   HERMES_TESTING_TIMEOUT_MS: intFromString(1_800_000),
-  // Kill agents that haven't sent telemetry in this many ms. Catches hung tool
-  // calls, deadlocks, and infinite loops that don't trigger the wall-clock timeout.
-  // Defaults to 10 min.
-  HERMES_IDLE_TIMEOUT_MS: intFromString(600_000),
 
   // orchestration policy
   TRIGGER_LABEL: z.string().default('hermes'),

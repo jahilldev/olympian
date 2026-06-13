@@ -11,7 +11,6 @@ import {
 export class LangfuseService {
   private readonly subjects = new Map<string, Subject<LangfuseEvent>>();
   private readonly buffers = new Map<string, LangfuseEvent[]>();
-  private readonly lastEventAt = new Map<string, number>();
 
   verifyCredentials(authHeader: string | undefined): boolean {
     if (!authHeader?.startsWith('Basic ')) {
@@ -40,9 +39,6 @@ export class LangfuseService {
     const subject = this.subjects.get(sessionId)!;
     const buffer = this.buffers.get(sessionId)!;
 
-    // Track the last event timestamp for idle detection
-    this.lastEventAt.set(sessionId, Date.now());
-
     for (const ev of events) {
       if (buffer.length >= BUFFER_EVENTS) {
         buffer.shift();
@@ -57,7 +53,6 @@ export class LangfuseService {
     this.subjects.get(sessionId)?.complete();
     this.subjects.delete(sessionId);
     this.buffers.delete(sessionId);
-    this.lastEventAt.delete(sessionId);
   }
 
   observe(sessionId: string): Observable<LangfuseEvent> | null {
@@ -70,22 +65,5 @@ export class LangfuseService {
 
   isActive(sessionId: string): boolean {
     return this.subjects.has(sessionId);
-  }
-
-  /**
-   * Returns session IDs that haven't sent telemetry events in at least `idleMs`.
-   * Used by the worker to detect and kill hung agents.
-   */
-  findIdleSessions(idleMs: number): string[] {
-    const now = Date.now();
-    const idle: string[] = [];
-
-    for (const [sessionId, lastEvent] of this.lastEventAt) {
-      if (now - lastEvent >= idleMs) {
-        idle.push(sessionId);
-      }
-    }
-
-    return idle;
   }
 }
