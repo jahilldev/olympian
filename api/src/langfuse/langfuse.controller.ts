@@ -7,8 +7,6 @@ import {
   Logger,
   Param,
   Post,
-  RawBody,
-  Req,
   Sse,
   UnauthorizedException,
   type MessageEvent,
@@ -85,11 +83,13 @@ export class LangfuseController {
   @HttpCode(HttpStatus.OK)
   ingestOtlp(
     @Headers('authorization') auth: string | undefined,
-    @RawBody() raw: Buffer,
+    @Body() raw: Buffer,
   ): { partialSuccess: Record<string, never> } {
     if (!this.langfuse.verifyCredentials(auth)) {
       throw new UnauthorizedException();
     }
+
+    this.logger.warn(`OTLP: raw body type=${typeof raw} len=${raw?.length ?? 'N/A'}`);
 
     if (!raw?.length) {
       return { partialSuccess: {} };
