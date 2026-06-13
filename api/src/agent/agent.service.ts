@@ -91,6 +91,17 @@ export class HermesAgentService {
       },
     });
 
+    // Inject the run ID as the Langfuse session ID so the trace receiver can
+    // correlate incoming events to this specific AgentRun record.
+    const imageArg = this.config.get('DOCKER_AGENT_IMAGE');
+    const imageIdx = spec.args.indexOf(imageArg);
+
+    if (imageIdx > -1) {
+      spec.args.splice(imageIdx, 0, '--env', `HERMES_LANGFUSE_SESSION_ID=${run.id}`);
+    } else if (spec.env) {
+      (spec.env as Record<string, string>).HERMES_LANGFUSE_SESSION_ID = run.id;
+    }
+
     this.logger.log(`[job ${opts.jobId}] agent ${opts.phase} starting: ${commandLine}`);
 
     const raw = await spawnProcess(spec, {

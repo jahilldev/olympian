@@ -92,21 +92,15 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       );
     }
 
-    // Forward Langfuse observability credentials so the baked-in langfuse plugin
-    // can emit OTLP traces. The base URL is rewritten from localhost to
-    // host.docker.internal so the container can reach the Olympian trace server.
-    const langfusePublicKey = process.env.HERMES_LANGFUSE_PUBLIC_KEY;
-    const langfuseSecretKey = process.env.HERMES_LANGFUSE_SECRET_KEY;
-    const langfuseBaseUrl = process.env.HERMES_LANGFUSE_BASE_URL;
-
-    if (langfusePublicKey && langfuseSecretKey && langfuseBaseUrl) {
-      args.push('--env', `HERMES_LANGFUSE_PUBLIC_KEY=${langfusePublicKey}`);
-      args.push('--env', `HERMES_LANGFUSE_SECRET_KEY=${langfuseSecretKey}`);
-      args.push(
-        '--env',
-        `HERMES_LANGFUSE_BASE_URL=${langfuseBaseUrl.replace(/\/\/localhost(:|$)/g, '//host.docker.internal$1')}`,
-      );
-    }
+    // Always forward fixed Langfuse credentials so the baked-in observability plugin
+    // emits traces to Olympian's trace receiver without any user configuration.
+    // The base URL uses host.docker.internal so the agent container reaches the
+    // host-side (or sibling-container) service. A per-run session ID is injected
+    // separately by agent.service.ts after the AgentRun record is created.
+    const langfusePort = process.env.PORT ?? '3030';
+    args.push('--env', 'HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-olympian');
+    args.push('--env', 'HERMES_LANGFUSE_SECRET_KEY=sk-lf-olympian');
+    args.push('--env', `HERMES_LANGFUSE_BASE_URL=http://host.docker.internal:${langfusePort}`);
 
     const containerName = `olympian-${randomUUID()}`;
 
@@ -116,10 +110,18 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
     return { command: 'docker', args, env: process.env, containerName };
   }
 
+  const port = process.env.PORT ?? '3030';
   return {
     command: p.hermesBin,
     args: hermesArgs(p),
-    env: { ...process.env, ...(p.hermesHome ? { HERMES_HOME: p.hermesHome } : {}) },
+    env: {
+      ...process.env,
+      // Fixed Langfuse credentials — agent reaches Olympian's trace receiver at localhost.
+      HERMES_LANGFUSE_PUBLIC_KEY: 'pk-lf-olympian',
+      HERMES_LANGFUSE_SECRET_KEY: 'sk-lf-olympian',
+      HERMES_LANGFUSE_BASE_URL: `http://localhost:${port}`,
+      ...(p.hermesHome ? { HERMES_HOME: p.hermesHome } : {}),
+    },
   };
 }
 

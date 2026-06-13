@@ -7,7 +7,7 @@
 ## 1. Goals
 
 - Provide a real-time web dashboard at `http://localhost:3030` that shows every Hermes job, its current state, and the full audit trail (plan revisions, review passes, PR feedback, agent runs).
-- Allow a user to watch a running agent's raw stdout stream as it happens, giving direct visibility into model reasoning and output.
+- Allow a user to watch a running agent's activity in real time. Because hermes runs in headless (`-z`) mode, stdout is buffered and only flushed on exit — there are no real-time stdout chunks to pipe. Instead, the hermes `observability/langfuse` plugin fires Langfuse trace events (tool calls, LLM requests, completions) _during_ execution. Olympian acts as the Langfuse server: it receives these events and streams them to the UI via SSE.
 - Keep operational overhead at zero: the Astro app is built to a static directory and served directly by the existing NestJS process — no second server process, no Docker compose change.
 
 ---
@@ -16,16 +16,22 @@
 
 ```
 browser
-  │  GET /          → static HTML (SPA shell, served by NestJS ServeStaticModule)
-  │  GET /ui/jobs   → JSON REST  (new NestJS UiController)
-  │  GET /stream/…  → SSE        (new NestJS StreamController)
+  │  GET /              → static HTML (SPA shell, served by NestJS ServeStaticModule)
+  │  GET /ui/jobs       → JSON REST        (NestJS UiController)
+  │  GET /stream/…      → SSE              (NestJS LangfuseController)
+  │  POST /api/public/… → trace ingestion  (NestJS LangfuseController)
   ▼
 NestJS (port 3030)
-  ├─ ServeStaticModule  → serves app/dist/** as SPA (index.html fallback)
-  ├─ UiController       → GET /ui/jobs, GET /ui/jobs/:id
-  ├─ StreamController   → GET /stream/runs/:runId  (SSE)
-  ├─ StreamService      → in-process pub/sub; agent service publishes chunks here
-  └─ HermesAgentService → modified to pipe stdout through StreamService
+  ├─ ServeStaticModule    → serves app/dist/** as SPA (index.html fallback)
+  ├─ UiController         → GET /ui/jobs, GET /ui/jobs/:id
+  ├─ LangfuseController   → POST /api/public/ingestion  (receives Langfuse batch events)
+  │                          GET /stream/runs/:runId     (SSE, fans out trace events)
+  ├─ LangfuseService      → in-memory event store keyed by run ID; fan-out to SSE subscribers
+  └─ HermesAgentService   → injects HERMES_LANGFUSE_* + HERMES_LANGFUSE_SESSION_ID
+                             into every agent invocation; no changes to spawnProcess needed
+hermes agent container
+  └─ observability/langfuse plugin
+       → POST /api/public/ingestion on host.docker.internal:3030 (hardcoded, always-on)
 ```
 
 The Astro app is a **static-output SPA shell**. Astro generates one `index.html` and the asset bundle. NestJS's `ServeStaticModule` returns that `index.html` for every path that doesn't match a known API prefix. Preact handles client-side routing based on `window.location.pathname`.
@@ -47,7 +53,7 @@ olympian/
 │       ├── pages/
 │       │   └── index.astro     ← single SPA entry point
 │       └── components/         ← Preact islands (all client:only)
-│           ├── App.tsx          ← top-level router
+│           ├── App.tsx
 │           ├── JobList.tsx
 │           ├── JobDetail.tsx
 │           ├── RunOutput.tsx
@@ -63,15 +69,14 @@ olympian/
 │       │   ├── ui.module.ts
 │       │   ├── ui.controller.ts
 │       │   └── ui.model.ts
-│       ├── stream/             ← NEW NestJS module
-│       │   ├── stream.module.ts
-│       │   ├── stream.service.ts
-│       │   └── stream.controller.ts
+│       ├── langfuse/           ← NEW NestJS module (trace receiver + SSE emitter)
+│       │   ├── langfuse.module.ts
+│       │   ├── langfuse.service.ts
+│       │   └── langfuse.controller.ts
 │       ├── agent/
-│       │   ├── agent.service.ts   ← modified: injects StreamService
-│       │   └── agent.utility.ts   ← modified: onChunk callback in spawnProcess
-│       ├── app.module.ts          ← modified: imports UiModule, StreamModule
-│       └── main.ts                ← modified: registers ServeStaticModule
+│       │   ├── agent.service.ts   ← modified: injects session ID after run creation
+│       │   └── agent.utility.ts   ← modified: hardcoded Langfuse credentials always forwarded
+│       └── app.module.ts          ← modified: imports UiModule, LangfuseModule
 └── docs/
     └── INTERFACE.md            ← this file
 ```
@@ -82,10 +87,10 @@ olympian/
 
 ### 4.1 New NestJS modules overview
 
-| Module | File path | Responsibility |
-|---|---|---|
-| `UiModule` | `api/src/ui/` | REST endpoints the Preact app polls for data |
-| `StreamModule` | `api/src/stream/` | SSE streaming of live agent stdout; in-process pub/sub |
+| Module           | File path           | Responsibility                                                      |
+| ---------------- | ------------------- | ------------------------------------------------------------------- |
+| `UiModule`       | `api/src/ui/`       | REST endpoints the Preact app polls for data                        |
+| `LangfuseModule` | `api/src/langfuse/` | Langfuse-compatible ingestion endpoint; SSE fan-out of trace events |
 
 Both modules follow the existing five-file module layout from `AGENTS.md`. Neither module has a `*.utility.ts` or `*.prompts.ts` file (no helpers or prompts needed).
 
@@ -94,9 +99,9 @@ Both modules follow the existing five-file module layout from `AGENTS.md`. Neith
 **`api/src/ui/ui.model.ts`** — response shape types
 
 ```typescript
-import type { AgentPhase } from '../agent/agent.model.js';
-import type { TaskKind, TaskStatus } from '../queue/queue.model.js';
-import type { ReviewVerdict, IssueSeverity } from '../review/review.model.js';
+import type { AgentPhase } from "../agent/agent.model.js";
+import type { TaskKind, TaskStatus } from "../queue/queue.model.js";
+import type { ReviewVerdict, IssueSeverity } from "../review/review.model.js";
 
 export interface ActiveRunDto {
   id: string;
@@ -116,7 +121,7 @@ export interface JobSummaryDto {
   repoFullName: string;
   issueNumber: number;
   issueTitle: string;
-  state: string;          // JobState union value
+  state: string; // JobState union value
   confidence: number | null;
   reviewCycle: number;
   prNumber: number | null;
@@ -173,10 +178,10 @@ export interface AgentRunDto {
   id: string;
   phase: AgentPhase;
   model: string | null;
-  status: string;         // AgentRunStatus
+  status: string; // AgentRunStatus
   exitCode: number | null;
   durationMs: number | null;
-  hasOutput: boolean;     // true if stdout is non-empty in DB
+  hasOutput: boolean; // true if stdout is non-empty in DB
   createdAt: string;
 }
 
@@ -196,12 +201,13 @@ export interface JobDetailDto extends JobSummaryDto {
 
 **`api/src/ui/ui.controller.ts`** — REST routes
 
-| Method | Path | Response | Description |
-|---|---|---|---|
-| `GET` | `/ui/jobs` | `JobSummaryDto[]` | All jobs, sorted `updatedAt DESC`. Includes `activeRun` (any `AgentRun` with `status = 'RUNNING'`) and `activeTask` (any `QueueTask` with `status = 'RUNNING'`). |
-| `GET` | `/ui/jobs/:id` | `JobDetailDto` | Full job record with all relations. Returns 404 if not found. |
+| Method | Path           | Response          | Description                                                                                                                                                      |
+| ------ | -------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/ui/jobs`     | `JobSummaryDto[]` | All jobs, sorted `updatedAt DESC`. Includes `activeRun` (any `AgentRun` with `status = 'RUNNING'`) and `activeTask` (any `QueueTask` with `status = 'RUNNING'`). |
+| `GET`  | `/ui/jobs/:id` | `JobDetailDto`    | Full job record with all relations. Returns 404 if not found.                                                                                                    |
 
 Implementation notes:
+
 - Use a single Prisma query with `include` for each endpoint to avoid N+1 queries.
 - `activeRun`: from `runs` include, filter to first where `status = 'RUNNING'`.
 - `activeTask`: from `tasks` include, filter to first where `status = 'RUNNING'`.
@@ -221,150 +227,177 @@ Implementation notes:
 export class UiModule {}
 ```
 
-### 4.3 `StreamModule`
+### 4.3 `LangfuseModule`
 
-#### `api/src/stream/stream.service.ts`
+Olympian acts as a Langfuse-compatible server. The hermes `observability/langfuse` plugin
+is baked into the agent image; it fires trace events (tool calls, LLM spans, completions)
+during execution and POSTs them to `POST /api/public/ingestion` using Basic Auth.
+Credentials are fixed: public key `pk-lf-olympian`, secret key `sk-lf-olympian` — always
+injected by the service, never read from `.env`.
 
-Singleton in-process pub/sub registry. The agent service publishes chunks; the SSE controller subscribes.
+The module has two responsibilities:
+
+1. **Receive** Langfuse batch events and index them by session ID (= `AgentRun.id`).
+2. **Emit** those events to SSE subscribers watching `/stream/runs/:runId`.
+
+#### `api/src/langfuse/langfuse.service.ts`
 
 ```typescript
-import { Injectable } from '@nestjs/common';
-import { Subject, Observable } from 'rxjs';
+import { Injectable } from "@nestjs/common";
+import { Subject, Observable } from "rxjs";
 
-const BUFFER_LINES = 500; // circular buffer size per run
+export interface LangfuseEvent {
+  type: string; // e.g. 'trace-create', 'span-create', 'generation-create'
+  timestamp: string;
+  body: Record<string, unknown>;
+}
+
+const LANGFUSE_PUBLIC_KEY = "pk-lf-olympian";
+const LANGFUSE_SECRET_KEY = "sk-lf-olympian";
+const BUFFER_EVENTS = 1000;
 
 @Injectable()
-export class StreamService {
-  // Active run subjects — removed on complete()
-  private readonly subjects = new Map<string, Subject<string>>();
-  // Ring buffers — kept after completion so late SSE clients get history
-  private readonly buffers = new Map<string, string[]>();
+export class LangfuseService {
+  private readonly subjects = new Map<string, Subject<LangfuseEvent>>();
+  private readonly buffers = new Map<string, LangfuseEvent[]>();
 
-  /** Called by HermesAgentService before spawning the process. */
-  register(runId: string): void {
-    this.subjects.set(runId, new Subject<string>());
-    this.buffers.set(runId, []);
+  verifyCredentials(authHeader: string | undefined): boolean {
+    if (!authHeader?.startsWith("Basic ")) return false;
+    const decoded = Buffer.from(authHeader.slice(6), "base64").toString();
+    const [pub, sec] = decoded.split(":");
+    return pub === LANGFUSE_PUBLIC_KEY && sec === LANGFUSE_SECRET_KEY;
   }
 
-  /** Called for each stdout chunk received from the subprocess. */
-  publish(runId: string, chunk: string): void {
-    const subject = this.subjects.get(runId);
-    const buffer = this.buffers.get(runId);
-    if (!subject || !buffer) return;
-
-    // Split on newlines to keep buffer lines readable; trailing partial line is fine.
-    const lines = chunk.split('\n');
-    for (const line of lines) {
-      if (buffer.length >= BUFFER_LINES) buffer.shift();
-      buffer.push(line);
+  /** Called for each item in the batch POSTed to /api/public/ingestion. */
+  ingest(sessionId: string, events: LangfuseEvent[]): void {
+    if (!this.subjects.has(sessionId)) {
+      this.subjects.set(sessionId, new Subject());
+      this.buffers.set(sessionId, []);
     }
-    subject.next(chunk);
+    const subject = this.subjects.get(sessionId)!;
+    const buffer = this.buffers.get(sessionId)!;
+    for (const ev of events) {
+      if (buffer.length >= BUFFER_EVENTS) buffer.shift();
+      buffer.push(ev);
+      subject.next(ev);
+    }
   }
 
-  /** Called by HermesAgentService after the process exits. */
-  complete(runId: string): void {
-    const subject = this.subjects.get(runId);
-    subject?.complete();
-    this.subjects.delete(runId);
-    // Buffer is intentionally kept so late SSE subscribers can replay it.
+  /** Mark the session complete (agent run finished). */
+  complete(sessionId: string): void {
+    this.subjects.get(sessionId)?.complete();
+    this.subjects.delete(sessionId);
   }
 
-  /** Returns an Observable that emits future chunks. Returns null if run is unknown. */
-  observe(runId: string): Observable<string> | null {
-    const subject = this.subjects.get(runId);
-    return subject ? subject.asObservable() : null;
+  observe(sessionId: string): Observable<LangfuseEvent> | null {
+    return this.subjects.get(sessionId)?.asObservable() ?? null;
   }
 
-  /** Returns buffered lines collected so far (or since completion). */
-  getBuffer(runId: string): string[] {
-    return this.buffers.get(runId) ?? [];
+  getBuffer(sessionId: string): LangfuseEvent[] {
+    return this.buffers.get(sessionId) ?? [];
   }
 
-  /** Returns true if the run is currently active (subject still open). */
-  isActive(runId: string): boolean {
-    return this.subjects.has(runId);
+  isActive(sessionId: string): boolean {
+    return this.subjects.has(sessionId);
   }
 }
 ```
 
-#### `api/src/stream/stream.controller.ts`
+#### `api/src/langfuse/langfuse.controller.ts`
 
-```typescript
-@Controller('stream')
-export class StreamController {
-  constructor(
-    private readonly stream: StreamService,
-    private readonly prisma: PrismaService,
-  ) {}
+**`POST /api/public/ingestion`** — Langfuse batch ingestion
 
-  @Sse('runs/:runId')
-  async streamRun(
-    @Param('runId') runId: string,
-    @Res() res: Response,
-  ): Promise<Observable<MessageEvent>> { ... }
-}
-```
+- Validates Basic Auth credentials against `langfuseService.verifyCredentials()`; returns `401` on failure.
+- Parses the JSON body: `{ batch: Array<{ id, type, timestamp, body, metadata? }> }`.
+- Extracts `sessionId` from `body.sessionId` (preferred) or `metadata.sessionId`; falls back to `body.traceId`. If none found, ignores the batch item.
+- Calls `langfuseService.ingest(sessionId, events)` for each resolved session ID.
+- Returns `{ successes: [...], errors: [] }` (Langfuse SDK expects this shape).
+
+**`GET /stream/runs/:runId`** — SSE stream of trace events for a run
 
 SSE event protocol (each `data` field is a JSON string):
 
 ```typescript
 type StreamEvent =
-  | { type: 'history'; lines: string[] }   // buffered lines to date
-  | { type: 'chunk'; content: string }     // new live chunk
-  | { type: 'done'; status: string; exitCode: number | null; durationMs: number | null }
-  | { type: 'error'; message: string }     // run not found
+  | { type: "history"; events: LangfuseEvent[] } // buffered events to date
+  | { type: "event"; event: LangfuseEvent } // new live event
+  | {
+      type: "done";
+      status: string;
+      exitCode: number | null;
+      durationMs: number | null;
+    }
+  | { type: "error"; message: string }; // run not found
 ```
 
 **Behaviour:**
-1. Look up the `AgentRun` row from Prisma.
-2. If not found → emit `{ type: 'error', message: 'Run not found' }` and complete.
-3. If run `status` is **not** `RUNNING` → emit `{ type: 'history', lines: (run.stdout ?? '').split('\n') }`, then `{ type: 'done', status, exitCode, durationMs }`, then complete.
-4. If run is `RUNNING`:
-   a. Emit `{ type: 'history', lines: streamService.getBuffer(runId) }`.
-   b. Merge with `streamService.observe(runId)` — emit each chunk as `{ type: 'chunk', content }`.
-   c. When the observable completes, re-fetch the `AgentRun` row and emit `{ type: 'done', ... }`.
 
-**`api/src/stream/stream.module.ts`**
+1. Look up the `AgentRun` in Prisma by `runId`.
+2. Not found → emit `error` and complete.
+3. Run `status` is **not** `RUNNING` → emit `{ type: 'history', events: [] }` (no events stored for completed runs in current iteration; stdout is available via DB), then `done`.
+4. Run is `RUNNING`:
+   a. Emit `{ type: 'history', events: langfuseService.getBuffer(runId) }`.
+   b. Subscribe to `langfuseService.observe(runId)` — emit each event as `{ type: 'event', event }`.
+   c. When observable completes, re-fetch `AgentRun` and emit `done`.
+
+#### `api/src/langfuse/langfuse.module.ts`
 
 ```typescript
 @Module({
   imports: [PrismaModule],
-  controllers: [StreamController],
-  providers: [StreamService],
-  exports: [StreamService],
+  controllers: [LangfuseController],
+  providers: [LangfuseService],
+  exports: [LangfuseService],
 })
-export class StreamModule {}
+export class LangfuseModule {}
 ```
 
 ### 4.4 Agent service modifications
 
-**`api/src/agent/agent.utility.ts`** — add `onChunk` to spawn options
+No changes to `spawnProcess` or `agent.utility.ts`'s function signature are required.
+
+**`api/src/agent/agent.utility.ts`** — hardcoded credentials, always forwarded
+
+In `buildSpawnSpec`, both modes (docker and none) unconditionally inject:
+
+- `HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-olympian`
+- `HERMES_LANGFUSE_SECRET_KEY=sk-lf-olympian`
+- `HERMES_LANGFUSE_BASE_URL=http://host.docker.internal:<PORT>` (docker) / `http://localhost:<PORT>` (none)
+
+No `.env` variables are read for observability; it is always-on.
+
+**`api/src/agent/agent.service.ts`** — inject session ID after run creation
+
+After `this.prisma.agentRun.create(...)` returns `run`, and before calling `spawnProcess`:
 
 ```typescript
-export function spawnProcess(
-  spec: SpawnSpec,
-  opts: { cwd: string; timeoutMs: number; onChunk?: (chunk: string) => void },
-): Promise<RawSpawnResult>
+// Correlate Langfuse traces to this AgentRun.
+const imageArg = this.config.get("DOCKER_AGENT_IMAGE");
+const imageIdx = spec.args.indexOf(imageArg);
+if (imageIdx > -1) {
+  // docker mode: splice before the image name
+  spec.args.splice(
+    imageIdx,
+    0,
+    "--env",
+    `HERMES_LANGFUSE_SESSION_ID=${run.id}`,
+  );
+} else if (spec.env) {
+  // none mode: inject into env directly
+  (spec.env as Record<string, string>).HERMES_LANGFUSE_SESSION_ID = run.id;
+}
 ```
 
-In the `child.stdout.on('data', ...)` handler, after appending to the `stdout` accumulator, call `opts.onChunk?.(d.toString())`.
-
-**`api/src/agent/agent.service.ts`** — inject `StreamService`
-
-1. Add `StreamService` to the constructor.
-2. Before calling `spawnProcess`, call `this.stream.register(run.id)`.
-3. Pass `onChunk: (chunk) => this.stream.publish(run.id, chunk)` in the spawn options.
-4. After `spawnProcess` resolves (in the same `try/finally` if one exists, or immediately after), call `this.stream.complete(run.id)`.
-
-`StreamModule` must be in `AgentModule`'s imports so `StreamService` can be injected.
+No `StreamModule` or `StreamService` dependency is needed in `AgentModule` — `LangfuseModule` is imported at the app root level only.
 
 ### 4.5 `AppModule` changes
 
-Add `UiModule` and `StreamModule` (via `StreamModule`'s export of `StreamService`) to the `imports` array in `app.module.ts`. `AgentModule` must also import `StreamModule`.
+Add `UiModule` and `LangfuseModule` to the `imports` array in `app.module.ts`.
 
 ### 4.6 `main.ts` changes — static serving
 
 Install `@nestjs/serve-static`:
+
 ```
 npm install @nestjs/serve-static
 ```
@@ -392,20 +425,24 @@ ServeStaticModule.forRoot({
 Additionally, in `main.ts`, after creating the app, add an Express static fallback so any unmatched path returns `index.html` (SPA routing):
 
 ```typescript
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import * as express from 'express';
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import * as express from "express";
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const distPath = join(__dirname, '..', '..', '..', 'app', 'dist');
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const distPath = join(__dirname, "..", "..", "..", "app", "dist");
 
 // Serve built Astro assets; fall back to index.html for SPA routes.
 app.use(express.static(distPath));
 app.use((req, res, next) => {
-  if (!req.path.startsWith('/ui') && !req.path.startsWith('/stream')
-      && !req.path.startsWith('/webhooks') && !req.path.startsWith('/health')
-      && !req.path.startsWith('/metrics')) {
-    res.sendFile(join(distPath, 'index.html'));
+  if (
+    !req.path.startsWith("/ui") &&
+    !req.path.startsWith("/stream") &&
+    !req.path.startsWith("/webhooks") &&
+    !req.path.startsWith("/health") &&
+    !req.path.startsWith("/metrics")
+  ) {
+    res.sendFile(join(distPath, "index.html"));
   } else {
     next();
   }
@@ -443,18 +480,18 @@ app.use((req, res, next) => {
 ### 5.2 `astro.config.mjs`
 
 ```javascript
-import { defineConfig } from 'astro/config';
-import preact from '@astrojs/preact';
-import tailwind from '@astrojs/tailwind';
+import { defineConfig } from "astro/config";
+import preact from "@astrojs/preact";
+import tailwind from "@astrojs/tailwind";
 
 export default defineConfig({
-  output: 'static',
+  output: "static",
   integrations: [preact({ compat: false }), tailwind()],
   vite: {
     server: {
       proxy: {
-        '/ui': 'http://localhost:3030',
-        '/stream': 'http://localhost:3030',
+        "/ui": "http://localhost:3030",
+        "/stream": "http://localhost:3030",
       },
     },
   },
@@ -467,10 +504,10 @@ The Vite proxy forwards API and SSE requests to the NestJS server during `astro 
 
 ```javascript
 export default {
-  content: ['./src/**/*.{astro,tsx,ts}'],
+  content: ["./src/**/*.{astro,tsx,ts}"],
   theme: {
     extend: {
-      fontFamily: { mono: ['JetBrains Mono', 'ui-monospace', 'monospace'] },
+      fontFamily: { mono: ["JetBrains Mono", "ui-monospace", "monospace"] },
     },
   },
   plugins: [],
@@ -541,10 +578,10 @@ Simple path-based router using `window.location.pathname` and the `popstate` eve
 
 **Routes:**
 
-| Path pattern | Rendered component |
-|---|---|
-| `/` | `<JobList />` |
-| `/jobs/:id` | `<JobDetail id={id} />` |
+| Path pattern            | Rendered component                       |
+| ----------------------- | ---------------------------------------- |
+| `/`                     | `<JobList />`                            |
+| `/jobs/:id`             | `<JobDetail id={id} />`                  |
 | `/jobs/:id/runs/:runId` | `<RunOutput jobId={id} runId={runId} />` |
 
 ```typescript
@@ -552,15 +589,15 @@ function useRoute(): { path: string } {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
     const handler = () => setPath(window.location.pathname);
-    window.addEventListener('popstate', handler);
-    return () => window.removeEventListener('popstate', handler);
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
   }, []);
   return { path };
 }
 
 export function navigate(to: string): void {
-  window.history.pushState(null, '', to);
-  window.dispatchEvent(new PopStateEvent('popstate'));
+  window.history.pushState(null, "", to);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 ```
 
@@ -570,19 +607,19 @@ export function navigate(to: string): void {
 
 Renders a coloured pill for a `JobState` string.
 
-| State | Tailwind classes |
-|---|---|
-| `TRIAGED` | `bg-zinc-700 text-zinc-200` |
-| `PLANNING` | `bg-blue-900 text-blue-200` |
-| `AWAITING_PLAN_APPROVAL` | `bg-amber-900 text-amber-200` |
-| `IMPLEMENTING` | `bg-indigo-900 text-indigo-200` |
-| `SELF_REVIEWING` | `bg-violet-900 text-violet-200` |
-| `REVISING` | `bg-orange-900 text-orange-200` |
-| `OPENING_PR` | `bg-sky-900 text-sky-200` |
-| `AWAITING_PR_APPROVAL` | `bg-amber-900 text-amber-200` |
-| `DONE` | `bg-green-900 text-green-200` |
-| `FAILED` | `bg-red-900 text-red-200` |
-| `CANCELLED` | `bg-zinc-700 text-zinc-400` |
+| State                    | Tailwind classes                |
+| ------------------------ | ------------------------------- |
+| `TRIAGED`                | `bg-zinc-700 text-zinc-200`     |
+| `PLANNING`               | `bg-blue-900 text-blue-200`     |
+| `AWAITING_PLAN_APPROVAL` | `bg-amber-900 text-amber-200`   |
+| `IMPLEMENTING`           | `bg-indigo-900 text-indigo-200` |
+| `SELF_REVIEWING`         | `bg-violet-900 text-violet-200` |
+| `REVISING`               | `bg-orange-900 text-orange-200` |
+| `OPENING_PR`             | `bg-sky-900 text-sky-200`       |
+| `AWAITING_PR_APPROVAL`   | `bg-amber-900 text-amber-200`   |
+| `DONE`                   | `bg-green-900 text-green-200`   |
+| `FAILED`                 | `bg-red-900 text-red-200`       |
+| `CANCELLED`              | `bg-zinc-700 text-zinc-400`     |
 
 Props: `{ state: string }`. Renders `<span class="px-2 py-0.5 rounded text-xs font-medium …">{state}</span>`.
 
@@ -591,6 +628,7 @@ Props: `{ state: string }`. Renders `<span class="px-2 py-0.5 rounded text-xs fo
 Renders a single row in the job list table.
 
 **Displayed fields:**
+
 - State badge (`StateBadge`)
 - Repo + issue number — `owner/repo #N` as a GitHub link (`https://github.com/{repoFullName}/issues/{issueNumber}`)
 - Issue title (truncated to 80 chars with ellipsis)
@@ -607,6 +645,7 @@ Clicking anywhere on the row calls `navigate('/jobs/' + id)`.
 Dashboard view. Polls `GET /ui/jobs` every **3 seconds** using `setInterval` inside `useEffect`.
 
 **Layout:**
+
 - Full-page container with a fixed header bar: "Olympian" wordmark on the left, a coloured dot and count of active jobs on the right (e.g. `● 2 active`).
 - Below: a scrollable table with columns: **State | Job | PR | Active | Confidence | Cycle | Updated**.
 - Each row is a `<JobCard />`.
@@ -621,6 +660,7 @@ Props: `{ id: string }`. Polls `GET /ui/jobs/:id` every **2 seconds**.
 **Layout — two-column, 60/40 split on desktop, stacked on mobile:**
 
 **Left column — timeline and plan:**
+
 - Back link: `← All jobs` calls `navigate('/')`.
 - Page header: issue title (h1), repo + issue number as link, `StateBadge`.
 - If `error` is set: red error box showing the error string.
@@ -630,6 +670,7 @@ Props: `{ id: string }`. Polls `GET /ui/jobs/:id` every **2 seconds**.
 - **Timeline**: `<Timeline transitions={transitions} />` — chronological list of all state transitions.
 
 **Right column — review cycles and runs:**
+
 - **Review passes**: if `reviewPasses` is non-empty, grouped by `cycle`. Show a tab strip with `Cycle 1`, `Cycle 2`, … tabs. Within each tab, show each `<ReviewPassCard pass={pass} />` in pass number order.
 - **PR feedback** (if non-empty): list of `PrRevisionFeedback` items with author, body, timestamp.
 - **Agent runs**: list of `<AgentRunRow run={run} jobId={id} />` sorted by `createdAt` descending. Clicking a row calls `navigate('/jobs/' + id + '/runs/' + run.id)`.
@@ -637,6 +678,7 @@ Props: `{ id: string }`. Polls `GET /ui/jobs/:id` every **2 seconds**.
 ### 6.6 `AgentRunRow.tsx`
 
 Single row in the runs list. Shows:
+
 - Phase tag (`PLAN`, `IMPLEMENT`, etc.) with a fixed-width monospace badge
 - Status indicator: `RUNNING` → pulsing green dot; `SUCCEEDED` → green check; `FAILED` → red ✗; `TIMED_OUT` → amber clock
 - Model name (if set) in muted text
@@ -648,6 +690,7 @@ Single row in the runs list. Shows:
 Props: `{ pass: ReviewPassDto }`.
 
 Displays:
+
 - Pass number heading: `Pass N`
 - Verdict badge: `PASS` → green, `FAIL` → red
 - **Confidence gauge**: horizontal bar, 0–100 range. Colour:
@@ -676,6 +719,7 @@ Renders the plan content inside a `<pre>` block with `font-mono text-sm text-zin
 Props: `{ transitions: TransitionDto[] }`.
 
 Renders a vertical timeline list. Each entry:
+
 - A small coloured circle (colour matches the `toState` badge colour)
 - `toState` badge
 - Reason text (if set) in muted style
@@ -689,6 +733,7 @@ Props: `{ jobId: string; runId: string }`.
 This is the most complex component. It streams agent stdout in real time.
 
 **On mount:**
+
 1. Fetch `GET /ui/jobs/:jobId` to get the run metadata (phase, model, status) — or alternatively make a dedicated run summary endpoint if preferred (see note below).
 2. Open `new EventSource('/stream/runs/' + runId)`.
 3. On `message` event: parse the JSON payload and handle:
@@ -702,6 +747,7 @@ This is the most complex component. It streams agent stdout in real time.
 > **Note:** Rather than a full job fetch for run metadata, it is acceptable to include `GET /ui/runs/:runId` as an additional endpoint in `UiController` that returns `{ id, phase, model, status, exitCode, durationMs, jobId, createdAt }`. This keeps the RunOutput component self-contained. The implementing agent should add this endpoint if it makes the component cleaner.
 
 **Layout:**
+
 - Back link: `← Job detail` → `navigate('/jobs/' + jobId)`
 - Header bar: phase badge, model name, status indicator, duration (updates live on `done` event)
 - **Terminal pane**: dark background (`bg-black`), `font-mono text-sm text-green-400`, `overflow-y-auto`, full remaining viewport height.
@@ -715,42 +761,44 @@ This is the most complex component. It streams agent stdout in real time.
 ## 7. Data flow summary
 
 ```
-GitHub review submitted
-  → NestJS: pull_request_review webhook
-  → OrchestratorService.onPullRequestReview()
-  → jobs.transition(IMPLEMENTING)
-  → queue.enqueue(IMPLEMENT)
-
 WorkerService.tick()
   → queue.claimBatch()
-  → orchestrator.processTask(IMPLEMENT)
+  → orchestrator.processTask(IMPLEMENT / TEST / REVISE / …)
   → HermesAgentService.run(...)
       │
-      ├─ streamService.register(runId)
-      ├─ spawnProcess(spec, { onChunk: chunk => streamService.publish(runId, chunk) })
-      │     └─ child.stdout.on('data') → calls onChunk → streamService.publish()
-      │         └─ StreamService.publish() → updates ring buffer, next() on Subject
-      │                                       ↑
-      │             StreamController.streamRun() ──── subscribed via EventSource ─── browser
-      │
-      └─ streamService.complete(runId)
+      ├─ buildSpawnSpec — injects HERMES_LANGFUSE_{KEY,SECRET,BASE_URL} (hardcoded)
+      ├─ prisma.agentRun.create() → run.id
+      ├─ spec.args.splice(…, '--env', 'HERMES_LANGFUSE_SESSION_ID=<run.id>')
+      └─ spawnProcess(spec, { timeoutMs })
+              └─ docker run hermes-agent …
+                    └─ hermes -z …
+                          └─ observability/langfuse plugin
+                                └─ POST /api/public/ingestion
+                                     { batch: [{ type: 'span-create', body: { sessionId: run.id, … } }] }
+                                          ▼
+                                   LangfuseController  →  langfuseService.ingest(run.id, events)
+                                                                ▼
+                                                      Subject.next(event)
+                                                           ▼
+                                        browser (RunOutput.tsx EventSource)
+                                        ← { type: 'event', event: { type: 'span-create', … } }
 
-browser (RunOutput.tsx)
-  EventSource('/stream/runs/:runId')
-  ← { type: 'history', lines: [...] }   (buffered lines so far)
-  ← { type: 'chunk', content: '...' }   (live as agent writes)
-  ← { type: 'done', status: 'SUCCEEDED', exitCode: 0, durationMs: 87432 }
+When agent exits:
+  spawnProcess resolves → HermesAgentService updates AgentRun status
+  → (LangfuseService.complete() — called implicitly when the run transitions out of RUNNING)
+  → LangfuseController emits { type: 'done', status, exitCode, durationMs }
+  → EventSource closes
 ```
 
 ---
 
 ## 8. State polling strategy
 
-| View | Endpoint | Interval | Notes |
-|---|---|---|---|
-| Job list | `GET /ui/jobs` | 3 000 ms | Entire list replaced each poll |
+| View       | Endpoint           | Interval | Notes                                                          |
+| ---------- | ------------------ | -------- | -------------------------------------------------------------- |
+| Job list   | `GET /ui/jobs`     | 3 000 ms | Entire list replaced each poll                                 |
 | Job detail | `GET /ui/jobs/:id` | 2 000 ms | Stopped if `state` is terminal (`DONE`, `FAILED`, `CANCELLED`) |
-| Run output | SSE | — | No polling; driven by SSE events |
+| Run output | SSE                | —        | No polling; driven by SSE events                               |
 
 All polling uses `setInterval` inside `useEffect` with proper cleanup (`clearInterval` on unmount). The first fetch fires immediately on mount (don't wait for the first interval tick).
 
@@ -802,17 +850,19 @@ Add convenience scripts to the root `package.json`:
 
 ## 10. Configuration
 
-No new environment variables are required. The UI reads data from the same NestJS process using relative paths. The `PORT` variable (default `3030`) already controls the listening port.
-
-The Astro app has no environment variables of its own in production — all API calls are relative paths (same origin).
+No new environment variables are required for the UI or observability. Langfuse credentials
+(`pk-lf-olympian` / `sk-lf-olympian`) are hardcoded constants — both in the service
+(which injects them into every agent container) and in `LangfuseService` (which validates
+them on ingestion). The UI reads data from the same NestJS process using relative paths.
+The `PORT` variable (default `3030`) already controls the listening port.
 
 ---
 
 ## 11. Security considerations
 
 - All `/ui/*` and `/stream/*` endpoints are **unauthenticated** by design. The UI is intended for local/trusted-network use only. If the NestJS server is exposed publicly (e.g. via Tailscale Funnel), consider adding a middleware guard to these routes that checks `req.ip` or a bearer token.
-- SSE connections are long-lived. The `StreamController` must handle client disconnects cleanly: subscribe to `req.on('close', ...)` or use NestJS's `@Res()` lifecycle to call `streamService.unsubscribe` (if implemented) and avoid memory leaks from orphaned Subject subscriptions.
-- The `AgentRun.stdout` column is already capped at `STDOUT_CAP = 200_000` bytes in the existing agent service. The SSE buffer (`BUFFER_LINES = 500`) is a separate in-memory cap for the live stream — it doesn't bypass the DB cap.
+- SSE connections are long-lived. `LangfuseController` must handle client disconnects cleanly: subscribe to `req.on('close', ...)` to call `Subject.unsubscribe()` and avoid memory leaks from orphaned subscriptions.
+- The `AgentRun.stdout` column is already capped at `STDOUT_CAP = 200_000` bytes in the existing agent service. The SSE event buffer (`BUFFER_EVENTS = 1000`) is a separate in-memory cap for the live stream — it doesn't bypass the DB cap.
 
 ---
 
@@ -820,16 +870,16 @@ The Astro app has no environment variables of its own in production — all API 
 
 For an agent building from this document, the recommended order of implementation is:
 
-1. **`api/src/stream/`** — `StreamService` (no dependencies), `StreamModule`, `StreamController`.
-2. **`api/src/agent/agent.utility.ts`** — add `onChunk` to `spawnProcess` options.
-3. **`api/src/agent/agent.service.ts`** — inject `StreamService`, wire `register`/`publish`/`complete`.
+1. **`api/src/langfuse/`** — `LangfuseService` (no external dependencies), `LangfuseModule`, `LangfuseController`.
+2. **`api/src/agent/agent.utility.ts`** — hardcoded Langfuse credentials injected into every spawn spec (already done).
+3. **`api/src/agent/agent.service.ts`** — inject `HERMES_LANGFUSE_SESSION_ID` after `agentRun.create()` (already done).
 4. **`api/src/ui/`** — `UiModule`, `UiController`, `UiModel`.
-5. **`api/src/app.module.ts`** — import `UiModule`, `StreamModule`.
+5. **`api/src/app.module.ts`** — import `UiModule`, `LangfuseModule`.
 6. **`api/main.ts`** (or `app.module.ts`) — add `ServeStaticModule` + SPA fallback middleware.
 7. **`app/`** — scaffold Astro project (`npm create astro@latest`), install integrations.
 8. **`app/src/components/StateBadge.tsx`** — simplest component, no data dependency.
 9. **`app/src/components/App.tsx`** — router shell.
 10. **`app/src/components/JobList.tsx`** + **`JobCard.tsx`** — main dashboard.
 11. **`app/src/components/JobDetail.tsx`** + sub-components (`Timeline`, `ReviewPassCard`, `PlanViewer`, `AgentRunRow`, `ConfidenceGauge`).
-12. **`app/src/components/RunOutput.tsx`** — SSE consumer, last because it depends on `StreamController` being ready.
-13. **End-to-end test**: label a GitHub issue, watch the job appear on the dashboard, click through to a run, observe live stdout.
+12. **`app/src/components/RunOutput.tsx`** — SSE consumer, last because it depends on `LangfuseController` being ready.
+13. **End-to-end test**: label a GitHub issue, watch the job appear on the dashboard, click through to a run, observe live Langfuse trace events.
