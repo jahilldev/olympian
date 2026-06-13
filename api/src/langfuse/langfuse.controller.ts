@@ -118,7 +118,7 @@ export class LangfuseController {
       map((r) =>
         encode({ type: 'done', status: r.status, exitCode: r.exitCode, durationMs: r.durationMs }),
       ),
-      shareReplay({ bufferSize: 1, refCount: false }),
+      shareReplay({ bufferSize: 1, refCount: true }),
     );
 
     return concat(history$, merge(live$.pipe(takeUntil(done$)), done$));

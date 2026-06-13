@@ -52,6 +52,7 @@ export class LangfuseService {
   complete(sessionId: string): void {
     this.subjects.get(sessionId)?.complete();
     this.subjects.delete(sessionId);
+    this.buffers.delete(sessionId);
   }
 
   observe(sessionId: string): Observable<LangfuseEvent> | null {

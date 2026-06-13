@@ -6,6 +6,7 @@ import { AppConfigService } from '../config/config.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
 import { type AgentRunOptions, type AgentRunResult, type AgentRunStatus } from './agent.model.js';
 import { buildSpawnSpec, spawnProcess, prepareHermesMemoryPaths } from './agent.utility.js';
+import { LangfuseService } from '../langfuse/langfuse.service.js';
 
 /**
  * Drives the Hermes Agent CLI. Each call runs `hermes -z --yolo --accept-hooks …` headless in the
@@ -20,6 +21,7 @@ export class HermesAgentService {
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
     private readonly metrics: MetricsService,
+    private readonly langfuse: LangfuseService,
   ) {}
 
   /**
@@ -132,6 +134,7 @@ export class HermesAgentService {
       },
     });
 
+    this.langfuse.complete(run.id);
     this.metrics.recordAgentRun(opts.phase, status, raw.durationMs);
 
     this.logger.log(
