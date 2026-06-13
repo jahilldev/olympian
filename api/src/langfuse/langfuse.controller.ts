@@ -13,8 +13,7 @@ import {
   UnauthorizedException,
   type MessageEvent,
 } from '@nestjs/common';
-import type { RawBodyRequest } from '@nestjs/common';
-import type { Request } from 'express';
+import { existsSync, writeFileSync } from 'node:fs';
 import { concat, EMPTY, interval, merge, of, type Observable } from 'rxjs';
 import { concatMap, filter, map, shareReplay, take, takeUntil } from 'rxjs/operators';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -100,19 +99,22 @@ export class LangfuseController {
     try {
       // Dump first payload to disk for attribute-key debugging, then remove.
       try {
-        const fs = await import('node:fs');
         const dumpPath = '/tmp/otlp-live.bin';
-        if (!fs.existsSync(dumpPath)) {
-          fs.writeFileSync(dumpPath, raw);
+        if (!existsSync(dumpPath)) {
+          writeFileSync(dumpPath, raw);
           this.logger.warn(`OTLP: dumped first payload (${raw.length} bytes) to ${dumpPath}`);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
 
       const spans = deserializeOtlpTraces(raw);
       if (spans.length === 0) {
         this.logger.warn(`OTLP: 0 spans with session ID extracted from ${raw.length}-byte payload`);
       } else {
-        this.logger.warn(`OTLP: ingested ${ingested} span(s) for session(s): ${[...new Set(spans.map(s => s.sessionId))].join(', ')}`);
+        this.logger.warn(
+          `OTLP: ingested ${ingested} span(s) for session(s): ${[...new Set(spans.map((s) => s.sessionId))].join(', ')}`,
+        );
       }
       for (const { sessionId, event } of spans) {
         this.langfuse.ingest(sessionId, [event]);
