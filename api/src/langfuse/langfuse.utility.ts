@@ -1,4 +1,5 @@
-import type { LangfuseEvent } from './langfuse.model.js';
+import type { LangfuseEvent, ParsedSpan } from './langfuse.model.js';
+import { SESSION_ID_KEYS } from './langfuse.model.js';
 
 /**
  * Minimal protobuf binary reader covering wire types 0/1/2/5.
@@ -16,26 +17,37 @@ class ProtoReader {
   readVarint(): bigint {
     let result = 0n;
     let shift = 0n;
+
     while (this.pos < this.buf.length) {
       const byte = this.buf[this.pos++] as number;
+
       result |= BigInt(byte & 0x7f) << shift;
-      if ((byte & 0x80) === 0) break;
+
+      if ((byte & 0x80) === 0) {
+        break;
+      }
+
       shift += 7n;
     }
+
     return result;
   }
 
   readFixed64LE(): bigint {
     const lo = this.buf.readUInt32LE(this.pos);
     const hi = this.buf.readUInt32LE(this.pos + 4);
+
     this.pos += 8;
+
     return (BigInt(hi) << 32n) | BigInt(lo);
   }
 
   readBytes(): Buffer {
     const len = Number(this.readVarint());
     const slice = this.buf.subarray(this.pos, this.pos + len);
+
     this.pos += len;
+
     return Buffer.from(slice);
   }
 
@@ -45,6 +57,7 @@ class ProtoReader {
 
   readTag(): { field: number; wire: number } {
     const tag = Number(this.readVarint());
+
     return { field: tag >>> 3, wire: tag & 0x7 };
   }
 
@@ -52,15 +65,19 @@ class ProtoReader {
     switch (wire) {
       case 0:
         this.readVarint();
+
         break;
       case 1:
         this.pos += 8;
+
         break;
       case 2:
         this.readBytes();
+
         break;
       case 5:
         this.pos += 4;
+
         break;
       default:
         throw new Error(`Unknown wire type ${wire}`);
@@ -71,10 +88,13 @@ class ProtoReader {
 /** Parse a single KeyValue message → { key, value } or null if malformed. */
 function parseKeyValue(buf: Buffer): { key: string; value: unknown } | null {
   const r = new ProtoReader(buf);
+
   let key: string | undefined;
   let value: unknown;
+
   while (!r.isAtEnd()) {
     const { field, wire } = r.readTag();
+
     if (field === 1 && wire === 2) {
       key = r.readString();
     } else if (field === 2 && wire === 2) {
@@ -83,26 +103,39 @@ function parseKeyValue(buf: Buffer): { key: string; value: unknown } | null {
       r.skip(wire);
     }
   }
+
   return key !== undefined ? { key, value } : null;
 }
 
 /** Parse an AnyValue message, returning the contained primitive. */
 function parseAnyValue(buf: Buffer): unknown {
   const r = new ProtoReader(buf);
+
   while (!r.isAtEnd()) {
     const { field, wire } = r.readTag();
+
     switch (field) {
       case 1: // string_value
-        if (wire === 2) return r.readString();
+        if (wire === 2) {
+          return r.readString();
+        }
+
         break;
       case 2: // bool_value
-        if (wire === 0) return r.readVarint() !== 0n;
+        if (wire === 0) {
+          return r.readVarint() !== 0n;
+        }
+
         break;
       case 3: // int_value
-        if (wire === 0) return Number(r.readVarint());
+        if (wire === 0) {
+          return Number(r.readVarint());
+        }
+
         break;
       case 4: // double_value (wire type 1, 8 bytes) — not needed for session extraction
         r.skip(wire);
+
         break;
       default:
         r.skip(wire);
@@ -114,22 +147,16 @@ function parseAnyValue(buf: Buffer): unknown {
 /** Collect repeated KeyValue entries from a span/resource attributes list. */
 function collectAttributes(spans: Buffer[]): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
+
   for (const kv of spans) {
     const parsed = parseKeyValue(kv);
-    if (parsed) attrs[parsed.key] = parsed.value;
-  }
-  return attrs;
-}
 
-interface ParsedSpan {
-  traceId: string;
-  spanId: string;
-  parentSpanId?: string;
-  name: string;
-  kind: number;
-  startNs: bigint;
-  endNs: bigint;
-  attributes: Record<string, unknown>;
+    if (parsed) {
+      attrs[parsed.key] = parsed.value;
+    }
+  }
+
+  return attrs;
 }
 
 /** Parse a single Span message. */
@@ -140,30 +167,39 @@ function parseSpan(buf: Buffer): ParsedSpan {
 
   while (!r.isAtEnd()) {
     const { field, wire } = r.readTag();
+
     switch (field) {
       case 1:
         span.traceId = r.readBytes().toString('hex');
+
         break;
       case 2:
         span.spanId = r.readBytes().toString('hex');
+
         break;
       case 4:
         span.parentSpanId = r.readBytes().toString('hex');
+
         break;
       case 5:
         span.name = r.readString();
+
         break;
       case 6:
         span.kind = Number(r.readVarint());
+
         break;
       case 7:
         span.startNs = r.readFixed64LE();
+
         break;
       case 8:
         span.endNs = r.readFixed64LE();
+
         break;
       case 9:
         attrBufs.push(r.readBytes());
+
         break;
       default:
         r.skip(wire);
@@ -171,6 +207,7 @@ function parseSpan(buf: Buffer): ParsedSpan {
   }
 
   span.attributes = collectAttributes(attrBufs);
+
   return span as ParsedSpan;
 }
 
@@ -183,9 +220,6 @@ function nanosToIso(ns: bigint): string {
 function kindLabel(kind: number): string {
   return ['UNSPECIFIED', 'INTERNAL', 'SERVER', 'CLIENT', 'PRODUCER', 'CONSUMER'][kind] ?? 'UNKNOWN';
 }
-
-/** Known attribute keys where Langfuse stores the session/run ID. */
-const SESSION_ID_KEYS = ['session.id', 'langfuse.session.id', 'langfuse.sessionId'];
 
 /**
  * Deserialize an OTLP ExportTraceServiceRequest protobuf buffer into a list of
@@ -259,7 +293,9 @@ export function deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: 
           SESSION_ID_KEYS.map((k) => span.attributes[k] as string | undefined).find(Boolean) ??
           resourceSessionId;
 
-        if (!sessionId) continue; // no session ID — not from our agent, ignore
+        if (!sessionId) {
+          continue; // no session ID — not from our agent, ignore
+        }
 
         results.push({
           sessionId,
