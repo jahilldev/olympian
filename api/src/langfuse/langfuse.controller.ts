@@ -14,7 +14,7 @@ import {
 import { concat, EMPTY, interval, merge, of, type Observable } from 'rxjs';
 import { concatMap, filter, map, shareReplay, take, takeUntil } from 'rxjs/operators';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { type LangfuseEvent, type StreamPayload } from './langfuse.model.js';
+import { type StreamPayload } from './langfuse.model.js';
 import { LangfuseService } from './langfuse.service.js';
 import { deserializeOtlpTraces } from './langfuse.utility.js';
 
