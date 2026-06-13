@@ -7,15 +7,20 @@ import {
   Logger,
   Param,
   Post,
+  RawBody,
+  Req,
   Sse,
   UnauthorizedException,
   type MessageEvent,
 } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 import { concat, EMPTY, interval, merge, of, type Observable } from 'rxjs';
 import { concatMap, filter, map, shareReplay, take, takeUntil } from 'rxjs/operators';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { type LangfuseEvent, type StreamPayload } from './langfuse.model.js';
 import { LangfuseService } from './langfuse.service.js';
+import { deserializeOtlpTraces } from './langfuse.utility.js';
 
 interface IngestionBatchItem {
   id: string;
@@ -69,6 +74,44 @@ export class LangfuseController {
     }
 
     return { successes, errors: [] };
+  }
+
+  /**
+   * OTLP/HTTP protobuf trace ingestion. Langfuse SDK v3+ uses OpenTelemetry natively
+   * and sends traces to this endpoint as binary protobuf (application/x-protobuf).
+   * We deserialize the ExportTraceServiceRequest, extract the session ID from span or
+   * resource attributes, and fan the events out to SSE subscribers.
+   */
+  @Post('langfuse/api/public/otel/v1/traces')
+  @HttpCode(HttpStatus.OK)
+  ingestOtlp(
+    @Headers('authorization') auth: string | undefined,
+    @RawBody() raw: Buffer,
+  ): { partialSuccess: Record<string, never> } {
+    if (!this.langfuse.verifyCredentials(auth)) {
+      throw new UnauthorizedException();
+    }
+
+    if (!raw?.length) {
+      return { partialSuccess: {} };
+    }
+
+    let ingested = 0;
+    try {
+      const spans = deserializeOtlpTraces(raw);
+      for (const { sessionId, event } of spans) {
+        this.langfuse.ingest(sessionId, [event]);
+        ingested++;
+      }
+      if (ingested > 0) {
+        this.logger.debug(`OTLP: ingested ${ingested} span(s)`);
+      }
+    } catch (err) {
+      this.logger.warn(`OTLP parse error: ${(err as Error).message}`);
+    }
+
+    // ExportTraceServiceResponse: { partialSuccess: {} } signals full acceptance.
+    return { partialSuccess: {} };
   }
 
   /**
