@@ -19,20 +19,22 @@ browser
   │  GET /              → static HTML (SPA shell, served by NestJS ServeStaticModule)
   │  GET /ui/jobs       → JSON REST        (NestJS UiController)
   │  GET /stream/…           → SSE              (NestJS LangfuseController)
-  │  POST /langfuse/…        → trace ingestion  (NestJS LangfuseController)
+  │  POST /langfuse/api/public/otel/v1/traces → OTLP protobuf ingestion (NestJS LangfuseController)
   ▼
 NestJS (port 3030)
   ├─ ServeStaticModule    → serves app/dist/** as SPA (index.html fallback)
   ├─ UiController         → GET /ui/jobs, GET /ui/jobs/:id
-  ├─ LangfuseController   → POST /langfuse/api/public/ingestion  (receives Langfuse batch events)
-  │                          GET /stream/runs/:runId              (SSE, fans out trace events)
+  ├─ LangfuseController   → POST /langfuse/api/public/otel/v1/traces  (OTLP protobuf; parsed by langfuse.utility.ts)
+  │                          GET /stream/runs/:runId                   (SSE, fans out trace events)
   ├─ LangfuseService      → in-memory event store keyed by run ID; fan-out to SSE subscribers
-  └─ HermesAgentService   → injects HERMES_LANGFUSE_* + HERMES_LANGFUSE_SESSION_ID
+  └─ HermesAgentService   → injects HERMES_LANGFUSE_* credentials + OTEL_RESOURCE_ATTRIBUTES=session.id=<run.id>
                              into every agent invocation; no changes to spawnProcess needed
 hermes agent container
-  └─ observability/langfuse plugin
-       → POST /langfuse/api/public/ingestion on host.docker.internal:3030 (always-on)
-         (SDK base URL is set to http://host.docker.internal:3030/langfuse; the SDK appends /api/public/ingestion)
+  └─ Langfuse SDK v3+ (uses OpenTelemetry natively)
+       → POST /langfuse/api/public/otel/v1/traces on host.docker.internal:3030 (always-on)
+         Body: binary protobuf (application/x-protobuf, ExportTraceServiceRequest)
+         (SDK base URL is http://host.docker.internal:3030/langfuse; SDK appends /api/public/otel/v1/traces)
+         Session ID flows in via OTEL_RESOURCE_ATTRIBUTES=session.id=<run.id> resource attribute
 ```
 
 The Astro app is a **static-output SPA shell**. Astro generates one `index.html` and the asset bundle. NestJS's `ServeStaticModule` returns that `index.html` for every path that doesn't match a known API prefix. Preact handles client-side routing based on `window.location.pathname`.
@@ -71,9 +73,11 @@ olympian/
 │       │   ├── ui.controller.ts
 │       │   └── ui.model.ts
 │       ├── langfuse/           ← NEW NestJS module (trace receiver + SSE emitter)
+│       │   ├── langfuse.controller.ts
+│       │   ├── langfuse.model.ts
 │       │   ├── langfuse.module.ts
 │       │   ├── langfuse.service.ts
-│       │   └── langfuse.controller.ts
+│       │   └── langfuse.utility.ts
 │       ├── agent/
 │       │   ├── agent.service.ts   ← modified: injects session ID after run creation
 │       │   └── agent.utility.ts   ← modified: hardcoded Langfuse credentials always forwarded
@@ -93,7 +97,7 @@ olympian/
 | `UiModule`       | `api/src/ui/`       | REST endpoints the Preact app polls for data                        |
 | `LangfuseModule` | `api/src/langfuse/` | Langfuse-compatible ingestion endpoint; SSE fan-out of trace events |
 
-Both modules follow the existing five-file module layout from `AGENTS.md`. Neither module has a `*.utility.ts` or `*.prompts.ts` file (no helpers or prompts needed).
+Both modules follow the existing five-file module layout from `AGENTS.md`. `LangfuseModule` has a `langfuse.model.ts` (shared types and constants) and a `langfuse.utility.ts` (OTLP protobuf parser); `UiModule` has neither.
 
 ### 4.2 `UiModule`
 
@@ -230,36 +234,65 @@ export class UiModule {}
 
 ### 4.3 `LangfuseModule`
 
-Olympian acts as a Langfuse-compatible server. The hermes `observability/langfuse` plugin
-is baked into the agent image; it fires trace events (tool calls, LLM spans, completions)
-during execution and POSTs them to `POST /langfuse/api/public/ingestion` using Basic Auth.
+Olympian acts as an OTLP-compatible trace receiver. The Langfuse SDK v3+ uses OpenTelemetry
+natively and POSTs binary protobuf payloads (`application/x-protobuf`,
+`ExportTraceServiceRequest`) to `/langfuse/api/public/otel/v1/traces` using Basic Auth.
 Credentials are fixed: public key `pk-lf-olympian`, secret key `sk-lf-olympian` — always
-injected by the service, never read from `.env`.
+injected by the agent service, never read from `.env`.
 
-The Langfuse SDK constructs the full URL as `{HERMES_LANGFUSE_BASE_URL}/api/public/ingestion`.
-The base URL is set to `http://host.docker.internal:3030/langfuse`, so the full path is
-`/langfuse/api/public/ingestion`. The NestJS controller is mounted at `@Controller('langfuse/api/public')`.
+The Langfuse SDK constructs the full URL as `{HERMES_LANGFUSE_BASE_URL}/api/public/otel/v1/traces`.
+The base URL is `http://host.docker.internal:3030/langfuse` (docker) / `http://localhost:3030/langfuse`
+(system mode). The NestJS controller is decorated `@Controller()` (no prefix) with route
+`@Post('langfuse/api/public/otel/v1/traces')`.
+
+The `express.raw({ type: 'application/x-protobuf', limit: '50mb' })` middleware (registered in
+`main.ts` before the app starts) delivers the raw binary body as a `Buffer` to the controller
+via `@Body()`.
 
 The module has two responsibilities:
 
-1. **Receive** Langfuse batch events and index them by session ID (= `AgentRun.id`).
+1. **Receive** OTLP spans, parse them with `deserializeOtlpTraces` from `langfuse.utility.ts`, and index events by session ID (= `AgentRun.id`).
 2. **Emit** those events to SSE subscribers watching `/stream/runs/:runId`.
+
+#### `api/src/langfuse/langfuse.model.ts`
+
+Defines all shared types and constants for the module:
+
+```typescript
+export interface LangfuseEvent {
+  type: string; // e.g. 'span-internal', 'generation-create'
+  timestamp: string;
+  body: Record<string, unknown>;
+}
+
+export type StreamPayload =
+  | { type: 'history'; events: LangfuseEvent[] }
+  | { type: 'event'; event: LangfuseEvent }
+  | { type: 'done'; status: string; exitCode: number | null; durationMs: number | null }
+  | { type: 'error'; message: string };
+
+export const LANGFUSE_PUBLIC_KEY = 'pk-lf-olympian';
+export const LANGFUSE_SECRET_KEY = 'sk-lf-olympian';
+export const BUFFER_EVENTS = 1_000;
+```
+
+#### `api/src/langfuse/langfuse.utility.ts`
+
+Exports `deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: LangfuseEvent }[]`.
+
+Parses an OTLP `ExportTraceServiceRequest` protobuf payload using a minimal hand-rolled
+`ProtoReader` (wire types 0/1/2/5). Walks ResourceSpans → Resource.attributes to find
+`session.id` (or `langfuse.session.id` / `langfuse.sessionId` for compatibility), then
+ScopeSpans → Spans to build one `LangfuseEvent` per span. Span attributes prefixed
+`langfuse.*` are preserved verbatim; `startTimeUnixNano` is converted to an ISO-8601
+timestamp. Returns only spans for which a session ID could be resolved.
 
 #### `api/src/langfuse/langfuse.service.ts`
 
 ```typescript
 import { Injectable } from "@nestjs/common";
 import { Subject, Observable } from "rxjs";
-
-export interface LangfuseEvent {
-  type: string; // e.g. 'trace-create', 'span-create', 'generation-create'
-  timestamp: string;
-  body: Record<string, unknown>;
-}
-
-const LANGFUSE_PUBLIC_KEY = "pk-lf-olympian";
-const LANGFUSE_SECRET_KEY = "sk-lf-olympian";
-const BUFFER_EVENTS = 1000;
+import { type LangfuseEvent, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, BUFFER_EVENTS } from "./langfuse.model.js";
 
 @Injectable()
 export class LangfuseService {
@@ -310,13 +343,13 @@ export class LangfuseService {
 
 #### `api/src/langfuse/langfuse.controller.ts`
 
-**`POST /langfuse/api/public/ingestion`** — Langfuse batch ingestion
+**`POST /langfuse/api/public/otel/v1/traces`** — OTLP protobuf trace ingestion
 
 - Validates Basic Auth credentials against `langfuseService.verifyCredentials()`; returns `401` on failure.
-- Parses the JSON body: `{ batch: Array<{ id, type, timestamp, body, metadata? }> }`.
-- Extracts `sessionId` from `body.sessionId` (preferred) or `metadata.sessionId`; falls back to `body.traceId`. If none found, ignores the batch item.
-- Calls `langfuseService.ingest(sessionId, events)` for each resolved session ID.
-- Returns `{ successes: [...], errors: [] }` (Langfuse SDK expects this shape).
+- Receives the raw binary body as a `Buffer` via `@Body()` (the `express.raw()` middleware in `main.ts` handles content-type `application/x-protobuf`).
+- Calls `deserializeOtlpTraces(raw)` from `langfuse.utility.ts` to parse the `ExportTraceServiceRequest` and return `{ sessionId, event }[]`. Session ID is read from the OTLP resource attribute `session.id` (set by `OTEL_RESOURCE_ATTRIBUTES` in the agent container).
+- Calls `langfuseService.ingest(sessionId, [event])` for each resolved span.
+- Returns `{ partialSuccess: {} }` (OTLP SDK expects `ExportTraceServiceResponse` shape).
 
 **`GET /stream/runs/:runId`** — SSE stream of trace events for a run
 
@@ -376,30 +409,47 @@ No `.env` variables are read for observability; it is always-on.
 After `this.prisma.agentRun.create(...)` returns `run`, and before calling `spawnProcess`:
 
 ```typescript
-// Correlate Langfuse traces to this AgentRun.
-const imageArg = this.config.get("DOCKER_AGENT_IMAGE");
+// Inject the run ID as an OTLP resource attribute so the trace receiver can
+// correlate incoming spans to this specific AgentRun record.
+const sessionAttr = `session.id=${run.id}`;
+const imageArg = this.config.get('DOCKER_AGENT_IMAGE');
 const imageIdx = spec.args.indexOf(imageArg);
+
 if (imageIdx > -1) {
-  // docker mode: splice before the image name
-  spec.args.splice(
-    imageIdx,
-    0,
-    "--env",
-    `HERMES_LANGFUSE_SESSION_ID=${run.id}`,
-  );
+  // docker mode: splice --env OTEL_RESOURCE_ATTRIBUTES before the image name
+  spec.args.splice(imageIdx, 0, '--env', `OTEL_RESOURCE_ATTRIBUTES=${sessionAttr}`);
 } else if (spec.env) {
-  // none mode: inject into env directly
-  (spec.env as Record<string, string>).HERMES_LANGFUSE_SESSION_ID = run.id;
+  // system mode: merge into existing env object
+  const env = spec.env as Record<string, string>;
+  const existing = env.OTEL_RESOURCE_ATTRIBUTES;
+  env.OTEL_RESOURCE_ATTRIBUTES = existing ? `${existing},${sessionAttr}` : sessionAttr;
 }
 ```
 
-No `StreamModule` or `StreamService` dependency is needed in `AgentModule` — `LangfuseModule` is imported at the app root level only.
+The OpenTelemetry SDK reads `OTEL_RESOURCE_ATTRIBUTES` at startup and merges the key-value
+pairs into every span's resource. `langfuse.utility.ts` reads `session.id` from the resource
+attributes to correlate spans with the `AgentRun` record.
 
 ### 4.5 `AppModule` changes
 
 Add `UiModule` and `LangfuseModule` to the `imports` array in `app.module.ts`.
 
-### 4.6 `main.ts` changes — static serving
+### 4.6 `main.ts` changes — middleware and static serving
+
+**OTLP body parser (required before `app.listen`):**
+
+```typescript
+import { raw } from 'express';
+
+// OTLP/HTTP protobuf — must be registered before NestJS's JSON body parser
+// so the binary payload is preserved as a Buffer for the OTLP handler.
+app.use(
+  '/langfuse/api/public/otel/v1/traces',
+  raw({ type: 'application/x-protobuf', limit: '50mb' }),
+);
+```
+
+**SPA static serving:**
 
 Install `@nestjs/serve-static`:
 
@@ -735,15 +785,15 @@ Renders a vertical timeline list. Each entry:
 
 Props: `{ jobId: string; runId: string }`.
 
-This is the most complex component. It streams agent stdout in real time.
+This is the most complex component. It streams Langfuse trace events (LLM turns, tool calls) in real time via SSE, providing a live view of the agent's work during a run.
 
 **On mount:**
 
-1. Fetch `GET /ui/jobs/:jobId` to get the run metadata (phase, model, status) — or alternatively make a dedicated run summary endpoint if preferred (see note below).
+1. Fetch `GET /ui/jobs/:jobId` to get the run metadata (phase, model, status).
 2. Open `new EventSource('/stream/runs/' + runId)`.
-3. On `message` event: parse the JSON payload and handle:
-   - `{ type: 'history', lines }` → set `lines` state to the array
-   - `{ type: 'chunk', content }` → append `content` to the raw output string
+3. On `message` event: parse the JSON payload (`StreamPayload`) and handle:
+   - `{ type: 'history', events: LangfuseEvent[] }` → populate the event list with buffered events from before this connection opened
+   - `{ type: 'event', event: LangfuseEvent }` → append the live event to the list
    - `{ type: 'done', status, exitCode, durationMs }` → update header, close `EventSource`
    - `{ type: 'error', message }` → show error, close `EventSource`
 4. On SSE `error` event: if `eventSource.readyState === EventSource.CLOSED`, show "Stream ended" message.
@@ -755,9 +805,11 @@ This is the most complex component. It streams agent stdout in real time.
 
 - Back link: `← Job detail` → `navigate('/jobs/' + jobId)`
 - Header bar: phase badge, model name, status indicator, duration (updates live on `done` event)
-- **Terminal pane**: dark background (`bg-black`), `font-mono text-sm text-green-400`, `overflow-y-auto`, full remaining viewport height.
-  - Content is the accumulated raw output string rendered inside a `<pre>`.
-  - Auto-scrolls to the bottom when new chunks arrive (only if the user hasn't manually scrolled up — use a "pinned to bottom" flag: if `scrollTop + clientHeight >= scrollHeight - 50`, keep scrolling).
+- **Agent activity pane**: dark background (`bg-black`), `font-mono text-sm`, `overflow-y-auto`, full remaining viewport height.
+  - Renders the event list as a feed of cards/rows, newest at the bottom.
+  - Each `span-internal` event with `langfuse.observation.type = 'generation'` is rendered as an LLM turn card: model name, truncated text content, tool names dispatched, token counts.
+  - Each `span-internal` event with `langfuse.observation.type = 'tool'` is rendered as a tool call row: tool name and input summary.
+  - Auto-scrolls to the bottom when new events arrive (only if the user hasn't manually scrolled up — use a "pinned to bottom" flag: if `scrollTop + clientHeight >= scrollHeight - 50`, keep scrolling).
 - Copy button in the top-right corner of the terminal pane: copies full output to clipboard using `navigator.clipboard.writeText`.
 - "Scroll to bottom" floating button appears when the user has scrolled up; clicking re-pins the scroll.
 
@@ -773,20 +825,22 @@ WorkerService.tick()
       │
       ├─ buildSpawnSpec — injects HERMES_LANGFUSE_{KEY,SECRET,BASE_URL} (hardcoded)
       ├─ prisma.agentRun.create() → run.id
-      ├─ spec.args.splice(…, '--env', 'HERMES_LANGFUSE_SESSION_ID=<run.id>')
+      ├─ injects OTEL_RESOURCE_ATTRIBUTES=session.id=<run.id> into docker --env or spec.env
       └─ spawnProcess(spec, { timeoutMs })
               └─ docker run hermes-agent …
                     └─ hermes -z …
-                          └─ observability/langfuse plugin
-                                └─ POST /langfuse/api/public/ingestion
-                                     { batch: [{ type: 'span-create', body: { sessionId: run.id, … } }] }
+                          └─ Langfuse SDK (OpenTelemetry native)
+                                └─ POST /langfuse/api/public/otel/v1/traces
+                                     binary protobuf ExportTraceServiceRequest
+                                     resource.attributes: { session.id: run.id, … }
                                           ▼
-                                   LangfuseController  →  langfuseService.ingest(run.id, events)
+                                   LangfuseController → deserializeOtlpTraces(raw)
+                                                       → langfuseService.ingest(run.id, [event])
                                                                 ▼
                                                       Subject.next(event)
                                                            ▼
                                         browser (RunOutput.tsx EventSource)
-                                        ← { type: 'event', event: { type: 'span-create', … } }
+                                        ← { type: 'event', event: { type: 'span-internal', … } }
 
 When agent exits:
   spawnProcess resolves → HermesAgentService updates AgentRun status
