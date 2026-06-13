@@ -57,6 +57,7 @@ export function buildPlanPrompt(ctx: PlanPromptContext): string {
 
 const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working directory using your tools. Run the project's tests/build if available to validate your work.
 Use \`.olympian/\` as a scratch directory for any temporary files (build logs, notes, debug output) — it is excluded from commits automatically.
+**If you need to start a dev server or long-running process to test your work, run it in the background** (e.g., \`npm run dev > /tmp/dev.log 2>&1 &\`), give it time to reach a ready state, then verify it's working (curl for servers, tail logs for builds, check output files for CLIs). Once verified, move on — do not wait for completion or poll repeatedly. Servers and watchers run until the session ends.
 When finished, end your reply with a short Markdown summary of what you changed and which acceptance criteria are now met. The orchestrator will commit your file changes — do not run git yourself.`;
 
 export function buildImplementPrompt(ctx: ImplementPromptContext): string {
@@ -101,7 +102,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself.`,
+    `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. **If you need to start a dev server to test, run it in the background** (\`npm run dev > /tmp/dev.log 2>&1 &\`), wait for it to reach a ready state, verify it's working (curl/logs/output files), then move on immediately — do not poll or wait for completion. The orchestrator will commit your changes — do not run git yourself.`,
   );
 
   return parts.join('\n\n');
