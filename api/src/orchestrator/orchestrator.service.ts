@@ -852,7 +852,9 @@ export class OrchestratorService {
     ]);
 
     const testOutput = (() => {
-      if (!lastTestRun) return undefined;
+      if (!lastTestRun) {
+        return undefined;
+      }
 
       if (lastTestRun.status !== 'SUCCEEDED') {
         return (lastTestRun.stderr || lastTestRun.stdout || '').slice(0, 4000);
@@ -861,7 +863,9 @@ export class OrchestratorService {
       // Process exited cleanly but the structured verdict said tests failed.
       const result = this.testing.parse(lastTestRun.stdout ?? '');
 
-      if (!result || result.passed) return undefined;
+      if (!result || result.passed) {
+        return undefined;
+      }
 
       return this.testing.formatFailures(result);
     })();

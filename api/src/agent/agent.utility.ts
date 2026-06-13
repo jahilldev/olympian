@@ -248,7 +248,9 @@ export function extractJsonBlock(text: string): unknown | null {
     const closeIdx = afterFence.indexOf('```');
     const content = (closeIdx !== -1 ? afterFence.slice(0, closeIdx) : afterFence).trim();
 
-    if (content) candidates.push(content);
+    if (content) {
+      candidates.push(content);
+    }
   }
 
   // Last-resort: outermost { ... } pair.

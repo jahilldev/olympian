@@ -14,7 +14,9 @@ const BARE_ASSET_RE = /\bhttps:\/\/github\.com\/user-attachments\/(?:assets|file
 function filenameFor(url: string, label: string): string {
   // File downloads: the URL path already carries the original filename.
   const fileSeg = url.match(/\/files\/\d+\/([^/?#]+)/);
-  if (fileSeg) return decodeURIComponent(fileSeg[1]).replace(/[^\w.-]/g, '_');
+  if (fileSeg) {
+    return decodeURIComponent(fileSeg[1]).replace(/[^\w.-]/g, '_');
+  }
 
   // Assets and legacy image URLs: use a URL hash for uniqueness, infer extension.
   const ext = (label.match(/\.(\w{2,5})$/) ?? url.match(/\.(\w{2,5})(?:[?#]|$)/))?.[1] ?? 'bin';
@@ -28,14 +30,22 @@ export function extractAttachmentUrls(markdown: string): AttachmentRef[] {
   const out: AttachmentRef[] = [];
 
   function push(url: string, label: string) {
-    if (seen.has(url)) return;
+    if (seen.has(url)) {
+      return;
+    }
     seen.add(url);
     out.push({ url, filename: filenameFor(url, label) });
   }
 
-  for (const m of markdown.matchAll(IMAGE_EMBED_RE)) push(m[2], m[1]);
-  for (const m of markdown.matchAll(FILE_LINK_RE)) push(m[2], m[1]);
-  for (const m of markdown.matchAll(BARE_ASSET_RE)) push(m[0], '');
+  for (const m of markdown.matchAll(IMAGE_EMBED_RE)) {
+    push(m[2], m[1]);
+  }
+  for (const m of markdown.matchAll(FILE_LINK_RE)) {
+    push(m[2], m[1]);
+  }
+  for (const m of markdown.matchAll(BARE_ASSET_RE)) {
+    push(m[0], '');
+  }
 
   return out;
 }

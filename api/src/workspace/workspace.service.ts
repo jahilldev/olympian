@@ -240,7 +240,9 @@ export class WorkspaceService {
     installationId: number,
     refs: AttachmentRef[],
   ): Promise<DownloadedAttachment[]> {
-    if (refs.length === 0) return [];
+    if (refs.length === 0) {
+      return [];
+    }
     const token = await this.app.getInstallationToken(installationId);
     const attachDir = join(dir, '.attachments');
 

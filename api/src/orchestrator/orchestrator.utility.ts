@@ -181,7 +181,9 @@ export function buildStatusReport(ctx: StatusContext): string {
 export function formatDownloadedAttachments(
   attachments: DownloadedAttachment[],
 ): string | undefined {
-  if (attachments.length === 0) return undefined;
+  if (attachments.length === 0) {
+    return undefined;
+  }
   return (
     'The following files were attached to the issue or comments and have been downloaded to your workspace:\n' +
     attachments.map((a) => `- \`${a.relativePath}\``).join('\n') +
