@@ -127,15 +127,19 @@ export class OrchestratorService {
     if (evt.isBot) {
       return;
     }
+
     const repoFullName = `${evt.owner}/${evt.repo}`;
+
     // For comments on a PR thread, evt.issueNumber is the PR number — not the original
     // issue number — so fall back to a prNumber lookup when the issue lookup misses.
     const job =
       (await this.jobs.findByRepoIssue(repoFullName, evt.issueNumber)) ??
       (await this.prisma.job.findFirst({ where: { repoFullName, prNumber: evt.issueNumber } }));
+
     if (!job) {
       return;
     }
+
     const { ref } = await this.context(job.id);
     const command = parseCommand(evt.body, this.config.get('COMMAND_PREFIX'));
 
@@ -162,9 +166,11 @@ export class OrchestratorService {
           select: { issues: true },
         }),
       ]);
+
       const lastIssues: ReviewIssue[] = lastReviewPass
         ? (JSON.parse(lastReviewPass.issues) as ReviewIssue[])
         : [];
+
       await this.safeComment(
         ref,
         evt.issueNumber,
@@ -182,7 +188,9 @@ export class OrchestratorService {
           lastReviewIssueCount: lastIssues.length > 0 ? lastIssues.length : undefined,
         }),
       );
+
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+
       return;
     }
 
@@ -193,18 +201,22 @@ export class OrchestratorService {
           evt.issueNumber,
           `@${evt.author} you need write access to this repo to control Hermes.`,
         );
+
         return;
       }
     }
 
     if (command.kind === 'cancel') {
       await this.queue.cancelForJob(job.id);
+
       await this.jobs.transition(job.id, 'CANCELLED', {
         reason: `cancelled by @${evt.author}`,
         actor: 'HUMAN',
       });
+
       await this.safeComment(ref, evt.issueNumber, `Cancelled. Re-label the issue to start over.`);
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+
       return;
     }
 
@@ -215,15 +227,20 @@ export class OrchestratorService {
           evt.issueNumber,
           `Nothing to retry — job is currently in **${job.state}** state.`,
         );
+
         await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+
         return;
       }
+
       const lastTask = await this.prisma.queueTask.findFirst({
         where: { jobId: job.id },
         orderBy: { createdAt: 'desc' },
         select: { kind: true },
       });
+
       const retryKind = (lastTask?.kind ?? 'REVIEW') as TaskKind;
+
       const retryStateMap: Record<TaskKind, JobState> = {
         PLAN: 'PLANNING',
         IMPLEMENT: 'IMPLEMENTING',
@@ -232,15 +249,21 @@ export class OrchestratorService {
         REVISE: 'REVISING',
         OPEN_PR: 'OPENING_PR',
       };
+
       const targetState = retryStateMap[retryKind];
+
       await this.jobs.update(job.id, { error: null });
+
       await this.jobs.transition(job.id, targetState, {
         reason: `retried by @${evt.author}`,
         actor: 'HUMAN',
       });
+
       await this.queue.enqueue({ jobId: job.id, kind: retryKind });
+
       await this.safeComment(ref, evt.issueNumber, `Retrying from the **${retryKind}** phase.`);
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+
       return;
     }
 
@@ -249,24 +272,31 @@ export class OrchestratorService {
     // feedback is persisted and will be picked up on the next handleImplement call.
     if (command.kind === 'revise' && job.prNumber) {
       const prefix = this.config.get('COMMAND_PREFIX');
+
       const strippedBody = evt.body
         .split('\n')
         .filter((l) => !l.trim().toLowerCase().startsWith(prefix.toLowerCase()))
         .join('\n')
         .trim();
+
       const feedbackBody = command.text
         ? `${command.text}${strippedBody ? `\n\n${strippedBody}` : ''}`
         : strippedBody || evt.body;
+
       await this.prisma.prRevisionFeedback.create({
         data: { jobId: job.id, author: evt.author, body: feedbackBody },
       });
+
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+
       if (job.state === 'AWAITING_PR_APPROVAL') {
         await this.jobs.transition(job.id, 'IMPLEMENTING', {
           reason: `revision requested by @${evt.author}`,
           actor: 'HUMAN',
         });
+
         await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
+
         await this.safeComment(
           ref,
           evt.issueNumber,
@@ -279,6 +309,7 @@ export class OrchestratorService {
           `Feedback noted — I'll incorporate it into the current run.`,
         );
       }
+
       return;
     }
 
@@ -292,32 +323,42 @@ export class OrchestratorService {
         where: { jobId: job.id, status: 'PROPOSED' },
         data: { status: 'APPROVED' },
       });
+
       await this.jobs.transition(job.id, 'IMPLEMENTING', {
         reason: `plan approved by @${evt.author}`,
         actor: 'HUMAN',
       });
+
       await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
+
       await this.safeComment(
         ref,
         evt.issueNumber,
         `Plan approved — implementing now. I'll open a draft PR when it's ready.`,
       );
+
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+
       return;
     }
 
     // Anything else from a human while awaiting approval is iteration feedback.
     const revisionCount = await this.prisma.planRevision.count({ where: { jobId: job.id } });
+
     if (revisionCount >= this.config.get('MAX_PLAN_REVISIONS')) {
       await this.jobs.fail(job.id, 'Plan revision limit reached without approval');
+
       await this.safeComment(
         ref,
         evt.issueNumber,
         `Reached the plan revision limit (${this.config.get('MAX_PLAN_REVISIONS')}). Stopping. Re-label to restart.`,
       );
+
       return;
     }
+
     await this.safeCommentReaction(ref, evt.commentId, 'eyes');
+
     await this.prisma.planFeedback.create({
       data: {
         jobId: job.id,
@@ -326,14 +367,17 @@ export class OrchestratorService {
         githubCommentId: BigInt(evt.commentId),
       },
     });
+
     await this.prisma.planRevision.updateMany({
       where: { jobId: job.id, status: 'PROPOSED' },
       data: { status: 'SUPERSEDED' },
     });
+
     await this.jobs.transition(job.id, 'PLANNING', {
       reason: `feedback from @${evt.author}`,
       actor: 'HUMAN',
     });
+
     await this.queue.enqueue({ jobId: job.id, kind: 'PLAN' });
   }
 
@@ -341,14 +385,19 @@ export class OrchestratorService {
     if (evt.isBot) {
       return;
     }
+
     const repoFullName = `${evt.owner}/${evt.repo}`;
+
     const job = await this.prisma.job.findFirst({
       where: { repoFullName, prNumber: evt.prNumber },
     });
+
     if (!job || job.state !== 'AWAITING_PR_APPROVAL') {
       return;
     }
+
     const { ref } = await this.context(job.id);
+
     if (!(await this.isAuthorized(ref, evt.author))) {
       return;
     }
@@ -358,29 +407,37 @@ export class OrchestratorService {
         where: { jobId: job.id },
         data: { state: 'open' },
       });
+
       await this.jobs.transition(job.id, 'DONE', {
         reason: `PR approved by @${evt.author}`,
         actor: 'HUMAN',
       });
+
       await this.safeComment(ref, evt.prNumber, `Approved — Hermes is done here. 🎉`);
       await this.safeReaction(ref, evt.prNumber, 'eyes');
       await this.workspace.cleanup(job.id).catch(() => undefined);
+
       return;
     }
+
     if (evt.state === 'changes_requested' || evt.state === 'commented') {
       await this.prisma.prRevisionFeedback.create({
         data: { jobId: job.id, author: evt.author, body: evt.body },
       });
+
       await this.jobs.transition(job.id, 'IMPLEMENTING', {
         reason: `changes requested by @${evt.author}`,
         actor: 'HUMAN',
       });
+
       await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
+
       await this.safeComment(
         ref,
         evt.prNumber,
         `On it — addressing the requested changes and I'll push an update.`,
       );
+
       await this.safeReaction(ref, evt.prNumber, 'eyes');
     }
   }
@@ -391,17 +448,23 @@ export class OrchestratorService {
     if (evt.isBot) {
       return;
     }
+
     const repoFullName = `${evt.owner}/${evt.repo}`;
+
     const job = await this.prisma.job.findFirst({
       where: { repoFullName, prNumber: evt.prNumber },
     });
+
     if (!job || job.state !== 'AWAITING_PR_APPROVAL') {
       return;
     }
+
     const { ref } = await this.context(job.id);
+
     if (!(await this.isAuthorized(ref, evt.author))) {
       return;
     }
+
     await this.prisma.prRevisionFeedback.create({
       data: { jobId: job.id, author: evt.author, body: evt.body, path: evt.path, line: evt.line },
     });
@@ -409,13 +472,17 @@ export class OrchestratorService {
 
   async processTask(task: QueueTask): Promise<void> {
     const job = await this.jobs.findById(task.jobId);
+
     if (!job || TERMINAL_STATES.has(job.state as JobState)) {
       this.logger.warn(
         `Skipping ${task.kind} task ${task.id}: job ${task.jobId} is ${job?.state ?? 'missing'}`,
       );
+
       return;
     }
+
     const kind = task.kind as TaskKind;
+
     switch (kind) {
       case 'PLAN':
         return this.handlePlan(task.jobId);
@@ -435,14 +502,18 @@ export class OrchestratorService {
   /** Called by the worker when a task exhausts its retries. */
   async onTaskExhausted(jobId: string, error: string): Promise<void> {
     const job = await this.jobs.findById(jobId);
+
     if (!job) {
       return;
     }
+
     await this.queue.cancelForJob(jobId);
     await this.jobs.fail(jobId, error);
+
     try {
       const { ref } = await this.context(jobId);
       const target = job.prNumber ?? job.issueNumber;
+
       await this.safeComment(
         ref,
         target,
@@ -457,10 +528,12 @@ export class OrchestratorService {
 
   private async handlePlan(jobId: string): Promise<void> {
     const { job, installation, ref } = await this.context(jobId);
+
     await this.jobs.transition(jobId, 'PLANNING', { reason: 'drafting plan', actor: 'AGENT' });
 
     const branchName =
       job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber);
+
     const ws = await this.workspace.prepare({
       jobId,
       installationId: this.ghId(installation),
@@ -468,6 +541,7 @@ export class OrchestratorService {
       repo: job.repoName,
       branchName,
     });
+
     if (!job.branchName) {
       await this.jobs.update(jobId, { branchName });
     }
@@ -476,6 +550,7 @@ export class OrchestratorService {
       where: { jobId },
       orderBy: { revision: 'desc' },
     });
+
     const feedback = lastRevision
       ? await this.prisma.planFeedback.findMany({
           where: { jobId, createdAt: { gt: lastRevision.createdAt } },
@@ -486,6 +561,7 @@ export class OrchestratorService {
     const attachmentRefs = extractAttachmentUrls(
       [job.issueBody, ...feedback.map((f) => f.body)].join('\n'),
     );
+
     const downloaded = await this.workspace.downloadAttachments(
       ws.dir,
       this.ghId(installation),
@@ -501,8 +577,10 @@ export class OrchestratorService {
       feedback: feedback.map((f) => f.body),
       attachments: formatDownloadedAttachments(downloaded),
     });
+
     const res = await this.agent.run({ jobId, phase: 'PLAN', cwd: ws.dir, prompt });
     const missing = missingPlanSections(res.stdout);
+
     if (res.status !== 'SUCCEEDED' || res.stdout.trim().length < 500 || missing.length > 0) {
       const reason =
         missing.length > 0
@@ -515,6 +593,7 @@ export class OrchestratorService {
     const planContent = res.stdout.trim();
     const commentBody = this.renderPlanComment(planContent);
     const commentId = await this.github.createIssueComment(ref, job.issueNumber, commentBody);
+
     await this.prisma.planRevision.create({
       data: {
         jobId,
@@ -524,6 +603,7 @@ export class OrchestratorService {
         githubCommentId: BigInt(commentId),
       },
     });
+
     await this.jobs.transition(jobId, 'AWAITING_PLAN_APPROVAL', {
       reason: `plan revision ${nextRevision} posted`,
       actor: 'AGENT',
@@ -532,15 +612,19 @@ export class OrchestratorService {
 
   private async handleImplement(jobId: string): Promise<void> {
     const { job, installation } = await this.context(jobId);
+
     if (job.state !== 'IMPLEMENTING') {
       await this.jobs.transition(jobId, 'IMPLEMENTING', {
         reason: 're-implementing',
         actor: 'AGENT',
       });
     }
+
     const ghId = this.ghId(installation);
+
     const branchName =
       job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber);
+
     const ws = await this.workspace.prepare({
       jobId,
       installationId: ghId,
@@ -548,18 +632,22 @@ export class OrchestratorService {
       repo: job.repoName,
       branchName,
     });
+
     if (!job.branchName) {
       await this.jobs.update(jobId, { branchName });
     }
 
     const plan = await this.approvedPlan(jobId);
     let guidance: string | undefined;
+
     const reviewBodies: string[] = [];
+
     if (job.prNumber) {
       const prRevisions = await this.prisma.prRevisionFeedback.findMany({
         where: { jobId },
         orderBy: { createdAt: 'asc' },
       });
+
       if (prRevisions.length > 0) {
         const formatted = this.formatPrFeedback(
           prRevisions.map((r) => ({
@@ -569,16 +657,19 @@ export class OrchestratorService {
             line: r.line ?? undefined,
           })),
         );
+
         guidance = formatted;
         reviewBodies.push(...prRevisions.map((r) => r.body));
       }
     }
+
     const attachmentRefs = extractAttachmentUrls([job.issueBody, ...reviewBodies].join('\n'));
     const downloaded = await this.workspace.downloadAttachments(ws.dir, ghId, attachmentRefs);
     const attachments = formatDownloadedAttachments(downloaded);
 
     const maxIters = this.config.get('MAX_IMPLEMENTATION_ITERATIONS');
     let committedSomething = false;
+
     for (let attempt = 1; attempt <= maxIters; attempt++) {
       const prompt = buildImplementPrompt({
         repoFullName: job.repoFullName,
@@ -589,43 +680,54 @@ export class OrchestratorService {
         guidance,
         attachments,
       });
+
       const res = await this.agent.run({
         jobId,
         phase: 'IMPLEMENT',
         cwd: ws.dir,
         prompt,
       });
+
       if (res.status !== 'SUCCEEDED') {
         throw new Error(`implementation agent ${res.status}; ${res.stderr.slice(0, 300)}`);
       }
+
       const sha = await this.workspace.commitAll(
         ws.dir,
         implementCommitMessage(job.issueNumber, job.issueTitle, attempt),
       );
+
       committedSomething ||= sha !== null;
+
       await this.jobs.incrementAttempts(jobId);
 
       const verify = await this.workspace.runVerify(ws.dir);
+
       if (!verify || verify.ok) {
         break;
       }
+
       guidance = `The verification command failed (exit non-zero). Fix the root cause.\n\n${verify.output.slice(0, 4000)}`;
+
       this.logger.warn(`[job ${jobId}] verify failed on attempt ${attempt}; iterating`);
     }
 
     if (!committedSomething && !(await this.workspace.hasCommitsAhead(ws.dir, ws.baseBranch))) {
       throw new Error('agent produced no changes');
     }
+
     await this.jobs.transition(jobId, 'TESTING', {
       reason: 'implementation complete',
       actor: 'AGENT',
     });
+
     await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
     await this.queue.enqueue({ jobId, kind: 'TEST' });
   }
 
   private async handleTest(jobId: string): Promise<void> {
     const { job, ref } = await this.context(jobId);
+
     const ws = await this.workspace.prepare({
       jobId,
       installationId: this.ghIdFromRef(ref),
@@ -634,6 +736,7 @@ export class OrchestratorService {
       branchName:
         job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber),
     });
+
     const plan = await this.approvedPlan(jobId);
     const hasBrowser = !!process.env.CAMOFOX_URL;
 
@@ -684,15 +787,33 @@ export class OrchestratorService {
 
       if (testRunCount >= maxTestIters) {
         const reason = `tests failed after ${testRunCount} attempts`;
+
         this.logger.warn(`[job ${jobId}] ${reason}; failing job`);
+
         await this.jobs.transition(jobId, 'FAILED', { reason, actor: 'AGENT' });
+
+        // Notify on PR if open, otherwise on issue
+        const target = job.prNumber ?? job.issueNumber;
+
+        const failureDetail = testResult
+          ? `\n\n**Failed tests:**\n${testResult.failures.map((f) => `- ${f.name}`).join('\n')}`
+          : '';
+
+        await this.safeComment(
+          ref,
+          target,
+          `Tests failed after ${testRunCount} attempts. Hermes gave up.${failureDetail}`,
+        );
+
         return;
       }
 
       const reason = testResult
         ? `tests failed: ${testResult.failures.map((f) => f.name).join(', ') || 'see summary'}`
         : `test agent ${res.status}`;
+
       this.logger.warn(`[job ${jobId}] ${reason}; routing to revise`);
+
       await this.jobs.transition(jobId, 'REVISING', { reason, actor: 'AGENT' });
       await this.queue.enqueue({ jobId, kind: 'REVISE' });
     }
@@ -700,6 +821,7 @@ export class OrchestratorService {
 
   private async handleRevise(jobId: string): Promise<void> {
     const { job, ref } = await this.context(jobId);
+
     const ws = await this.workspace.prepare({
       jobId,
       installationId: this.ghIdFromRef(ref),
@@ -708,6 +830,7 @@ export class OrchestratorService {
       branchName:
         job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber),
     });
+
     const plan = await this.approvedPlan(jobId);
 
     // Gather whatever context is available: failing test output and/or review issues.
@@ -730,12 +853,16 @@ export class OrchestratorService {
 
     const testOutput = (() => {
       if (!lastTestRun) return undefined;
+
       if (lastTestRun.status !== 'SUCCEEDED') {
         return (lastTestRun.stderr || lastTestRun.stdout || '').slice(0, 4000);
       }
+
       // Process exited cleanly but the structured verdict said tests failed.
       const result = this.testing.parse(lastTestRun.stdout ?? '');
+
       if (!result || result.passed) return undefined;
+
       return this.testing.formatFailures(result);
     })();
 

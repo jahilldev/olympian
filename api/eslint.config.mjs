@@ -19,6 +19,7 @@ export default tseslint.config(
       },
     },
     rules: {
+      curly: ['error', 'all'],
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-unsafe-argument': 'off',
