@@ -12,7 +12,7 @@ issue labeled ──▶ PLAN ──▶ (human approves plan) ──▶ IMPLEMENT
                                                                           │
                                                                           ▼
                               (human approves PR) ◀── AWAIT PR REVIEW ◀── OPEN DRAFT PR
-                                      │                     ▲                 
+                                      │                     ▲
                                       ▼                     └── changes requested ──▶ IMPLEMENT
                                     DONE
 ```
@@ -82,8 +82,9 @@ curl localhost:3030/metrics       # Prometheus metrics
 These can't be scripted for you and gate the live run (not the build or tests):
 
 ### 1. Register a GitHub App
-- **Permissions:** Issues *Read & write*, Pull requests *Read & write*, Contents *Read &
-  write*, Metadata *Read-only*.
+
+- **Permissions:** Issues _Read & write_, Pull requests _Read & write_, Contents _Read &
+  write_, Metadata _Read-only_.
 - **Subscribe to events:** Issues, Issue comment, Pull request review, Installation.
 - **Webhook URL:** `https://<your-host>/webhooks/github` and a **webhook secret**.
 - Generate a **private key** (PEM). Install the App on the target repos.
@@ -156,6 +157,7 @@ To opt out: leave `CAMOFOX_URL` empty (or unset) — Hermes falls back to `agent
 3. A draft PR appears. **Approve** the PR review to finish, or **request changes** to loop.
 
 Issue-comment commands (maintainers only — write access required):
+
 - `/hermes approve` — approve the plan and start implementation
 - `/hermes cancel` — stop the job
 - `/hermes status` — report current state
@@ -174,17 +176,17 @@ Issue-comment commands (maintainers only — write access required):
 All config is validated at boot (see `src/config/config.model.ts`). Full reference and
 defaults live in [`api/.env.example`](api/.env.example). Key knobs:
 
-| Variable | Purpose |
-| --- | --- |
-| `TRIGGER_LABEL` | Label that starts a job (default `hermes`). |
-| `REVIEW_CONFIDENCE_THRESHOLD` | Min self-review confidence to open a PR (default 85). |
-| `MAX_PLAN_REVISIONS` / `MAX_IMPLEMENTATION_ITERATIONS` / `MAX_REVIEW_PASSES` | Loop caps. |
-| `WORKER_CONCURRENCY` | Parallel jobs (default 2). |
-| `VERIFY_COMMAND` | Optional tests/build command used as an acceptance gate. |
-| `SANDBOX_MODE` | `none` or `docker`. |
-| `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL` / `HERMES_MAX_TURNS` | Hermes invocation. |
-| `HERMES_REVIEW_MODEL` / `HERMES_REVIEW_PROVIDER` | Optional independent model for the self-review cycle. |
-| `HERMES_TESTING_MODEL` / `HERMES_TESTING_PROVIDER` | Optional lighter-weight model for the testing step. Falls back to `HERMES_PRIMARY_MODEL`. |
+| Variable                                                                     | Purpose                                                                                   |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `TRIGGER_LABEL`                                                              | Label that starts a job (default `hermes`).                                               |
+| `REVIEW_CONFIDENCE_THRESHOLD`                                                | Min self-review confidence to open a PR (default 85).                                     |
+| `MAX_PLAN_REVISIONS` / `MAX_IMPLEMENTATION_ITERATIONS` / `MAX_REVIEW_PASSES` | Loop caps.                                                                                |
+| `WORKER_CONCURRENCY`                                                         | Parallel jobs (default 2).                                                                |
+| `VERIFY_COMMAND`                                                             | Optional tests/build command used as an acceptance gate.                                  |
+| `SANDBOX_MODE`                                                               | `none` or `docker`.                                                                       |
+| `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL` / `HERMES_MAX_TURNS`   | Hermes invocation.                                                                        |
+| `HERMES_REVIEW_MODEL` / `HERMES_REVIEW_PROVIDER`                             | Optional independent model for the self-review cycle.                                     |
+| `HERMES_TESTING_MODEL` / `HERMES_TESTING_PROVIDER`                           | Optional lighter-weight model for the testing step. Falls back to `HERMES_PRIMARY_MODEL`. |
 
 ## Docker
 
@@ -200,9 +202,15 @@ docker compose up --build        # from repo root: builds the service image
 ```
 
 SQLite lives on a named volume (`hermes-data`); there is no separate database container.
-Agent workspaces are bind-mounted from `./workspaces/` in the repo root at the **same
-absolute path** inside the service container, so sibling agent containers spawned via
-the Docker socket can reference workspace directories by the same host path.
+Agent workspaces and the Hermes memory state (`MEMORY.md`, `USER.md`, `skills/`) are
+bind-mounted from `./workspaces/` and `./hermes-state/` at the **same absolute path**
+inside the service container, so sibling agent containers spawned via the Docker socket
+can reference those directories using the same host path the service wrote to.
+
+> **Langfuse observability** — the env var forwarding and URL rewriting are in place, but
+> the `POST /api/public/otel/v1/traces` ingestion endpoint has not yet been implemented.
+> Traces sent by the agent plugin are currently dropped. Enable Langfuse only after the
+> trace ingestion module is added.
 
 ## Production (systemd)
 
