@@ -9,12 +9,13 @@ model:
 # a large review prompt doesn't get killed mid-generation.
 providers:
   custom:
-    request_timeout_seconds: 3600  # hard cap: 1 h per LLM call
-    stale_timeout_seconds: 900     # declare a stream stale after 15 min of silence
+    request_timeout_seconds: 3600 # hard cap: 1 h per LLM call
+    stale_timeout_seconds: 900 # declare a stream stale after 15 min of silence
 
 plugins:
   enabled:
     - web_fetch
+    - observability/langfuse
 
 browser:
   camofox:

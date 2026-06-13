@@ -20,6 +20,7 @@ export function buildTestPrompt(ctx: TestPromptContext): string {
 1. Discover the test suite by inspecting the project structure (look for \`package.json\` test scripts, \`pytest.ini\`, \`jest.config.*\`, \`vitest.config.*\`, \`go.mod\`, \`Makefile\`, etc.).
 2. Run the tests and capture the full output.
 3. **Try to run the application itself** — start the dev server, CLI, or process and verify it launches without errors. For web/browser applications, open the running app in the browser and exercise the key user flows from the acceptance criteria. For CLI tools, invoke the main commands and check the output.
+   - **Important:** dev servers and long-running processes must be started in the background so the shell command returns immediately. Use \`command > /tmp/server.log 2>&1 &\` then \`sleep 3 && curl -s http://localhost:<port>\` (or similar) to confirm it started before proceeding to browser tests. Never run a dev server in the foreground — it will block indefinitely.
 4. Do NOT modify any source files — if tests fail or the application errors, document what went wrong. Fixes are handled in a separate step.`,
   ];
 
