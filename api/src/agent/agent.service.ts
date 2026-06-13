@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/config.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
@@ -56,7 +57,9 @@ export class HermesAgentService {
     const model = opts.model ?? this.config.get('HERMES_PRIMARY_MODEL') ?? undefined;
     const provider = opts.provider ?? this.config.get('HERMES_PRIMARY_PROVIDER') ?? undefined;
     const sandboxMode = this.config.get('SANDBOX_MODE');
-    const hermesHome = this.config.get('HERMES_HOME') || undefined;
+    const hermesHomeRaw = this.config.get('HERMES_HOME') || undefined;
+    // Resolve to absolute: docker run -v requires absolute bind-mount sources.
+    const hermesHome = hermesHomeRaw ? resolve(hermesHomeRaw) : undefined;
 
     if (sandboxMode === 'docker' && hermesHome) {
       prepareHermesMemoryPaths(hermesHome);
