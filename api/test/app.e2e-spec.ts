@@ -7,7 +7,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { HermesAgentService } from '../src/agent/agent.service.js';
-import { GithubApiService } from '../src/github-api/github-api.service.js';
+import { GithubService } from '../src/github/github.service.js';
 import { WorkspaceService } from '../src/workspace/workspace.service.js';
 import { QueueService } from '../src/queue/queue.service.js';
 import { OrchestratorService } from '../src/orchestrator/orchestrator.service.js';
@@ -98,7 +98,7 @@ describe('Hermes orchestration pipeline (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(HermesAgentService)
       .useValue(agentStub)
-      .overrideProvider(GithubApiService)
+      .overrideProvider(GithubService)
       .useValue(githubStub)
       .overrideProvider(WorkspaceService)
       .useValue(workspaceStub)

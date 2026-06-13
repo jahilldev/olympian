@@ -41,7 +41,7 @@ describe('buildPrBody', () => {
   it('links the issue and reports confidence', () => {
     const body = buildPrBody({
       issueNumber: 7,
-      plan: 'do x',
+      agentSummary: 'do x',
       confidence: 90,
       threshold: 85,
       meetsThreshold: true,
@@ -53,7 +53,7 @@ describe('buildPrBody', () => {
   it('lists unresolved issues when below threshold', () => {
     const body = buildPrBody({
       issueNumber: 7,
-      plan: 'p',
+      agentSummary: 'p',
       confidence: 60,
       threshold: 85,
       meetsThreshold: false,
