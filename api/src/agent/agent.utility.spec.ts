@@ -25,7 +25,8 @@ describe('extractJsonBlock', () => {
   });
 
   it('extracts JSON when it appears first (new-style output)', () => {
-    const text = '```json\n{"confidence":95,"verdict":"PASS","issues":[]}\n```\n\nDetailed analysis...';
+    const text =
+      '```json\n{"confidence":95,"verdict":"PASS","issues":[]}\n```\n\nDetailed analysis...';
     expect(extractJsonBlock(text)).toEqual({ confidence: 95, verdict: 'PASS', issues: [] });
   });
 });

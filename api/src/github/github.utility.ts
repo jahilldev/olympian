@@ -6,12 +6,10 @@ const IMAGE_EMBED_RE =
   /!\[([^\]]*)\]\((https:\/\/(?:github\.com\/user-attachments\/assets|user-images\.githubusercontent\.com)\/[^)\s]+)\)/g;
 
 // File-attachment hyperlinks (GitHub uploads via drag-and-drop)
-const FILE_LINK_RE =
-  /\[([^\]]*)\]\((https:\/\/github\.com\/user-attachments\/files\/[^)\s]+)\)/g;
+const FILE_LINK_RE = /\[([^\]]*)\]\((https:\/\/github\.com\/user-attachments\/files\/[^)\s]+)\)/g;
 
 // Bare (un-linked) GitHub CDN asset or file URLs
-const BARE_ASSET_RE =
-  /\bhttps:\/\/github\.com\/user-attachments\/(?:assets|files)\/[^\s)<>"]+/g;
+const BARE_ASSET_RE = /\bhttps:\/\/github\.com\/user-attachments\/(?:assets|files)\/[^\s)<>"]+/g;
 
 function filenameFor(url: string, label: string): string {
   // File downloads: the URL path already carries the original filename.
@@ -19,8 +17,7 @@ function filenameFor(url: string, label: string): string {
   if (fileSeg) return decodeURIComponent(fileSeg[1]).replace(/[^\w.-]/g, '_');
 
   // Assets and legacy image URLs: use a URL hash for uniqueness, infer extension.
-  const ext =
-    (label.match(/\.(\w{2,5})$/) ?? url.match(/\.(\w{2,5})(?:[?#]|$)/))?.[1] ?? 'bin';
+  const ext = (label.match(/\.(\w{2,5})$/) ?? url.match(/\.(\w{2,5})(?:[?#]|$)/))?.[1] ?? 'bin';
   const hash = createHash('sha1').update(url).digest('hex').slice(0, 8);
   return `${hash}.${ext}`;
 }

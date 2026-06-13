@@ -77,17 +77,9 @@ export interface PrBodyInput {
 }
 
 export function buildPrBody(input: PrBodyInput): string {
-  const lines = [
-    input.agentSummary.trim(),
-    '',
-    `Closes #${input.issueNumber}`,
-    '',
-    '---',
-  ];
+  const lines = [input.agentSummary.trim(), '', `Closes #${input.issueNumber}`, '', '---'];
   if (input.meetsThreshold) {
-    lines.push(
-      `🤖 Automated self-review: confidence ${input.confidence}/100 — all checks passed.`,
-    );
+    lines.push(`🤖 Automated self-review: confidence ${input.confidence}/100 — all checks passed.`);
   } else {
     lines.push(
       `🤖 Automated self-review: confidence ${input.confidence ?? 'n/a'}/100 (threshold ${input.threshold}) — opened below threshold for human attention.`,
@@ -141,9 +133,7 @@ export function buildStatusReport(ctx: StatusContext): string {
   if (ctx.reviewPassCount > 0 || ctx.state === 'SELF_REVIEWING' || ctx.state === 'REVISING') {
     const passLine = `- **Review passes completed:** ${ctx.reviewPassCount}`;
     lines.push(
-      ctx.confidence != null
-        ? `${passLine} — last confidence: ${ctx.confidence}/100`
-        : passLine,
+      ctx.confidence != null ? `${passLine} — last confidence: ${ctx.confidence}/100` : passLine,
     );
   } else if (ctx.confidence != null) {
     lines.push(`- **Last review confidence:** ${ctx.confidence}/100`);
@@ -188,7 +178,9 @@ export function buildStatusReport(ctx: StatusContext): string {
 }
 
 /** Formats a list of downloaded workspace-relative attachment paths for inclusion in a prompt. */
-export function formatDownloadedAttachments(attachments: DownloadedAttachment[]): string | undefined {
+export function formatDownloadedAttachments(
+  attachments: DownloadedAttachment[],
+): string | undefined {
   if (attachments.length === 0) return undefined;
   return (
     'The following files were attached to the issue or comments and have been downloaded to your workspace:\n' +

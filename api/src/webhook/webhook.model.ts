@@ -39,7 +39,14 @@ export interface PullRequestReviewPayload {
 
 export interface PullRequestReviewCommentPayload {
   action: string;
-  comment: { id: number; body: string; user: GithubUser; path: string; line: number | null; original_line: number | null };
+  comment: {
+    id: number;
+    body: string;
+    user: GithubUser;
+    path: string;
+    line: number | null;
+    original_line: number | null;
+  };
   pull_request: { number: number };
   repository: GithubRepo;
   installation?: GithubInstallationRef;

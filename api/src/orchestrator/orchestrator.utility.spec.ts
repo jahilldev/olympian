@@ -1,4 +1,9 @@
-import { acceptanceCriteria, buildPrBody, buildStatusReport, parseCommand } from './orchestrator.utility.js';
+import {
+  acceptanceCriteria,
+  buildPrBody,
+  buildStatusReport,
+  parseCommand,
+} from './orchestrator.utility.js';
 
 describe('parseCommand', () => {
   it('parses approve (case-insensitive, any line)', () => {

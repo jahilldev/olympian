@@ -24,7 +24,7 @@ A Markdown task list (\`- [ ]\` items). Every item must be a specific, verifiabl
 ## Risks & open questions
 A bulleted list of technical risks, unknowns, external dependencies, or decisions deferred to implementation time.
 
-Do NOT write code or modify files. Do NOT include a preamble (\"Here is my plan…\") or a closing sign-off.`;
+Do NOT write code or modify files. Do NOT include a preamble ("Here is my plan…") or a closing sign-off.`;
 
 export function buildPlanPrompt(ctx: PlanPromptContext): string {
   const parts: string[] = [

@@ -36,7 +36,7 @@ export class WebhookController {
     }
 
     const valid = verifySignature(this.config.get('GITHUB_WEBHOOK_SECRET'), raw, signature);
-    
+
     if (!valid) {
       throw new UnauthorizedException('invalid signature');
     }
@@ -46,11 +46,11 @@ export class WebhookController {
     }
 
     const shouldProcess = await this.webhooks.record(event, delivery, raw, req.body as unknown);
-    
+
     if (shouldProcess) {
       void this.webhooks.dispatch(event, delivery, req.body as unknown);
     }
-    
+
     return { ok: true };
   }
 }

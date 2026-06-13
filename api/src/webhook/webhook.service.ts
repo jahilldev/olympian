@@ -39,12 +39,11 @@ export class WebhookService {
     payload: unknown,
   ): Promise<boolean> {
     const action = (payload as { action?: string }).action;
-    
+
     this.metrics.recordWebhook(event, action);
 
-    
     const existing = await this.prisma.webhookEvent.findUnique({ where: { deliveryId } });
-    
+
     if (existing?.processedAt) {
       this.logger.debug(`Duplicate delivery ${deliveryId} already processed; skipping`);
       return false;
@@ -55,7 +54,7 @@ export class WebhookService {
         data: { deliveryId, event, action, payload: rawBody },
       });
     }
-    
+
     return true;
   }
 

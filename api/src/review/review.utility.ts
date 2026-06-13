@@ -40,7 +40,7 @@ export function parseReview(stdout: string): ReviewResult | null {
 
 export function meetsThreshold(result: ReviewResult, threshold: number): boolean {
   const hasBlocking = result.issues.some((i) => i.severity === 'high' || i.severity === 'critical');
-  
+
   return result.verdict === 'PASS' && result.confidence >= threshold && !hasBlocking;
 }
 
@@ -70,7 +70,7 @@ export function formatIssuesMarkdown(issues: ReviewIssue[]): string {
   if (issues.length === 0) {
     return '_(no specific issues listed)_';
   }
-  
+
   return issues
     .map((i) => {
       const emoji = SEVERITY_EMOJI[i.severity] ?? '⚪';
