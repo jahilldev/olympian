@@ -658,7 +658,9 @@ export class OrchestratorService {
       }),
       model: this.config.get('HERMES_TESTING_MODEL') || undefined,
       provider: this.config.get('HERMES_TESTING_PROVIDER') || undefined,
+      timeoutMs: this.config.get('HERMES_TESTING_TIMEOUT_MS'),
     });
+
     await this.workspace.commitAll(ws.dir, 'test: run test suite');
 
     const testResult = res.status === 'SUCCEEDED' ? this.testing.parse(res.stdout) : null;
