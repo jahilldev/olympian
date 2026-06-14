@@ -7,7 +7,13 @@ import {
 
 const PLAN_OUTPUT_CONTRACT = `Your response MUST be the complete, detailed implementation plan — not a statement of intent and not a preamble. Use your tools to fully explore the codebase first, then output the full plan in a single response.
 
-Write a professional software design document in GitHub-flavored Markdown. The document MUST contain all five sections listed below, each with substantive content. Do NOT output any text before the first heading or after the last section.
+**CRITICAL — output rules:**
+- Do NOT write code or modify files. Do NOT include a preamble ("Here is my plan…") or a closing sign-off.
+- Do NOT use any file-writing tool (write_file, edit_file, create_file, or similar). The plan is NOT a file to be saved; it is your response text.
+- Do NOT write the plan to plan.md, README.md, or any other file on disk.
+- Do NOT say "I have written the plan to …" or "The plan has been saved to …". Output the plan text directly.
+
+Write a professional software design document in GitHub-flavored Markdown. The document MUST contain all five sections listed below, each with substantive content.
 
 ## Summary
 What the issue asks for, the target deliverable, key constraints, and non-goals. At least two complete sentences.
@@ -22,9 +28,7 @@ A bulleted list of every file to create or modify. Each entry: \`path/to/file\` 
 A Markdown task list (\`- [ ]\` items). Every item must be a specific, verifiable condition a reviewer can check by running the code. When all items are checked, the issue is fully resolved.
 
 ## Risks & open questions
-A bulleted list of technical risks, unknowns, external dependencies, or decisions deferred to implementation time.
-
-Do NOT write code or modify files. Do NOT include a preamble ("Here is my plan…") or a closing sign-off.`;
+A bulleted list of technical risks, unknowns, external dependencies, or decisions deferred to implementation time.`;
 
 export function buildPlanPrompt(ctx: PlanPromptContext): string {
   const parts: string[] = [
