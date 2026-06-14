@@ -45,7 +45,11 @@ export class JobController {
     @Param('runId') runId: string,
   ): Promise<AgentRunOutputDto> {
     const result = await this.agent.getRunOutput(runId);
-    if (!result) throw new NotFoundException(`Run ${runId} not found`);
+
+    if (!result) {
+      throw new NotFoundException(`Run ${runId} not found`);
+    }
+
     return result;
   }
 }

@@ -190,7 +190,11 @@ export class HermesAgentService {
       where: { id: runId },
       select: { stdout: true, stderr: true },
     });
-    if (!row) return null;
+
+    if (!row) {
+      return null;
+    }
+
     return { stdout: row.stdout ?? '', stderr: row.stderr };
   }
 }

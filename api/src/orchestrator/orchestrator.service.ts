@@ -843,14 +843,14 @@ export class OrchestratorService {
       select: { createdAt: true },
     });
 
-    const [lastTestRun, lastFailedReview, prFeedback] = await Promise.all([
+    const [lastTestRun, lastReviewPass, prFeedback] = await Promise.all([
       this.prisma.agentRun.findFirst({
         where: { jobId, phase: 'TEST' },
         orderBy: { createdAt: 'desc' },
         select: { status: true, stdout: true, stderr: true },
       }),
       this.prisma.reviewPass.findFirst({
-        where: { jobId, cycle: job.reviewCycle, verdict: 'FAIL' },
+        where: { jobId, cycle: job.reviewCycle },
         orderBy: { passNumber: 'desc' },
         select: { issues: true },
       }),
@@ -882,7 +882,7 @@ export class OrchestratorService {
       return this.testing.formatFailures(result);
     })();
 
-    const issues = lastFailedReview ? (JSON.parse(lastFailedReview.issues) as ReviewIssue[]) : [];
+    const issues = lastReviewPass ? (JSON.parse(lastReviewPass.issues) as ReviewIssue[]) : [];
     const issuesText = issues.length > 0 ? formatIssues(issues) : undefined;
 
     const humanFeedback =
