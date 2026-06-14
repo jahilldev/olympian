@@ -303,6 +303,9 @@ export function deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: 
             type: `span-${kindLabel(span.kind).toLowerCase()}`,
             timestamp: nanosToIso(span.startNs),
             body: {
+              // Spread langfuse.* span attributes flat so the frontend can access
+              // body['langfuse.observation.type'], body['langfuse.input'], etc. directly.
+              ...span.attributes,
               traceId: span.traceId,
               spanId: span.spanId,
               parentSpanId: span.parentSpanId,
@@ -310,7 +313,6 @@ export function deserializeOtlpTraces(raw: Buffer): { sessionId: string; event: 
               kind: kindLabel(span.kind),
               startTime: nanosToIso(span.startNs),
               endTime: span.endNs > 0n ? nanosToIso(span.endNs) : undefined,
-              attributes: span.attributes,
             },
           },
         });

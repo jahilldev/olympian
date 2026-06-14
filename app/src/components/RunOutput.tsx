@@ -158,10 +158,13 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
 
 function ToolCard({ event }: { event: LangfuseEvent }) {
   const [inputOpen, setInputOpen] = useState(false);
+  const [outputOpen, setOutputOpen] = useState(true);
   const body = event.body;
   const name = String(body['langfuse.observation.name'] ?? body.name ?? 'unknown');
-  const raw = body['langfuse.input'] ?? body.input;
-  const inputStr = raw != null ? toStr(raw) : null;
+  const rawInput = body['langfuse.input'] ?? body.input;
+  const rawOutput = body['langfuse.output'] ?? body.output;
+  const inputStr = rawInput != null ? toStr(rawInput) : null;
+  const outputStr = rawOutput != null ? toStr(rawOutput) : null;
 
   return (
     <div class="rounded-md border border-amber-900/50 overflow-hidden text-xs">
@@ -184,6 +187,25 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
             <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/70">
               <pre class="text-[11px] text-zinc-500 font-mono whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
                 {inputStr}
+              </pre>
+            </div>
+          )}
+        </>
+      )}
+
+      {outputStr && (
+        <>
+          <button
+            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-amber-900/30 bg-zinc-950/40 transition-colors text-left"
+            onClick={() => setOutputOpen((o) => !o)}
+          >
+            <IconChevron open={outputOpen} />
+            <span class="text-zinc-400">Output</span>
+          </button>
+          {outputOpen && (
+            <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/30">
+              <pre class="text-[11px] text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
+                {outputStr}
               </pre>
             </div>
           )}
