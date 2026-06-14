@@ -257,6 +257,7 @@ export class OrchestratorService {
       await this.jobs.transition(job.id, targetState, {
         reason: `retried by @${evt.author}`,
         actor: 'HUMAN',
+        force: true,
       });
 
       await this.queue.enqueue({ jobId: job.id, kind: retryKind });

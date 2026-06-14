@@ -71,7 +71,7 @@ export class JobService {
       return job;
     }
 
-    if (!canTransition(from, to)) {
+    if (!opts.force && !canTransition(from, to)) {
       throw new ConflictException(`Illegal job transition ${from} -> ${to} (job ${jobId})`);
     }
 

@@ -29,20 +29,22 @@ export const ALLOWED_TRANSITIONS: Record<JobState, JobState[]> = {
   TRIAGED: ['PLANNING'],
   PLANNING: ['AWAITING_PLAN_APPROVAL'],
   AWAITING_PLAN_APPROVAL: ['PLANNING', 'IMPLEMENTING'],
-  IMPLEMENTING: ['TESTING'],
+  IMPLEMENTING: ['TESTING', 'SELF_REVIEWING'],
   TESTING: ['SELF_REVIEWING', 'REVISING'],
   SELF_REVIEWING: ['REVISING', 'OPENING_PR'],
-  REVISING: ['TESTING'],
+  REVISING: ['TESTING', 'SELF_REVIEWING'],
   OPENING_PR: ['AWAITING_PR_APPROVAL'],
   AWAITING_PR_APPROVAL: ['IMPLEMENTING', 'DONE'],
   DONE: [],
-  FAILED: ['PLANNING', 'IMPLEMENTING', 'TESTING', 'SELF_REVIEWING', 'REVISING', 'OPENING_PR'],
-  CANCELLED: ['PLANNING'],
+  FAILED: [],
+  CANCELLED: [],
 };
 
 export interface TransitionOptions {
   reason?: string;
   actor?: Actor;
+  /** Skip the canTransition guard. Use only for admin overrides (e.g. retry from FAILED). */
+  force?: boolean;
 }
 
 export interface CreateJobInput {
