@@ -38,6 +38,7 @@ import {
   missingPlanSections,
   parseCommand,
   reviseCommitMessage,
+  ensureCamofoxRunning,
 } from './orchestrator.utility.js';
 
 /**
@@ -740,6 +741,10 @@ export class OrchestratorService {
 
     const plan = await this.approvedPlan(jobId);
     const hasBrowser = !!process.env.CAMOFOX_URL;
+
+    if (hasBrowser) {
+      await ensureCamofoxRunning(process.env.CAMOFOX_URL!);
+    }
 
     // Pass the most recent prior test output so the agent can build on the previous
     // run's findings rather than rediscovering the project from scratch each time.
