@@ -228,44 +228,82 @@ export function spawnProcess(
 export function extractJsonBlock(text: string): unknown | null {
   const candidates: string[] = [];
 
-  // Prefer the FIRST complete fenced block — the review prompt instructs models to
-  // put their JSON verdict before any analysis, so this is almost always the right one.
-  const firstFenced = text.match(/```(?:json)?[ \t]*\n([\s\S]*?)```/i);
-
-  if (firstFenced?.[1]) {
-    candidates.push(firstFenced[1]);
+  // Strategy 1: brace-count from the first ```json fence.
+  //
+  // Why brace-counting instead of a regex:
+  //   - The regex /```[\s\S]*?```/ is non-greedy and stops at the first ``` it sees.
+  //     When an LLM embeds code examples inside a JSON "detail" string, those inner
+  //     backtick fences break the regex, producing truncated (invalid) JSON.
+  //   - lastIndexOf-based fallbacks land on code fences in the prose that follows the
+  //     verdict, not on the verdict itself.
+  //   - A brace-counter treats ``` as plain characters inside strings; it only cares
+  //     about { } depth and string boundaries ("..." with \" escapes).
+  //
+  // The review/agent prompts ask models to put their JSON verdict FIRST, so the first
+  // ```json fence is almost always the verdict.
+  const firstJsonFenceIdx = text.indexOf('```json');
+  if (firstJsonFenceIdx !== -1) {
+    const afterFence = text.slice(firstJsonFenceIdx).replace(/^```json[ \t]*\n?/, '');
+    const obj = extractFirstJsonObject(afterFence);
+    if (obj !== null) candidates.push(obj);
   }
 
-  // Fall back to the LAST opened fence to handle truncated stdout: the first-fence
-  // regex above requires a closing ``` and won't match if the output was cut off by
-  // STDOUT_CAP before the fence closed. The last-fence path tolerates a missing close.
-  const lastJsonFence = text.lastIndexOf('```json');
-  const lastPlainFence = text.lastIndexOf('```\n');
-  const lastFenceIdx = Math.max(lastJsonFence, lastPlainFence);
-
-  if (lastFenceIdx !== -1) {
-    const afterFence = text.slice(lastFenceIdx).replace(/^```(?:json)?[ \t]*\n?/, '');
-    const closeIdx = afterFence.indexOf('```');
-    const content = (closeIdx !== -1 ? afterFence.slice(0, closeIdx) : afterFence).trim();
-
-    if (content) {
-      candidates.push(content);
-    }
+  // Strategy 2: brace-count from the first plain ``` fence (handles ```\n{...}).
+  const firstPlainFenceIdx = text.indexOf('```\n');
+  if (firstPlainFenceIdx !== -1) {
+    const afterFence = text.slice(firstPlainFenceIdx + 4);
+    const obj = extractFirstJsonObject(afterFence);
+    if (obj !== null) candidates.push(obj);
   }
 
-  // Last-resort: outermost { ... } pair.
-  const first = text.indexOf('{');
-  const last = text.lastIndexOf('}');
-
-  if (first !== -1 && last > first) {
-    candidates.push(text.slice(first, last + 1));
-  }
+  // Strategy 3: brace-count across the entire text (no fence markers present).
+  const obj = extractFirstJsonObject(text);
+  if (obj !== null) candidates.push(obj);
 
   for (const c of candidates) {
     try {
       return JSON.parse(c.trim());
     } catch {
       // try next candidate
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Scans `text` for the first complete JSON object (outermost `{...}`) using a
+ * brace-depth counter that correctly handles string literals (including escaped
+ * quotes and embedded backtick fences). Returns the raw substring, or null if no
+ * complete object is found (e.g. truncated output).
+ */
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
     }
   }
 

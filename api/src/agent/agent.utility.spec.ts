@@ -13,9 +13,18 @@ describe('extractJsonBlock', () => {
     expect(extractJsonBlock('just prose')).toBeNull();
   });
 
-  it('prefers the last fenced block when multiple are present', () => {
+  it('prefers the ```json fence over a plain ``` fence that appears first', () => {
     const text = 'analysis\n```\nsome code\n```\nverdict\n```json\n{"confidence":80}\n```';
     expect(extractJsonBlock(text)).toEqual({ confidence: 80 });
+  });
+
+  it('handles embedded backtick fences inside JSON string values', () => {
+    // An LLM may put a code example (fenced with ```) inside a JSON "detail" field.
+    // The brace-counter must treat backticks as plain characters and not stop early.
+    const detail = 'Bad code:\n```typescript\nconst x = 1;\n```';
+    // JSON.stringify produces valid JSON with properly escaped newlines and backticks.
+    const text = `\`\`\`json\n${JSON.stringify({ verdict: 'FAIL', detail })}\n\`\`\``;
+    expect(extractJsonBlock(text)).toEqual({ verdict: 'FAIL', detail });
   });
 
   it('extracts JSON from a truncated (unclosed) fenced block', () => {
