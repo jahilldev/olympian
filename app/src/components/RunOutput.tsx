@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import type { LangfuseEvent, StreamPayload } from '@olympian/api/langfuse/langfuse.model.js';
+import type { AgentRunOutputDto } from '@olympian/api/agent/agent.model.js';
 import { navigate } from '../utils/navigate.ts';
 
 interface RunMeta {
@@ -9,6 +10,8 @@ interface RunMeta {
   exitCode: number | null;
   durationMs: number | null;
 }
+
+const TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT']);
 
 function formatDuration(ms: number | null): string {
   if (ms === null) return '';
@@ -23,6 +26,12 @@ function statusDot(status: string) {
   if (status === 'SUCCEEDED') return <span class="text-green-400 text-sm">✓</span>;
   if (status === 'FAILED') return <span class="text-red-400 text-sm">✗</span>;
   return <span class="text-zinc-500 text-sm">—</span>;
+}
+
+/** Strip ANSI escape codes so raw terminal output renders cleanly. */
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 }
 
 /** Render a single LLM/tool event as a terminal-style card. */
@@ -75,7 +84,6 @@ function EventCard({ event }: { event: LangfuseEvent }) {
     );
   }
 
-  // Generic span
   return (
     <div class="border-l-2 border-zinc-700 pl-3 py-1">
       <div class="flex items-center gap-2 text-xs">
@@ -86,19 +94,225 @@ function EventCard({ event }: { event: LangfuseEvent }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Static output view (completed runs)
+// ---------------------------------------------------------------------------
+
+function StaticOutput({ jobId, runId, meta }: { jobId: string; runId: string; meta: RunMeta | null }) {
+  const [output, setOutput] = useState<AgentRunOutputDto | null>(null);
+  const [error, setError] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/jobs/${jobId}/runs/${runId}/output`)
+      .then((r) => (r.ok ? (r.json() as Promise<AgentRunOutputDto>) : Promise.reject(r.status)))
+      .then(setOutput)
+      .catch(() => setError(true));
+  }, [runId]);
+
+  const copy = useCallback(() => {
+    if (output) void navigator.clipboard.writeText(output.stdout);
+  }, [output]);
+
+  return (
+    <div class="flex flex-col h-full overflow-hidden">
+      <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+        <button
+          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          onClick={() => navigate(`/jobs/${jobId}`)}
+        >
+          ← Job detail
+        </button>
+        <span class="text-zinc-700">/</span>
+        {meta && (
+          <>
+            <span class="text-xs font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
+              {meta.phase}
+            </span>
+            {meta.model && <span class="text-xs text-zinc-500 truncate">{meta.model}</span>}
+            <span class="flex items-center gap-1.5">{statusDot(meta.status)}</span>
+            {meta.durationMs !== null && (
+              <span class="text-xs text-zinc-500">{formatDuration(meta.durationMs)}</span>
+            )}
+          </>
+        )}
+        {output && (
+          <button
+            class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            onClick={copy}
+          >
+            Copy
+          </button>
+        )}
+      </header>
+
+      <div ref={scrollRef} class="flex-1 overflow-y-auto bg-black px-5 py-4">
+        {error && (
+          <p class="text-red-400 text-xs font-mono">Failed to load output.</p>
+        )}
+        {!output && !error && (
+          <p class="text-zinc-700 text-xs font-mono italic">Loading…</p>
+        )}
+        {output && (
+          <pre class="text-xs text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed">
+            {stripAnsi(output.stdout) || <span class="text-zinc-700 italic">No output recorded.</span>}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Live streaming view (in-flight runs)
+// ---------------------------------------------------------------------------
+
+function StreamingOutput({ jobId, runId, meta, onMetaUpdate }: {
+  jobId: string;
+  runId: string;
+  meta: RunMeta | null;
+  onMetaUpdate: (m: RunMeta) => void;
+}) {
+  const [events, setEvents] = useState<LangfuseEvent[]>([]);
+  const [streamStatus, setStreamStatus] = useState<'connecting' | 'live' | 'done' | 'error'>('connecting');
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const es = new EventSource(`/stream/runs/${runId}`);
+
+    es.onmessage = (e) => {
+      const payload = JSON.parse(e.data as string) as StreamPayload;
+
+      if (payload.type === 'history') {
+        setEvents(payload.events);
+        setStreamStatus('live');
+      } else if (payload.type === 'event') {
+        setEvents((prev) => [...prev, payload.event]);
+      } else if (payload.type === 'done') {
+        onMetaUpdate({
+          phase: meta?.phase ?? '',
+          model: meta?.model ?? null,
+          status: payload.status,
+          exitCode: payload.exitCode,
+          durationMs: payload.durationMs,
+        });
+        setStreamStatus('done');
+        es.close();
+      } else if (payload.type === 'error') {
+        setStreamStatus('error');
+        es.close();
+      }
+    };
+
+    es.onerror = () => {
+      if (es.readyState === EventSource.CLOSED) {
+        setStreamStatus((s) => (s === 'live' ? 'done' : s));
+      }
+    };
+
+    return () => es.close();
+  }, [runId]);
+
+  useEffect(() => {
+    if (!pinnedToBottom || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [events, pinnedToBottom]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setPinnedToBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 50);
+  }, []);
+
+  const copy = useCallback(() => {
+    const text = events
+      .map((e) => `[${e.timestamp}] ${e.type}\n${JSON.stringify(e.body, null, 2)}`)
+      .join('\n\n');
+    void navigator.clipboard.writeText(text);
+  }, [events]);
+
+  return (
+    <div class="flex flex-col h-full overflow-hidden">
+      <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+        <button
+          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          onClick={() => navigate(`/jobs/${jobId}`)}
+        >
+          ← Job detail
+        </button>
+        <span class="text-zinc-700">/</span>
+        {meta && (
+          <>
+            <span class="text-xs font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
+              {meta.phase}
+            </span>
+            {meta.model && <span class="text-xs text-zinc-500 truncate">{meta.model}</span>}
+            <span class="flex items-center gap-1.5">{statusDot(meta.status)}</span>
+            {meta.durationMs !== null && (
+              <span class="text-xs text-zinc-500">{formatDuration(meta.durationMs)}</span>
+            )}
+          </>
+        )}
+        {streamStatus === 'connecting' && (
+          <span class="text-xs text-zinc-600 italic">connecting…</span>
+        )}
+        <button
+          class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          onClick={copy}
+        >
+          Copy
+        </button>
+      </header>
+
+      <div class="relative flex-1 overflow-hidden">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          class="h-full overflow-y-auto bg-black px-5 py-4 space-y-3 font-mono text-sm"
+        >
+          {events.length === 0 && streamStatus === 'live' && (
+            <p class="text-zinc-700 italic text-xs">Waiting for agent activity…</p>
+          )}
+          {events.map((ev, i) => (
+            <EventCard key={i} event={ev} />
+          ))}
+          {streamStatus === 'done' && (
+            <p class="text-zinc-600 text-xs pt-2 border-t border-zinc-900">Stream ended.</p>
+          )}
+          {streamStatus === 'error' && (
+            <p class="text-red-500 text-xs pt-2">Stream error — run may not exist.</p>
+          )}
+        </div>
+        {!pinnedToBottom && (
+          <button
+            class="absolute bottom-4 right-4 text-xs bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-full hover:bg-zinc-700 transition-colors"
+            onClick={() => {
+              if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                setPinnedToBottom(true);
+              }
+            }}
+          >
+            ↓ Latest
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Root component — fetches metadata and picks the right view
+// ---------------------------------------------------------------------------
+
 export default function RunOutput() {
   const parts = window.location.pathname.split('/');
   const jobId = parts[2] ?? '';
   const runId = parts[4] ?? '';
-  const [meta, setMeta] = useState<RunMeta | null>(null);
-  const [events, setEvents] = useState<LangfuseEvent[]>([]);
-  const [streamStatus, setStreamStatus] = useState<'connecting' | 'live' | 'done' | 'error'>(
-    'connecting',
-  );
-  const [pinnedToBottom, setPinnedToBottom] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch run metadata from /jobs/:jobId/runs
+  const [meta, setMeta] = useState<RunMeta | null>(null);
+
   useEffect(() => {
     async function fetchMeta() {
       try {
@@ -123,146 +337,42 @@ export default function RunOutput() {
           });
         }
       } catch {
-        // non-fatal — header stays blank until SSE done event fills it
+        // non-fatal; meta is decorative
       }
     }
     void fetchMeta();
   }, [jobId, runId]);
 
-  // SSE stream
-  useEffect(() => {
-    const es = new EventSource(`/stream/runs/${runId}`);
+  // Show a loading shimmer until we know the status. Once we know it's not
+  // RUNNING we render StaticOutput; otherwise StreamingOutput takes over.
+  if (!meta) {
+    return (
+      <div class="flex flex-col h-full overflow-hidden">
+        <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+          <button
+            class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            onClick={() => navigate(`/jobs/${jobId}`)}
+          >
+            ← Job detail
+          </button>
+        </header>
+        <div class="flex-1 bg-black flex items-center justify-center">
+          <div class="w-5 h-5 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
 
-    es.onmessage = (e) => {
-      const payload = JSON.parse(e.data as string) as StreamPayload;
-
-      if (payload.type === 'history') {
-        setEvents(payload.events);
-        setStreamStatus('live');
-      } else if (payload.type === 'event') {
-        setEvents((prev) => [...prev, payload.event]);
-      } else if (payload.type === 'done') {
-        setMeta((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: payload.status,
-                exitCode: payload.exitCode,
-                durationMs: payload.durationMs,
-              }
-            : {
-                phase: '',
-                model: null,
-                status: payload.status,
-                exitCode: payload.exitCode,
-                durationMs: payload.durationMs,
-              },
-        );
-        setStreamStatus('done');
-        es.close();
-      } else if (payload.type === 'error') {
-        setStreamStatus('error');
-        es.close();
-      }
-    };
-
-    es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) {
-        setStreamStatus((s) => (s === 'live' ? 'done' : s));
-      }
-    };
-
-    return () => es.close();
-  }, [runId]);
-
-  // Auto-scroll
-  useEffect(() => {
-    if (!pinnedToBottom || !scrollRef.current) return;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [events, pinnedToBottom]);
-
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setPinnedToBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 50);
-  }, []);
-
-  const copyToClipboard = useCallback(() => {
-    const text = events
-      .map((e) => `[${e.timestamp}] ${e.type}\n${JSON.stringify(e.body, null, 2)}`)
-      .join('\n\n');
-    void navigator.clipboard.writeText(text);
-  }, [events]);
+  if (TERMINAL_STATUSES.has(meta.status)) {
+    return <StaticOutput jobId={jobId} runId={runId} meta={meta} />;
+  }
 
   return (
-    <div class="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <header class="flex items-center gap-3 px-6 py-3 border-b border-zinc-800 shrink-0">
-        <button
-          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-          onClick={() => navigate(`/jobs/${jobId}`)}
-        >
-          ← Job detail
-        </button>
-        <span class="text-zinc-700">/</span>
-        {meta && (
-          <>
-            <span class="text-xs font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
-              {meta.phase}
-            </span>
-            {meta.model && <span class="text-xs text-zinc-500">{meta.model}</span>}
-            <span class="flex items-center gap-1.5 ml-1">{statusDot(meta.status)}</span>
-            {meta.durationMs !== null && (
-              <span class="text-xs text-zinc-500">{formatDuration(meta.durationMs)}</span>
-            )}
-          </>
-        )}
-        {streamStatus === 'connecting' && (
-          <span class="text-xs text-zinc-600 italic">connecting…</span>
-        )}
-        <button
-          class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-          onClick={copyToClipboard}
-          title="Copy output"
-        >
-          Copy
-        </button>
-      </header>
-
-      {/* Output pane */}
-      <div class="relative flex-1 overflow-hidden">
-        <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          class="h-full overflow-y-auto bg-black px-5 py-4 space-y-3 font-mono text-sm"
-        >
-          {events.length === 0 && streamStatus === 'live' && (
-            <p class="text-zinc-700 italic text-xs">Waiting for agent activity…</p>
-          )}
-          {events.map((ev, i) => (
-            <EventCard key={i} event={ev} />
-          ))}
-          {streamStatus === 'done' && (
-            <p class="text-zinc-600 text-xs pt-2 border-t border-zinc-900">Stream ended.</p>
-          )}
-          {streamStatus === 'error' && (
-            <p class="text-red-500 text-xs pt-2">Stream error — run may not exist.</p>
-          )}
-        </div>
-
-        {/* Scroll-to-bottom FAB */}
-        {!pinnedToBottom && (
-          <button
-            class="absolute bottom-4 right-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-3 py-1.5 rounded-full shadow-lg transition-colors"
-            onClick={() => {
-              setPinnedToBottom(true);
-              if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-            }}
-          >
-            ↓ Scroll to bottom
-          </button>
-        )}
-      </div>
-    </div>
+    <StreamingOutput
+      jobId={jobId}
+      runId={runId}
+      meta={meta}
+      onMetaUpdate={setMeta}
+    />
   );
 }

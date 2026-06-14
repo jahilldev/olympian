@@ -9,6 +9,7 @@ import {
   type AgentRunOptions,
   type AgentRunResult,
   type AgentRunStatus,
+  type AgentRunOutputDto,
 } from './agent.model.js';
 import { buildSpawnSpec, spawnProcess, prepareHermesMemoryPaths } from './agent.utility.js';
 import { LangfuseService } from '../langfuse/langfuse.service.js';
@@ -182,5 +183,14 @@ export class HermesAgentService {
       hasOutput: !!(r.stdout && r.stdout.length > 0),
       createdAt: r.createdAt.toISOString(),
     }));
+  }
+
+  async getRunOutput(runId: string): Promise<AgentRunOutputDto | null> {
+    const row = await this.prisma.agentRun.findUnique({
+      where: { id: runId },
+      select: { stdout: true, stderr: true },
+    });
+    if (!row) return null;
+    return { stdout: row.stdout ?? '', stderr: row.stderr };
   }
 }

@@ -14,6 +14,11 @@ export interface AgentRunDto {
   createdAt: string;
 }
 
+export interface AgentRunOutputDto {
+  stdout: string;
+  stderr: string | null;
+}
+
 /** Caps so a runaway agent can't blow up memory or the SQLite row. */
 export const STDOUT_CAP = 200_000;
 

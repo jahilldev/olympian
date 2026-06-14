@@ -1,6 +1,6 @@
-import { Controller, Get, Header, Param } from '@nestjs/common';
+import { Controller, Get, Header, NotFoundException, Param } from '@nestjs/common';
 import { HermesAgentService } from '../agent/agent.service.js';
-import { type AgentRunDto } from '../agent/agent.model.js';
+import { type AgentRunDto, type AgentRunOutputDto } from '../agent/agent.model.js';
 import { ReviewService } from '../review/review.service.js';
 import { type ReviewPassDto } from '../review/review.model.js';
 import { type JobDetailDto, type JobSummaryDto } from './job.model.js';
@@ -36,5 +36,16 @@ export class JobController {
   @Header('Cache-Control', 'no-store')
   listRuns(@Param('id') id: string): Promise<AgentRunDto[]> {
     return this.agent.listForJob(id);
+  }
+
+  @Get(':id/runs/:runId/output')
+  @Header('Cache-Control', 'no-store')
+  async getRunOutput(
+    @Param('id') _id: string,
+    @Param('runId') runId: string,
+  ): Promise<AgentRunOutputDto> {
+    const result = await this.agent.getRunOutput(runId);
+    if (!result) throw new NotFoundException(`Run ${runId} not found`);
+    return result;
   }
 }
