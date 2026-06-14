@@ -17,14 +17,9 @@ import { AppConfigService } from '../src/config/config.service.js';
 const SECRET = 'e2e-secret';
 const DB_FILE = `test-e2e-${process.pid}.db`;
 
-// Configure the environment before the app (and its ConfigModule validation) boots in
-// beforeAll. The imports above don't read env at load time, so setting it here is fine.
-process.env.NODE_ENV = 'test';
-process.env.LOG_LEVEL = 'silent';
+// DATABASE_URL must still be set here because it's per-process-pid and can't
+// be known at setup-file time.
 process.env.DATABASE_URL = `file:./${DB_FILE}`;
-process.env.GITHUB_APP_ID = '123';
-process.env.GITHUB_WEBHOOK_SECRET = SECRET;
-process.env.WORKER_ENABLED = 'false';
 
 const REPO = {
   name: 'widgets',
@@ -41,7 +36,26 @@ const agentStub = {
       opts.phase === 'REVIEW'
         ? '```json\n{"confidence":95,"verdict":"PASS","summary":"looks good","issues":[]}\n```'
         : opts.phase === 'PLAN'
-          ? '## Summary\nAdd the feature.\n## Acceptance criteria\n- [ ] it works'
+          ? [
+              '## Summary',
+              'Add a new feature to the widgets service. The implementation will expose a REST endpoint and persist data via Prisma.',
+              '',
+              '## Approach',
+              'Extend the existing NestJS module with a new controller and service method. Use Prisma to persist the feature flag. No external dependencies required.',
+              '',
+              '## Files to change',
+              '- `src/feature/feature.controller.ts` — new GET /feature endpoint',
+              '- `src/feature/feature.service.ts` — business logic',
+              '- `prisma/schema.prisma` — add Feature model',
+              '',
+              '## Acceptance criteria',
+              '- [ ] GET /api/feature returns 200 with a JSON body',
+              '- [ ] Feature record is persisted in the database',
+              '- [ ] Unit tests pass',
+              '',
+              '## Risks',
+              '- Prisma migration may require coordinating with existing schema changes.',
+            ].join('\n')
           : 'Done. Implemented the change.';
     return {
       runId: randomUUID(),
@@ -79,6 +93,8 @@ const workspaceStub = {
   runVerify: jest.fn(async () => null),
   push: jest.fn(async () => 'pushsha'),
   cleanup: jest.fn(async () => undefined),
+  downloadAttachments: jest.fn(async () => []),
+  dir: jest.fn(() => '/tmp/job'),
 };
 
 describe('Hermes orchestration pipeline (e2e)', () => {
@@ -146,6 +162,18 @@ describe('Hermes orchestration pipeline (e2e)', () => {
     }
   };
 
+  // Polls jobState until it matches expected or 2 s elapses. Needed because
+  // the webhook controller dispatches fire-and-forget, so the DB write may
+  // not be visible immediately after the 202 response is received.
+  const waitForState = async (expected: string) => {
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      if ((await jobState()) === expected) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(await jobState()).toBe(expected); // surface a readable failure if still wrong
+  };
+
   const jobState = async () =>
     (
       await prisma.job.findUnique({
@@ -172,7 +200,7 @@ describe('Hermes orchestration pipeline (e2e)', () => {
       installation: INSTALLATION,
     }).expect(202);
 
-    expect(await jobState()).toBe('TRIAGED');
+    await waitForState('TRIAGED');
     await drain();
     expect(await jobState()).toBe('AWAITING_PLAN_APPROVAL');
     expect(comments.some((c) => c.body.includes('implementation plan'))).toBe(true);
@@ -187,6 +215,7 @@ describe('Hermes orchestration pipeline (e2e)', () => {
       installation: INSTALLATION,
     }).expect(202);
 
+    await waitForState('IMPLEMENTING');
     await drain();
 
     expect(githubStub.createDraftPullRequest).toHaveBeenCalledTimes(1);
@@ -204,6 +233,6 @@ describe('Hermes orchestration pipeline (e2e)', () => {
       installation: INSTALLATION,
     }).expect(202);
 
-    expect(await jobState()).toBe('DONE');
+    await waitForState('DONE');
   });
 });

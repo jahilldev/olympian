@@ -4,6 +4,7 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "setupFiles": ["<rootDir>/e2e-env.ts"],
   "transform": {
     "^.+\\.tsx?$": ["ts-jest", { "useESM": true }]
   },
