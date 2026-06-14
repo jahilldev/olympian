@@ -8,11 +8,29 @@ const { title = 'Olympian' } = Astro.props;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+
+    <!-- PWA manifest & theme -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#09090b" />
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Olympian" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap"
       rel="stylesheet"
     />
+
+    <!-- Service worker registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      }
+    </script>
   </head>
   <body class="h-full">
     <slot />

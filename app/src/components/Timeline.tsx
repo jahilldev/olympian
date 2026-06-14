@@ -28,7 +28,7 @@ export default function Timeline({ transitions }: Props) {
 
   return (
     <ol class="relative border-l border-zinc-800 space-y-4 pl-4">
-      {transitions.map((t) => (
+      {[...transitions].reverse().map((t) => (
         <li key={t.id} class="relative">
           <span class="absolute -left-[21px] flex items-center justify-center w-3.5 h-3.5 rounded-full bg-zinc-800 border border-zinc-700 mt-0.5" />
           <div class="flex flex-wrap items-center gap-1.5 text-xs">
