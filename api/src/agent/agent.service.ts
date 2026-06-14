@@ -35,6 +35,44 @@ export class HermesAgentService {
    * process. Called on worker startup before tasks are reclaimed so the workspace
    * directory is never accessed by two containers simultaneously.
    */
+  /**
+   * Force-removes the running container for the given job, if any.
+   * Called immediately when a cancel command is received so the agent stops
+   * without waiting for the timeout.
+   */
+  killContainerForJob(jobId: string): void {
+    if (this.config.get('SANDBOX_MODE') !== 'docker') {
+      return;
+    }
+
+    const list = spawn('docker', ['ps', '-q', '--filter', `label=olympian.job=${jobId}`], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+
+    let ids = '';
+
+    list.stdout.on('data', (d: Buffer) => {
+      ids += d.toString();
+    });
+
+    list.on('close', () => {
+      const containerIds = ids
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      if (containerIds.length === 0) {
+        return;
+      }
+
+      this.logger.log(
+        `Killing container(s) for cancelled job ${jobId}: ${containerIds.join(', ')}`,
+      );
+
+      spawn('docker', ['rm', '-f', ...containerIds], { stdio: 'ignore' }).unref();
+    });
+  }
+
   killOrphanedContainers(): void {
     if (this.config.get('SANDBOX_MODE') !== 'docker') {
       return;
@@ -84,6 +122,7 @@ export class HermesAgentService {
       provider,
       toolsets: opts.toolsets,
       skills: opts.skills,
+      jobId: opts.jobId,
     });
 
     const commandLine = `${spec.command} ${spec.args.join(' ')}`;

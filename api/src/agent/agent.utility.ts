@@ -18,6 +18,8 @@ export interface SpawnSpecParams {
   provider?: string;
   toolsets?: string;
   skills?: string[];
+  /** Attached as `olympian.job=<jobId>` Docker label so the container can be found and killed by job. */
+  jobId?: string;
 }
 
 /** Hermes flags shared by every invocation: headless, autonomous, tagged as a tool. */
@@ -116,6 +118,10 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
     const containerName = `olympian-${randomUUID()}`;
 
     args.push('--name', containerName);
+    // Label lets us find this container by job ID for targeted cancellation.
+    if (p.jobId) {
+      args.push('--label', `olympian.job=${p.jobId}`);
+    }
     args.push(p.dockerImage, 'hermes', ...hermesArgs(p));
 
     return { command: 'docker', args, env: process.env, containerName };

@@ -210,6 +210,8 @@ export class OrchestratorService {
     if (command.kind === 'cancel') {
       await this.queue.cancelForJob(job.id);
 
+      this.agent.killContainerForJob(job.id);
+
       await this.jobs.transition(job.id, 'CANCELLED', {
         reason: `cancelled by @${evt.author}`,
         actor: 'HUMAN',
