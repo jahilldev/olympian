@@ -98,9 +98,168 @@ function splitThinking(text: string): { thinking: string | null; output: string 
   return { thinking: m[1].trim(), output: text.slice(m[0].length).trim() };
 }
 
+// ── Observation value renderers ────────────────────────────────────────────
+
+interface ChatMessage {
+  role: string;
+  content: unknown;
+}
+
+function isChatMessages(v: unknown): v is ChatMessage[] {
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    typeof (v[0] as Record<string, unknown>)?.role === 'string'
+  );
+}
+
+function ChatMessages({ messages }: { messages: ChatMessage[] }) {
+  const roleStyle: Record<string, string> = {
+    system: 'text-zinc-600',
+    user: 'text-sky-400',
+    assistant: 'text-indigo-300',
+    tool: 'text-amber-400',
+  };
+  return (
+    <div class="space-y-2">
+      {messages.map((m, i) => {
+        const content =
+          typeof m.content === 'string' ? m.content : JSON.stringify(m.content, null, 2);
+        return (
+          <div key={i} class="flex gap-2.5 min-w-0">
+            <span
+              class={`shrink-0 text-[10px] font-mono uppercase pt-0.5 w-14 text-right ${roleStyle[m.role] ?? 'text-zinc-500'}`}
+            >
+              {m.role}
+            </span>
+            <pre class="flex-1 min-w-0 text-[11px] text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed break-words">
+              {content}
+            </pre>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function KeyValueBlock({ obj }: { obj: Record<string, unknown> }) {
+  return (
+    <div class="space-y-1">
+      {Object.entries(obj).map(([k, v]) => {
+        const display = typeof v === 'string' ? v : v === null ? 'null' : JSON.stringify(v);
+        return (
+          <div key={k} class="flex gap-2.5 min-w-0">
+            <span class="shrink-0 text-[10px] font-mono text-zinc-600 w-16 text-right pt-0.5">
+              {k}
+            </span>
+            <pre class="flex-1 min-w-0 text-[11px] font-mono text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">
+              {display}
+            </pre>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Parse a JSON-serialised observation value and render it with appropriate structure. */
+function ObsContent({ raw, textClass = 'text-zinc-300' }: { raw: string | undefined; textClass?: string }) {
+  if (!raw) return null;
+  let parsed: unknown = raw;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    /* treat as plain string */
+  }
+
+  if (typeof parsed === 'string') {
+    return (
+      <pre class={`text-[11px] font-mono whitespace-pre-wrap leading-relaxed break-words ${textClass}`}>
+        {stripAnsi(parsed)}
+      </pre>
+    );
+  }
+  if (isChatMessages(parsed)) return <ChatMessages messages={parsed} />;
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.output === 'string') {
+      const meta = Object.entries(obj).filter(([k]) => k !== 'output');
+      return (
+        <div>
+          <pre
+            class={`text-[11px] font-mono whitespace-pre-wrap leading-relaxed break-words max-h-80 overflow-y-auto ${textClass}`}
+          >
+            {stripAnsi(obj.output)}
+          </pre>
+          {meta.length > 0 && (
+            <div class="flex gap-3 mt-1.5 flex-wrap">
+              {meta.map(([k, v]) =>
+                v !== null ? (
+                  <span key={k} class="text-[10px] font-mono text-zinc-600">
+                    {k}:{' '}
+                    <span
+                      class={
+                        k === 'exit_code'
+                          ? v === 0
+                            ? 'text-green-600'
+                            : 'text-red-500'
+                          : 'text-zinc-500'
+                      }
+                    >
+                      {String(v)}
+                    </span>
+                  </span>
+                ) : null,
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+    return <KeyValueBlock obj={obj} />;
+  }
+  return (
+    <pre class={`text-[11px] font-mono whitespace-pre-wrap leading-relaxed break-words ${textClass}`}>
+      {JSON.stringify(parsed, null, 2)}
+    </pre>
+  );
+}
+
+/** One-line summary shown inside a collapsed toggle button. */
+function obsPreview(raw: string | undefined): string {
+  if (!raw) return '';
+  let parsed: unknown = raw;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return raw.slice(0, 80);
+  }
+  if (typeof parsed === 'string') {
+    const line = parsed.split('\n')[0].trim();
+    return line.length > 80 ? line.slice(0, 77) + '…' : line;
+  }
+  if (isChatMessages(parsed)) {
+    const n = (parsed as unknown[]).length;
+    return `${n} message${n !== 1 ? 's' : ''}`;
+  }
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.command === 'string') {
+      return obj.command.length > 80 ? obj.command.slice(0, 77) + '…' : obj.command;
+    }
+    if (typeof obj.output === 'string') {
+      const line = obj.output.split('\n')[0].trim();
+      return line.length > 80 ? line.slice(0, 77) + '…' : line;
+    }
+    return Object.keys(obj).join(', ');
+  }
+  return String(parsed).slice(0, 80);
+}
+
 // ── Event sub-cards ────────────────────────────────────────────────────────
 
 function GenerationCard({ event }: { event: LangfuseEvent }) {
+  const [inputOpen, setInputOpen] = useState(false);
   const [thinkOpen, setThinkOpen] = useState(false);
   const body = event.body;
   const model = body['langfuse.observation.model.name'] as string | undefined;
@@ -108,10 +267,24 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
   const usage = usageRaw ? (JSON.parse(usageRaw) as Record<string, number>) : null;
   const totalTokens = usage?.total ?? usage?.output ?? null;
   const rawOutput = body['langfuse.observation.output'] as string | undefined;
+  const rawInput = body['langfuse.observation.input'] as string | undefined;
 
-  const { thinking, output } = rawOutput
-    ? splitThinking(rawOutput)
-    : { thinking: null, output: '' };
+  // The SDK JSON-encodes the value — parse it first.
+  let parsedOutput: unknown = rawOutput;
+  try {
+    if (rawOutput) parsedOutput = JSON.parse(rawOutput);
+  } catch { /* keep raw */ }
+
+  const outputText =
+    typeof parsedOutput === 'string'
+      ? parsedOutput
+      : typeof (parsedOutput as Record<string, unknown>)?.content === 'string'
+        ? ((parsedOutput as Record<string, unknown>).content as string)
+        : parsedOutput != null
+          ? JSON.stringify(parsedOutput, null, 2)
+          : '';
+
+  const { thinking, output } = outputText ? splitThinking(outputText) : { thinking: null, output: '' };
 
   return (
     <div class="rounded-md border border-indigo-900/60 overflow-hidden text-xs">
@@ -127,6 +300,26 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
           </span>
         )}
       </div>
+
+      {rawInput && (
+        <>
+          <button
+            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-indigo-900/40 bg-zinc-950/40 transition-colors text-left overflow-hidden"
+            onClick={() => setInputOpen((o) => !o)}
+          >
+            <IconChevron open={inputOpen} />
+            <span class="shrink-0">Input</span>
+            {!inputOpen && (
+              <span class="text-zinc-700 ml-1 truncate">{obsPreview(rawInput)}</span>
+            )}
+          </button>
+          {inputOpen && (
+            <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/70 max-h-64 overflow-y-auto">
+              <ObsContent raw={rawInput} textClass="text-zinc-400" />
+            </div>
+          )}
+        </>
+      )}
 
       {thinking && (
         <>
@@ -162,13 +355,11 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
 
 function ToolCard({ event }: { event: LangfuseEvent }) {
   const [inputOpen, setInputOpen] = useState(false);
-  const [outputOpen, setOutputOpen] = useState(true);
+  const [outputOpen, setOutputOpen] = useState(false);
   const body = event.body;
   const name = String(body['langfuse.observation.name'] ?? body.name ?? 'unknown');
   const rawInput = body['langfuse.observation.input'] as string | undefined;
   const rawOutput = body['langfuse.observation.output'] as string | undefined;
-  const inputStr = rawInput ?? null;
-  const outputStr = rawOutput ?? null;
 
   return (
     <div class="rounded-md border border-amber-900/50 overflow-hidden text-xs">
@@ -178,39 +369,41 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
         <span class="text-zinc-200 font-mono font-normal">{name}</span>
       </div>
 
-      {inputStr && (
+      {rawInput && (
         <>
           <button
-            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-amber-900/30 bg-zinc-950/40 transition-colors text-left"
+            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-amber-900/30 bg-zinc-950/40 transition-colors text-left overflow-hidden"
             onClick={() => setInputOpen((o) => !o)}
           >
             <IconChevron open={inputOpen} />
-            <span>Input</span>
+            <span class="shrink-0">Input</span>
+            {!inputOpen && (
+              <span class="text-zinc-700 ml-1 truncate">{obsPreview(rawInput)}</span>
+            )}
           </button>
           {inputOpen && (
             <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/70">
-              <pre class="text-[11px] text-zinc-500 font-mono whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
-                {inputStr}
-              </pre>
+              <ObsContent raw={rawInput} textClass="text-zinc-400" />
             </div>
           )}
         </>
       )}
 
-      {outputStr && (
+      {rawOutput && (
         <>
           <button
-            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-amber-900/30 bg-zinc-950/40 transition-colors text-left"
+            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-amber-900/30 bg-zinc-950/40 transition-colors text-left overflow-hidden"
             onClick={() => setOutputOpen((o) => !o)}
           >
             <IconChevron open={outputOpen} />
-            <span class="text-zinc-400">Output</span>
+            <span class="shrink-0 text-zinc-400">Output</span>
+            {!outputOpen && (
+              <span class="text-zinc-700 ml-1 truncate">{obsPreview(rawOutput)}</span>
+            )}
           </button>
           {outputOpen && (
             <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/30">
-              <pre class="text-[11px] text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
-                {outputStr}
-              </pre>
+              <ObsContent raw={rawOutput} textClass="text-zinc-300" />
             </div>
           )}
         </>
