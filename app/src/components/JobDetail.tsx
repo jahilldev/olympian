@@ -93,7 +93,7 @@ export default function JobDetail({ id }: Props) {
 
     async function fetchAll() {
       try {
-        const res = await fetch(`/jobs/${id}`);
+        const res = await fetch(`/api/jobs/${id}`);
         if (res.status === 404) {
           if (!cancelled) setNotFound(true);
           return;
@@ -111,8 +111,8 @@ export default function JobDetail({ id }: Props) {
 
       try {
         const [revRes, runRes] = await Promise.all([
-          fetch(`/jobs/${id}/reviews`),
-          fetch(`/jobs/${id}/runs`),
+          fetch(`/api/jobs/${id}/reviews`),
+          fetch(`/api/jobs/${id}/runs`),
         ]);
         if (!cancelled) {
           if (revRes.ok) setReviews((await revRes.json()) as ReviewPassDto[]);

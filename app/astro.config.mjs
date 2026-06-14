@@ -14,7 +14,7 @@ export default defineConfig({
     },
     server: {
       proxy: {
-        '/jobs': 'http://localhost:3030',
+        '/api': 'http://localhost:3030',
         '/stream': 'http://localhost:3030',
       },
     },

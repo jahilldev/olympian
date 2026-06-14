@@ -25,6 +25,12 @@ async function bootstrap(): Promise<void> {
     raw({ type: 'application/x-protobuf', limit: '50mb' }),
   );
 
+  // All controller routes live under /api so they never conflict with SPA paths.
+  // Routes that predate the prefix (webhooks, health, langfuse, stream) are excluded.
+  app.setGlobalPrefix('api', {
+    exclude: ['/health', '/metrics', '/webhooks/(.*)', '/langfuse/(.*)', '/stream/(.*)'],
+  });
+
   app.enableShutdownHooks();
 
   const config = app.get(AppConfigService);

@@ -104,7 +104,7 @@ export default function RunOutput({ jobId, runId }: Props) {
   useEffect(() => {
     async function fetchMeta() {
       try {
-        const res = await fetch(`/jobs/${jobId}/runs`);
+        const res = await fetch(`/api/jobs/${jobId}/runs`);
         if (!res.ok) return;
         const runs = (await res.json()) as {
           id: string;

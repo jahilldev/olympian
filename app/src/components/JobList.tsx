@@ -28,7 +28,7 @@ export default function JobList() {
 
     async function fetchJobs() {
       try {
-        const res = await fetch('/jobs');
+        const res = await fetch('/api/jobs');
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as JobSummaryDto[];
         if (!cancelled) {
