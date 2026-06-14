@@ -19,7 +19,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 @Module({
   imports: [
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', '..', '..', 'app', 'dist'),
+      rootPath: join(__dirname, '..', '..', 'app', 'dist'),
       exclude: ['/interface*', '/stream*', '/webhooks*', '/health*', '/metrics*', '/langfuse*'],
     }),
     ConfigModule,
