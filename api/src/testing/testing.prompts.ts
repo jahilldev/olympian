@@ -1,6 +1,7 @@
 import { type TestPromptContext } from './testing.model.js';
 
-const TEST_OUTPUT_CONTRACT = `Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text:
+const TEST_OUTPUT_CONTRACT = `**REQUIRED OUTPUT FORMAT — do NOT skip this, it is machine-parsed by the orchestrator:**
+Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text:
 \`\`\`json
 {
   "passed": true | false,

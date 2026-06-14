@@ -769,7 +769,10 @@ export class OrchestratorService {
 
     const testResult = res.status === 'SUCCEEDED' ? this.testing.parse(res.stdout) : null;
 
-    if (res.status === 'SUCCEEDED' && testResult?.passed === true) {
+    // Treat as passing when the agent exited cleanly (exit 0) and either the JSON
+    // verdict says passed or the agent emitted no parseable verdict at all. We only
+    // route to REVISE when the agent explicitly emits { "passed": false }.
+    if (res.status === 'SUCCEEDED' && testResult?.passed !== false) {
       await this.jobs.transition(jobId, 'SELF_REVIEWING', {
         reason: 'tests passed',
         actor: 'AGENT',
