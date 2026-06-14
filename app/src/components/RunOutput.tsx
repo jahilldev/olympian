@@ -87,10 +87,6 @@ function IconChevron({ open }: { open: boolean }) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function toStr(v: unknown): string {
-  return typeof v === 'string' ? v : JSON.stringify(v, null, 2);
-}
-
 /** Peel <think>…</think> off the front of a model completion. */
 function splitThinking(text: string): { thinking: string | null; output: string } {
   const m = text.match(/^<think>([\s\S]*?)<\/think>\s*/);
@@ -433,7 +429,7 @@ function KeyValueBlock({ obj }: { obj: Record<string, unknown> }) {
 
 // ── Tool-name-aware input/output renderers ────────────────────────────────
 
-function obsPreview(raw: string | undefined, toolName?: string): string {
+function obsPreview(raw: string | undefined): string {
   const parsed = parseObs(raw);
   if (parsed === undefined) return '';
   if (typeof parsed === 'string') {
@@ -771,7 +767,7 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
             open={inputOpen}
             onToggle={() => setInputOpen((o) => !o)}
             label="Input"
-            preview={obsPreview(rawInput, name)}
+            preview={obsPreview(rawInput)}
             borderClass="border-amber-900/20"
           />
           {inputOpen && (
@@ -788,7 +784,7 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
             open={outputOpen}
             onToggle={() => setOutputOpen((o) => !o)}
             label="Output"
-            preview={obsPreview(rawOutput, name)}
+            preview={obsPreview(rawOutput)}
             borderClass="border-amber-900/20"
             labelClass="text-zinc-400"
           />

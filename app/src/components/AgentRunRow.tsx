@@ -50,7 +50,7 @@ export default function AgentRunRow({ run, jobId }: Props) {
                 <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 Running
               </span>
-            ) : run.status === 'SUCCESS' ? (
+            ) : run.status === 'SUCCEEDED' ? (
               <span class="text-xs text-zinc-400">Completed</span>
             ) : run.status === 'FAILED' ? (
               <span class="text-xs text-red-400">
