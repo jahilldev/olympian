@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { JobSummaryDto } from '@olympian/api/job/job.model.js';
-import { navigate } from './App.tsx';
+import { navigate } from '../utils/navigate.ts';
 import JobCard from './JobCard.tsx';
 import StateBadge from './StateBadge.tsx';
 
@@ -29,7 +29,9 @@ function MobileJobCard({ job }: { job: JobSummaryDto }) {
       <div class="flex-1 min-w-0 space-y-1">
         <p class="text-sm text-zinc-200 leading-snug">{title}</p>
         <div class="flex items-center gap-2 text-xs text-zinc-600 flex-wrap">
-          <span class="font-mono">{job.repoFullName} #{job.issueNumber}</span>
+          <span class="font-mono">
+            {job.repoFullName} #{job.issueNumber}
+          </span>
           {job.activeRun && (
             <span class="flex items-center gap-1 text-green-500">
               <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
@@ -37,12 +39,18 @@ function MobileJobCard({ job }: { job: JobSummaryDto }) {
             </span>
           )}
           {job.prNumber && (
-            <span class={job.prIsDraft ? 'text-zinc-600' : 'text-sky-500'}>
-              PR #{job.prNumber}
-            </span>
+            <span class={job.prIsDraft ? 'text-zinc-600' : 'text-sky-500'}>PR #{job.prNumber}</span>
           )}
           {job.confidence !== null && (
-            <span class={job.confidence >= 85 ? 'text-green-500' : job.confidence >= 70 ? 'text-amber-500' : 'text-red-500'}>
+            <span
+              class={
+                job.confidence >= 85
+                  ? 'text-green-500'
+                  : job.confidence >= 70
+                    ? 'text-amber-500'
+                    : 'text-red-500'
+              }
+            >
               {job.confidence}%
             </span>
           )}
@@ -132,7 +140,6 @@ export default function JobList() {
       )}
 
       <div class="flex-1 overflow-auto">
-
         {/* Mobile card list — only below sm */}
         <div class="sm:hidden">
           {jobs === null ? (
@@ -143,8 +150,8 @@ export default function JobList() {
             </>
           ) : jobs.length === 0 ? (
             <p class="text-center text-sm text-zinc-600 py-16 px-4">
-              No jobs yet. Add the{' '}
-              <code class="font-mono text-zinc-500">hermes</code> label to a GitHub issue.
+              No jobs yet. Add the <code class="font-mono text-zinc-500">hermes</code> label to a
+              GitHub issue.
             </p>
           ) : (
             jobs.map((job) => <MobileJobCard key={job.id} job={job} />)
@@ -184,7 +191,6 @@ export default function JobList() {
             )}
           </tbody>
         </table>
-
       </div>
     </div>
   );

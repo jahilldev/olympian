@@ -1,5 +1,5 @@
 import type { JobSummaryDto } from '@olympian/api/job/job.model.js';
-import { navigate } from './App.tsx';
+import { navigate } from '../utils/navigate.ts';
 import StateBadge from './StateBadge.tsx';
 
 interface Props {

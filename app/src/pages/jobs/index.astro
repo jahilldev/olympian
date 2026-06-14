@@ -1,0 +1,7 @@
+---
+import Base from '../../layouts/Base.astro';
+import JobDetail from '../../components/JobDetail.tsx';
+---
+<Base title="Job — Olympian">
+  <JobDetail client:only="preact" />
+</Base>

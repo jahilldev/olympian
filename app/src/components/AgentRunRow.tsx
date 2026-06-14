@@ -1,5 +1,5 @@
 import type { AgentRunDto } from '@olympian/api/agent/agent.model.js';
-import { navigate } from './App.tsx';
+import { navigate } from '../utils/navigate.ts';
 
 interface Props {
   run: AgentRunDto;
@@ -33,16 +33,12 @@ export default function AgentRunRow({ run, jobId }: Props) {
   return (
     <div
       class={`rounded-lg border p-3 transition-colors ${
-        isRunning
-          ? 'border-green-800 bg-green-950/20'
-          : 'border-zinc-800 bg-zinc-900/50'
+        isRunning ? 'border-green-800 bg-green-950/20' : 'border-zinc-800 bg-zinc-900/50'
       }`}
     >
       <div class="flex items-center gap-3">
         {/* Phase badge */}
-        <span
-          class={`font-mono text-xs px-2.5 py-1 rounded shrink-0 ${phasePill(run.phase)}`}
-        >
+        <span class={`font-mono text-xs px-2.5 py-1 rounded shrink-0 ${phasePill(run.phase)}`}>
           {run.phase}
         </span>
 
@@ -57,13 +53,13 @@ export default function AgentRunRow({ run, jobId }: Props) {
             ) : run.status === 'SUCCESS' ? (
               <span class="text-xs text-zinc-400">Completed</span>
             ) : run.status === 'FAILED' ? (
-              <span class="text-xs text-red-400">Failed{run.exitCode !== null ? ` (exit ${run.exitCode})` : ''}</span>
+              <span class="text-xs text-red-400">
+                Failed{run.exitCode !== null ? ` (exit ${run.exitCode})` : ''}
+              </span>
             ) : (
               <span class="text-xs text-zinc-600">{run.status}</span>
             )}
-            {run.model && (
-              <span class="text-xs text-zinc-600 font-mono truncate">{run.model}</span>
-            )}
+            {run.model && <span class="text-xs text-zinc-600 font-mono truncate">{run.model}</span>}
           </div>
           {run.durationMs !== null && (
             <p class="text-xs text-zinc-600 mt-0.5 font-mono">{formatDuration(run.durationMs)}</p>

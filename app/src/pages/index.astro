@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
-import App from '../components/App.tsx';
+import JobList from '../components/JobList.tsx';
 ---
-<Base>
-  <App client:only="preact" />
+<Base title="Olympian">
+  <JobList client:only="preact" />
 </Base>

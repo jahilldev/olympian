@@ -1,11 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import type { LangfuseEvent, StreamPayload } from '@olympian/api/langfuse/langfuse.model.js';
-import { navigate } from './App.tsx';
-
-interface Props {
-  jobId: string;
-  runId: string;
-}
+import { navigate } from '../utils/navigate.ts';
 
 interface RunMeta {
   phase: string;
@@ -91,7 +86,10 @@ function EventCard({ event }: { event: LangfuseEvent }) {
   );
 }
 
-export default function RunOutput({ jobId, runId }: Props) {
+export default function RunOutput() {
+  const parts = window.location.pathname.split('/');
+  const jobId = parts[2] ?? '';
+  const runId = parts[4] ?? '';
   const [meta, setMeta] = useState<RunMeta | null>(null);
   const [events, setEvents] = useState<LangfuseEvent[]>([]);
   const [streamStatus, setStreamStatus] = useState<'connecting' | 'live' | 'done' | 'error'>(

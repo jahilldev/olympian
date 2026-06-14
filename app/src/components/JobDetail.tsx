@@ -2,16 +2,12 @@ import { useState, useEffect } from 'preact/hooks';
 import type { JobDetailDto, FeedbackDto } from '@olympian/api/job/job.model.js';
 import type { ReviewPassDto } from '@olympian/api/review/review.model.js';
 import type { AgentRunDto } from '@olympian/api/agent/agent.model.js';
-import { navigate } from './App.tsx';
+import { navigate } from '../utils/navigate.ts';
 import StateBadge from './StateBadge.tsx';
 import Timeline from './Timeline.tsx';
 import ReviewPassCard from './ReviewPassCard.tsx';
 import PlanViewer from './PlanViewer.tsx';
 import AgentRunRow from './AgentRunRow.tsx';
-
-interface Props {
-  id: string;
-}
 
 const TERMINAL_STATES = new Set(['DONE', 'FAILED', 'CANCELLED']);
 
@@ -88,7 +84,8 @@ function ReviewCycles({ passes }: { passes: ReviewPassDto[] }) {
   );
 }
 
-export default function JobDetail({ id }: Props) {
+export default function JobDetail() {
+  const id = window.location.pathname.split('/')[2] ?? '';
   const [job, setJob] = useState<JobDetailDto | null>(null);
   const [reviews, setReviews] = useState<ReviewPassDto[]>([]);
   const [runs, setRuns] = useState<AgentRunDto[]>([]);
@@ -185,7 +182,6 @@ export default function JobDetail({ id }: Props) {
       {/* Scrollable single-column body */}
       <div class="flex-1 overflow-y-auto">
         <div class="max-w-3xl mx-auto px-4 py-5 space-y-6">
-
           {/* Active run — most prominent, always first */}
           {activeRun && (
             <div class="rounded-xl border border-green-700 bg-green-950/40 p-4 flex items-center gap-3">
@@ -310,7 +306,6 @@ export default function JobDetail({ id }: Props) {
               <FeedbackList items={job.planFeedback} />
             </section>
           )}
-
         </div>
       </div>
     </div>
