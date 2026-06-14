@@ -1,9 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "preact/hooks";
-import type {
-  LangfuseEvent,
-  StreamPayload,
-} from "@olympian/api/langfuse/langfuse.model.js";
-import { navigate } from "./App.tsx";
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import type { LangfuseEvent, StreamPayload } from '@olympian/api/langfuse/langfuse.model.js';
+import { navigate } from './App.tsx';
 
 interface Props {
   jobId: string;
@@ -19,63 +16,55 @@ interface RunMeta {
 }
 
 function formatDuration(ms: number | null): string {
-  if (ms === null) return "";
+  if (ms === null) return '';
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
 function statusDot(status: string) {
-  if (status === "RUNNING")
-    return (
-      <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block" />
-    );
-  if (status === "SUCCEEDED")
-    return <span class="text-green-400 text-sm">✓</span>;
-  if (status === "FAILED") return <span class="text-red-400 text-sm">✗</span>;
+  if (status === 'RUNNING')
+    return <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block" />;
+  if (status === 'SUCCEEDED') return <span class="text-green-400 text-sm">✓</span>;
+  if (status === 'FAILED') return <span class="text-red-400 text-sm">✗</span>;
   return <span class="text-zinc-500 text-sm">—</span>;
 }
 
 /** Render a single LLM/tool event as a terminal-style card. */
 function EventCard({ event }: { event: LangfuseEvent }) {
   const body = event.body;
-  const obsType = body["langfuse.observation.type"] as string | undefined;
-  const name = (body["langfuse.observation.name"] ?? body.name ?? "") as string;
+  const obsType = body['langfuse.observation.type'] as string | undefined;
+  const name = (body['langfuse.observation.name'] ?? body.name ?? '') as string;
 
-  if (obsType === "generation") {
-    const input = body["langfuse.prompt"] ?? body.input;
-    const output = body["langfuse.completion"] ?? body.output;
-    const model = body["langfuse.model"] ?? body.model;
-    const tokens =
-      body["langfuse.usage.total_tokens"] ?? body["usage.total_tokens"];
+  if (obsType === 'generation') {
+    const input = body['langfuse.prompt'] ?? body.input;
+    const output = body['langfuse.completion'] ?? body.output;
+    const model = body['langfuse.model'] ?? body.model;
+    const tokens = body['langfuse.usage.total_tokens'] ?? body['usage.total_tokens'];
 
     return (
       <div class="border-l-2 border-indigo-700 pl-3 py-1 space-y-1">
         <div class="flex items-center gap-2 text-xs">
           <span class="text-indigo-400 font-mono font-medium">LLM</span>
           {model && <span class="text-zinc-500">{String(model)}</span>}
-          {tokens != null && (
-            <span class="text-zinc-600 ml-auto">{String(tokens)} tok</span>
-          )}
+          {tokens != null && <span class="text-zinc-600 ml-auto">{String(tokens)} tok</span>}
         </div>
         {input != null && (
           <pre class="text-xs text-zinc-400 whitespace-pre-wrap line-clamp-4 font-mono">
-            {typeof input === "string" ? input : JSON.stringify(input, null, 2)}
+            {typeof input === 'string' ? input : JSON.stringify(input, null, 2)}
           </pre>
         )}
         {output != null && (
           <pre class="text-xs text-zinc-200 whitespace-pre-wrap font-mono">
-            {typeof output === "string"
-              ? output
-              : JSON.stringify(output, null, 2)}
+            {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
           </pre>
         )}
       </div>
     );
   }
 
-  if (obsType === "tool") {
-    const input = body["langfuse.input"] ?? body.input;
+  if (obsType === 'tool') {
+    const input = body['langfuse.input'] ?? body.input;
     return (
       <div class="border-l-2 border-amber-700 pl-3 py-1 space-y-1">
         <div class="flex items-center gap-2 text-xs">
@@ -84,7 +73,7 @@ function EventCard({ event }: { event: LangfuseEvent }) {
         </div>
         {input != null && (
           <pre class="text-xs text-zinc-500 whitespace-pre-wrap font-mono line-clamp-3">
-            {typeof input === "string" ? input : JSON.stringify(input, null, 2)}
+            {typeof input === 'string' ? input : JSON.stringify(input, null, 2)}
           </pre>
         )}
       </div>
@@ -105,29 +94,27 @@ function EventCard({ event }: { event: LangfuseEvent }) {
 export default function RunOutput({ jobId, runId }: Props) {
   const [meta, setMeta] = useState<RunMeta | null>(null);
   const [events, setEvents] = useState<LangfuseEvent[]>([]);
-  const [streamStatus, setStreamStatus] = useState<
-    "connecting" | "live" | "done" | "error"
-  >("connecting");
+  const [streamStatus, setStreamStatus] = useState<'connecting' | 'live' | 'done' | 'error'>(
+    'connecting',
+  );
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch run metadata from the job detail endpoint
+  // Fetch run metadata from /jobs/:jobId/runs
   useEffect(() => {
     async function fetchMeta() {
       try {
-        const res = await fetch(`/interface/jobs/${jobId}`);
+        const res = await fetch(`/jobs/${jobId}/runs`);
         if (!res.ok) return;
-        const job = await res.json();
-        const run = (
-          job.runs as {
-            id: string;
-            phase: string;
-            model: string | null;
-            status: string;
-            exitCode: number | null;
-            durationMs: number | null;
-          }[]
-        ).find((r) => r.id === runId);
+        const runs = (await res.json()) as {
+          id: string;
+          phase: string;
+          model: string | null;
+          status: string;
+          exitCode: number | null;
+          durationMs: number | null;
+        }[];
+        const run = runs.find((r) => r.id === runId);
         if (run) {
           setMeta({
             phase: run.phase,
@@ -151,12 +138,12 @@ export default function RunOutput({ jobId, runId }: Props) {
     es.onmessage = (e) => {
       const payload = JSON.parse(e.data as string) as StreamPayload;
 
-      if (payload.type === "history") {
+      if (payload.type === 'history') {
         setEvents(payload.events);
-        setStreamStatus("live");
-      } else if (payload.type === "event") {
+        setStreamStatus('live');
+      } else if (payload.type === 'event') {
         setEvents((prev) => [...prev, payload.event]);
-      } else if (payload.type === "done") {
+      } else if (payload.type === 'done') {
         setMeta((prev) =>
           prev
             ? {
@@ -166,24 +153,24 @@ export default function RunOutput({ jobId, runId }: Props) {
                 durationMs: payload.durationMs,
               }
             : {
-                phase: "",
+                phase: '',
                 model: null,
                 status: payload.status,
                 exitCode: payload.exitCode,
                 durationMs: payload.durationMs,
               },
         );
-        setStreamStatus("done");
+        setStreamStatus('done');
         es.close();
-      } else if (payload.type === "error") {
-        setStreamStatus("error");
+      } else if (payload.type === 'error') {
+        setStreamStatus('error');
         es.close();
       }
     };
 
     es.onerror = () => {
       if (es.readyState === EventSource.CLOSED) {
-        setStreamStatus((s) => (s === "live" ? "done" : s));
+        setStreamStatus((s) => (s === 'live' ? 'done' : s));
       }
     };
 
@@ -204,10 +191,8 @@ export default function RunOutput({ jobId, runId }: Props) {
 
   const copyToClipboard = useCallback(() => {
     const text = events
-      .map(
-        (e) => `[${e.timestamp}] ${e.type}\n${JSON.stringify(e.body, null, 2)}`,
-      )
-      .join("\n\n");
+      .map((e) => `[${e.timestamp}] ${e.type}\n${JSON.stringify(e.body, null, 2)}`)
+      .join('\n\n');
     void navigator.clipboard.writeText(text);
   }, [events]);
 
@@ -227,20 +212,14 @@ export default function RunOutput({ jobId, runId }: Props) {
             <span class="text-xs font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
               {meta.phase}
             </span>
-            {meta.model && (
-              <span class="text-xs text-zinc-500">{meta.model}</span>
-            )}
-            <span class="flex items-center gap-1.5 ml-1">
-              {statusDot(meta.status)}
-            </span>
+            {meta.model && <span class="text-xs text-zinc-500">{meta.model}</span>}
+            <span class="flex items-center gap-1.5 ml-1">{statusDot(meta.status)}</span>
             {meta.durationMs !== null && (
-              <span class="text-xs text-zinc-500">
-                {formatDuration(meta.durationMs)}
-              </span>
+              <span class="text-xs text-zinc-500">{formatDuration(meta.durationMs)}</span>
             )}
           </>
         )}
-        {streamStatus === "connecting" && (
+        {streamStatus === 'connecting' && (
           <span class="text-xs text-zinc-600 italic">connecting…</span>
         )}
         <button
@@ -259,23 +238,17 @@ export default function RunOutput({ jobId, runId }: Props) {
           onScroll={handleScroll}
           class="h-full overflow-y-auto bg-black px-5 py-4 space-y-3 font-mono text-sm"
         >
-          {events.length === 0 && streamStatus === "live" && (
-            <p class="text-zinc-700 italic text-xs">
-              Waiting for agent activity…
-            </p>
+          {events.length === 0 && streamStatus === 'live' && (
+            <p class="text-zinc-700 italic text-xs">Waiting for agent activity…</p>
           )}
           {events.map((ev, i) => (
             <EventCard key={i} event={ev} />
           ))}
-          {streamStatus === "done" && (
-            <p class="text-zinc-600 text-xs pt-2 border-t border-zinc-900">
-              Stream ended.
-            </p>
+          {streamStatus === 'done' && (
+            <p class="text-zinc-600 text-xs pt-2 border-t border-zinc-900">Stream ended.</p>
           )}
-          {streamStatus === "error" && (
-            <p class="text-red-500 text-xs pt-2">
-              Stream error — run may not exist.
-            </p>
+          {streamStatus === 'error' && (
+            <p class="text-red-500 text-xs pt-2">Stream error — run may not exist.</p>
           )}
         </div>
 
@@ -285,8 +258,7 @@ export default function RunOutput({ jobId, runId }: Props) {
             class="absolute bottom-4 right-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-3 py-1.5 rounded-full shadow-lg transition-colors"
             onClick={() => {
               setPinnedToBottom(true);
-              if (scrollRef.current)
-                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+              if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
             }}
           >
             ↓ Scroll to bottom

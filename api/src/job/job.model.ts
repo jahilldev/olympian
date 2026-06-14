@@ -47,6 +47,75 @@ export interface TransitionOptions {
   force?: boolean;
 }
 
+// --- UI read-model DTOs ---
+
+export interface TransitionDto {
+  id: string;
+  fromState: string | null;
+  toState: string;
+  reason: string | null;
+  actor: string;
+  createdAt: string;
+}
+
+export interface PlanRevisionDto {
+  id: string;
+  revision: number;
+  content: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface FeedbackDto {
+  id: string;
+  author: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface ActiveRunDto {
+  id: string;
+  phase: string;
+  model: string | null;
+  createdAt: string;
+}
+
+export interface ActiveTaskDto {
+  kind: string;
+  status: string;
+  attempts: number;
+}
+
+export interface JobSummaryDto {
+  id: string;
+  repoFullName: string;
+  issueNumber: number;
+  issueTitle: string;
+  state: string;
+  confidence: number | null;
+  reviewCycle: number;
+  prNumber: number | null;
+  prUrl: string | null;
+  prIsDraft: boolean;
+  createdAt: string;
+  updatedAt: string;
+  activeRun: ActiveRunDto | null;
+  activeTask: ActiveTaskDto | null;
+}
+
+export interface JobDetailDto extends JobSummaryDto {
+  issueBody: string;
+  branchName: string | null;
+  headSha: string | null;
+  error: string | null;
+  transitions: TransitionDto[];
+  plans: PlanRevisionDto[];
+  planFeedback: FeedbackDto[];
+  prFeedback: FeedbackDto[];
+}
+
+// --- domain types ---
+
 export interface CreateJobInput {
   installationId: string;
   repoOwner: string;

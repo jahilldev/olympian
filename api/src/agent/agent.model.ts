@@ -3,6 +3,17 @@ export type AgentPhase = (typeof AGENT_PHASES)[number];
 
 export type AgentRunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT';
 
+export interface AgentRunDto {
+  id: string;
+  phase: AgentPhase;
+  model: string | null;
+  status: AgentRunStatus;
+  exitCode: number | null;
+  durationMs: number | null;
+  hasOutput: boolean;
+  createdAt: string;
+}
+
 /** Caps so a runaway agent can't blow up memory or the SQLite row. */
 export const STDOUT_CAP = 200_000;
 

@@ -4,7 +4,12 @@ import { resolve } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/config.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
-import { type AgentRunOptions, type AgentRunResult, type AgentRunStatus } from './agent.model.js';
+import {
+  type AgentRunDto,
+  type AgentRunOptions,
+  type AgentRunResult,
+  type AgentRunStatus,
+} from './agent.model.js';
 import { buildSpawnSpec, spawnProcess, prepareHermesMemoryPaths } from './agent.utility.js';
 import { LangfuseService } from '../langfuse/langfuse.service.js';
 
@@ -149,5 +154,33 @@ export class HermesAgentService {
       stderr: raw.stderr,
       durationMs: raw.durationMs,
     };
+  }
+
+  async listForJob(jobId: string): Promise<AgentRunDto[]> {
+    const rows = await this.prisma.agentRun.findMany({
+      where: { jobId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        phase: true,
+        model: true,
+        status: true,
+        exitCode: true,
+        durationMs: true,
+        stdout: true,
+        createdAt: true,
+      },
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      phase: r.phase as AgentRunDto['phase'],
+      model: r.model,
+      status: r.status as AgentRunDto['status'],
+      exitCode: r.exitCode,
+      durationMs: r.durationMs,
+      hasOutput: !!(r.stdout && r.stdout.length > 0),
+      createdAt: r.createdAt.toISOString(),
+    }));
   }
 }

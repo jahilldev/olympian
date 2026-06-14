@@ -3,9 +3,9 @@ interface Props {
 }
 
 function colourClass(v: number): string {
-  if (v >= 85) return "bg-green-500";
-  if (v >= 70) return "bg-amber-500";
-  return "bg-red-500";
+  if (v >= 85) return 'bg-green-500';
+  if (v >= 70) return 'bg-amber-500';
+  return 'bg-red-500';
 }
 
 export default function ConfidenceGauge({ value }: Props) {
@@ -18,7 +18,7 @@ export default function ConfidenceGauge({ value }: Props) {
         />
       </div>
       <span
-        class={`text-xs font-mono tabular-nums ${value >= 85 ? "text-green-400" : value >= 70 ? "text-amber-400" : "text-red-400"}`}
+        class={`text-xs font-mono tabular-nums ${value >= 85 ? 'text-green-400' : value >= 70 ? 'text-amber-400' : 'text-red-400'}`}
       >
         {value}%
       </span>

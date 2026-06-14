@@ -1,6 +1,6 @@
-import type { JobSummaryDto } from "@olympian/api/interface/interface.model.js";
-import { navigate } from "./App.tsx";
-import StateBadge from "./StateBadge.tsx";
+import type { JobSummaryDto } from '@olympian/api/job/job.model.js';
+import { navigate } from './App.tsx';
+import StateBadge from './StateBadge.tsx';
 
 interface Props {
   job: JobSummaryDto;
@@ -9,7 +9,7 @@ interface Props {
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60_000);
-  if (m < 1) return "just now";
+  if (m < 1) return 'just now';
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
@@ -17,16 +17,13 @@ function relativeTime(iso: string): string {
 }
 
 function confidenceColour(v: number): string {
-  if (v >= 85) return "text-green-400";
-  if (v >= 70) return "text-amber-400";
-  return "text-red-400";
+  if (v >= 85) return 'text-green-400';
+  if (v >= 70) return 'text-amber-400';
+  return 'text-red-400';
 }
 
 export default function JobCard({ job }: Props) {
-  const title =
-    job.issueTitle.length > 80
-      ? job.issueTitle.slice(0, 79) + "…"
-      : job.issueTitle;
+  const title = job.issueTitle.length > 80 ? job.issueTitle.slice(0, 79) + '…' : job.issueTitle;
 
   return (
     <tr
@@ -53,14 +50,14 @@ export default function JobCard({ job }: Props) {
       <td class="py-3 px-4 whitespace-nowrap">
         {job.prNumber ? (
           <a
-            href={job.prUrl ?? "#"}
-            class={`text-xs font-mono hover:underline ${job.prIsDraft ? "text-zinc-500" : "text-sky-400"}`}
+            href={job.prUrl ?? '#'}
+            class={`text-xs font-mono hover:underline ${job.prIsDraft ? 'text-zinc-500' : 'text-sky-400'}`}
             onClick={(e) => e.stopPropagation()}
             target="_blank"
             rel="noopener noreferrer"
           >
             #{job.prNumber}
-            {job.prIsDraft && " (draft)"}
+            {job.prIsDraft && ' (draft)'}
           </a>
         ) : (
           <span class="text-zinc-700">—</span>
@@ -78,9 +75,7 @@ export default function JobCard({ job }: Props) {
       </td>
       <td class="py-3 px-4 whitespace-nowrap">
         {job.confidence !== null ? (
-          <span
-            class={`text-xs font-mono tabular-nums ${confidenceColour(job.confidence)}`}
-          >
+          <span class={`text-xs font-mono tabular-nums ${confidenceColour(job.confidence)}`}>
             {job.confidence}%
           </span>
         ) : (

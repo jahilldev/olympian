@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/config.service.js';
-import { type ReviewResult } from './review.model.js';
+import { type ReviewPassDto, type ReviewResult } from './review.model.js';
 import { meetsThreshold } from './review.utility.js';
 
 /**
@@ -53,5 +53,30 @@ export class ReviewService {
 
   get maxPasses(): number {
     return this.config.get('MAX_REVIEW_PASSES');
+  }
+
+  async listForJob(jobId: string): Promise<ReviewPassDto[]> {
+    const rows = await this.prisma.reviewPass.findMany({
+      where: { jobId },
+      orderBy: [{ cycle: 'asc' }, { passNumber: 'asc' }],
+    });
+
+    return rows.map((r) => {
+      let issues: ReviewPassDto['issues'] = [];
+      try {
+        issues = JSON.parse(r.issues) as ReviewPassDto['issues'];
+      } catch {
+        // malformed stored JSON — return empty array
+      }
+      return {
+        id: r.id,
+        cycle: r.cycle,
+        passNumber: r.passNumber,
+        confidence: r.confidence,
+        verdict: r.verdict as ReviewPassDto['verdict'],
+        issues,
+        createdAt: r.createdAt.toISOString(),
+      };
+    });
   }
 }

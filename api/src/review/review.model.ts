@@ -2,6 +2,16 @@ export type ReviewVerdict = 'PASS' | 'FAIL';
 
 export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical';
 
+export interface ReviewPassDto {
+  id: string;
+  cycle: number;
+  passNumber: number;
+  confidence: number;
+  verdict: ReviewVerdict;
+  issues: ReviewIssue[];
+  createdAt: string;
+}
+
 export interface ReviewIssue {
   severity: IssueSeverity;
   title: string;

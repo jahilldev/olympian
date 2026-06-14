@@ -1,4 +1,4 @@
-import type { PlanRevisionDto } from "@olympian/api/interface/interface.model.js";
+import type { PlanRevisionDto } from '@olympian/api/job/job.model.js';
 
 interface Props {
   plan: PlanRevisionDto;
@@ -12,11 +12,11 @@ export default function PlanViewer({ plan }: Props) {
         <span>·</span>
         <span
           class={`px-1.5 py-0.5 rounded font-mono ${
-            plan.status === "APPROVED"
-              ? "bg-green-900/50 text-green-400"
-              : plan.status === "REJECTED"
-                ? "bg-red-900/50 text-red-400"
-                : "bg-zinc-700 text-zinc-400"
+            plan.status === 'APPROVED'
+              ? 'bg-green-900/50 text-green-400'
+              : plan.status === 'REJECTED'
+                ? 'bg-red-900/50 text-red-400'
+                : 'bg-zinc-700 text-zinc-400'
           }`}
         >
           {plan.status}
