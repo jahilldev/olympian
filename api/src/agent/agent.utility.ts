@@ -245,7 +245,9 @@ export function extractJsonBlock(text: string): unknown | null {
   if (firstJsonFenceIdx !== -1) {
     const afterFence = text.slice(firstJsonFenceIdx).replace(/^```json[ \t]*\n?/, '');
     const obj = extractFirstJsonObject(afterFence);
-    if (obj !== null) candidates.push(obj);
+    if (obj !== null) {
+      candidates.push(obj);
+    }
   }
 
   // Strategy 2: brace-count from the first plain ``` fence (handles ```\n{...}).
@@ -253,12 +255,16 @@ export function extractJsonBlock(text: string): unknown | null {
   if (firstPlainFenceIdx !== -1) {
     const afterFence = text.slice(firstPlainFenceIdx + 4);
     const obj = extractFirstJsonObject(afterFence);
-    if (obj !== null) candidates.push(obj);
+    if (obj !== null) {
+      candidates.push(obj);
+    }
   }
 
   // Strategy 3: brace-count across the entire text (no fence markers present).
   const obj = extractFirstJsonObject(text);
-  if (obj !== null) candidates.push(obj);
+  if (obj !== null) {
+    candidates.push(obj);
+  }
 
   for (const c of candidates) {
     try {
@@ -279,7 +285,9 @@ export function extractJsonBlock(text: string): unknown | null {
  */
 function extractFirstJsonObject(text: string): string | null {
   const start = text.indexOf('{');
-  if (start === -1) return null;
+  if (start === -1) {
+    return null;
+  }
 
   let depth = 0;
   let inString = false;
@@ -299,11 +307,16 @@ function extractFirstJsonObject(text: string): string | null {
       inString = !inString;
       continue;
     }
-    if (inString) continue;
-    if (ch === '{') depth++;
-    else if (ch === '}') {
+    if (inString) {
+      continue;
+    }
+    if (ch === '{') {
+      depth++;
+    } else if (ch === '}') {
       depth--;
-      if (depth === 0) return text.slice(start, i + 1);
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
     }
   }
 
