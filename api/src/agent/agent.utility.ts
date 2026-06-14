@@ -51,11 +51,17 @@ function hermesArgs(p: SpawnSpecParams): string[] {
  */
 export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
   if (p.sandboxMode === 'docker') {
+    // Common dev-server ports published to the host so Camofox can reach whatever
+    // port the framework defaults to. Docker's port proxy handles this identically on
+    // Linux, Mac, and Windows — no host-networking tricks needed.
+    const DEV_PORTS = [3000, 3001, 4000, 4200, 5000, 5173, 5174, 8000, 8080, 8888];
+
     const args = [
       'run',
       '--rm',
       '-i',
       '--add-host=host.docker.internal:host-gateway',
+      ...DEV_PORTS.flatMap((p) => ['-p', `${p}:${p}`]),
       '-v',
       `${p.cwd}:${CONTAINER_WORKDIR}`,
       '-w',

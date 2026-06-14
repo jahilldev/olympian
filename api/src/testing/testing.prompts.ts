@@ -29,7 +29,9 @@ export function buildTestPrompt(ctx: TestPromptContext): string {
 
   if (ctx.hasBrowser) {
     parts.push(
-      `A Camofox browser is available. Use it to open the running application and manually verify the acceptance criteria — click through real user flows, not just check that the page loads.`,
+      `A Camofox browser is available. Use it to open the running application and manually verify the acceptance criteria — click through real user flows, not just check that the page loads.
+
+**Dev server and Camofox:** The following ports are forwarded from this container to the host where Camofox runs: 3000, 3001, 4000, 4200, 5000, 5173, 5174, 8000, 8080, 8888. Start the dev server on whichever port the framework naturally uses (or defaults to). Once it is running, tell Camofox to navigate to \`http://localhost:<that-port>\` — do not use the container hostname or any internal IP address.`,
     );
   }
 
