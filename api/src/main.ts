@@ -1,18 +1,25 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { raw } from 'express';
+import { ExpressAdapter } from '@nestjs/platform-express';
+import express, { raw } from 'express';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { AppConfigService } from './config/config.service.js';
+import { attachInterface } from './interface/interface.utility.js';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, {
+  const server = express();
+
+  attachInterface(server);
+
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
     bufferLogs: true,
     // Populates req.rawBody (Buffer) so the webhook controller can verify the HMAC signature.
     rawBody: true,
   });
 
   app.useLogger(app.get(Logger));
+
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }),
   );
@@ -35,6 +42,7 @@ async function bootstrap(): Promise<void> {
 
   const config = app.get(AppConfigService);
   const port = config.get('PORT');
+
   await app.listen(port, '0.0.0.0');
 
   app.get(Logger).log(`Hermes orchestrator listening on port ${port}`, 'Bootstrap');
