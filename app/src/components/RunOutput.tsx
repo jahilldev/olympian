@@ -98,20 +98,49 @@ function splitThinking(text: string): { thinking: string | null; output: string 
   return { thinking: m[1].trim(), output: text.slice(m[0].length).trim() };
 }
 
-// ── Observation value renderers ────────────────────────────────────────────
+// ── Data types ─────────────────────────────────────────────────────────────
 
 interface ChatMessage {
   role: string;
   content: unknown;
 }
+interface TodoItem {
+  id: string | number;
+  content: string;
+  status: string;
+}
+interface LlmToolCall {
+  name?: string;
+  arguments?: string;
+  function?: { name?: string; arguments?: string };
+}
 
 function isChatMessages(v: unknown): v is ChatMessage[] {
   return (
-    Array.isArray(v) &&
-    v.length > 0 &&
-    typeof (v[0] as Record<string, unknown>)?.role === 'string'
+    Array.isArray(v) && v.length > 0 && typeof (v[0] as Record<string, unknown>)?.role === 'string'
   );
 }
+function isTodoList(v: unknown): v is TodoItem[] {
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    typeof (v[0] as Record<string, unknown>)?.content === 'string' &&
+    'status' in (v[0] as object)
+  );
+}
+function parseObs(raw: string | undefined): unknown {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+function isDiff(text: string): boolean {
+  return /^[-+]{3} |^@@/m.test(text);
+}
+
+// ── Observation value renderers ────────────────────────────────────────────
 
 function ChatMessages({ messages }: { messages: ChatMessage[] }) {
   const roleStyle: Record<string, string> = {
@@ -121,14 +150,19 @@ function ChatMessages({ messages }: { messages: ChatMessage[] }) {
     tool: 'text-amber-400',
   };
   return (
-    <div class="space-y-2">
+    <div class="divide-y divide-zinc-800/50">
       {messages.map((m, i) => {
         const content =
-          typeof m.content === 'string' ? m.content : JSON.stringify(m.content, null, 2);
+          typeof m.content === 'string'
+            ? m.content
+            : m.content == null
+              ? ''
+              : JSON.stringify(m.content, null, 2);
+        if (!content) return null;
         return (
-          <div key={i} class="flex gap-2.5 min-w-0">
+          <div key={i} class="py-2 flex gap-2.5 min-w-0">
             <span
-              class={`shrink-0 text-[10px] font-mono uppercase pt-0.5 w-14 text-right ${roleStyle[m.role] ?? 'text-zinc-500'}`}
+              class={`shrink-0 text-[10px] font-mono uppercase font-semibold w-14 text-right pt-px ${roleStyle[m.role] ?? 'text-zinc-500'}`}
             >
               {m.role}
             </span>
@@ -142,11 +176,246 @@ function ChatMessages({ messages }: { messages: ChatMessage[] }) {
   );
 }
 
+// ── Diff renderer ─────────────────────────────────────────────────────────
+
+function DiffView({ text }: { text: string }) {
+  return (
+    <div class="font-mono text-[11px] leading-relaxed overflow-x-auto rounded-md overflow-hidden">
+      {text.split('\n').map((line, i) => {
+        const isAdd = line.startsWith('+') && !line.startsWith('+++');
+        const isDel = line.startsWith('-') && !line.startsWith('---');
+        const isHunk = line.startsWith('@@');
+        const isHeader = line.startsWith('+++') || line.startsWith('---');
+        return (
+          <div
+            key={i}
+            class={`px-2 ${isAdd ? 'bg-green-950/40' : isDel ? 'bg-red-950/40' : isHunk ? 'bg-indigo-950/30' : ''}`}
+          >
+            <span
+              class={
+                isAdd
+                  ? 'text-green-300'
+                  : isDel
+                    ? 'text-red-300'
+                    : isHunk
+                      ? 'text-indigo-400'
+                      : isHeader
+                        ? 'text-zinc-400 font-semibold'
+                        : 'text-zinc-500'
+              }
+            >
+              {line || '\u00a0'}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Terminal renderer ─────────────────────────────────────────────────────
+
+function TerminalInput({ command, workdir }: { command: string; workdir?: string }) {
+  return (
+    <div class="rounded-lg overflow-hidden bg-zinc-950 border border-zinc-800">
+      {workdir && (
+        <div class="px-3 py-1 text-[10px] font-mono text-zinc-600 border-b border-zinc-800 truncate">
+          {workdir}
+        </div>
+      )}
+      <div class="px-3 py-2.5 flex gap-2 items-start">
+        <span class="text-green-500 font-mono text-[12px] shrink-0 select-none leading-relaxed">
+          $
+        </span>
+        <pre class="text-[11px] font-mono text-zinc-100 whitespace-pre-wrap break-words flex-1 min-w-0 leading-relaxed">
+          {command}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function TerminalOutput({
+  output,
+  exitCode,
+  error,
+}: {
+  output: string;
+  exitCode?: number | null;
+  error?: string | null;
+}) {
+  const success = exitCode === 0 || exitCode == null;
+  const cleaned = stripAnsi(output).trim();
+  return (
+    <div class="rounded-lg overflow-hidden bg-zinc-950 border border-zinc-800">
+      <div class="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800/80">
+        <span class="text-[10px] font-mono text-zinc-700">stdout</span>
+        {exitCode != null && (
+          <span
+            class={`text-[10px] font-mono font-semibold ${success ? 'text-green-500' : 'text-red-400'}`}
+          >
+            exit {exitCode}
+          </span>
+        )}
+      </div>
+      <pre class="px-3 py-2.5 text-[11px] font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed break-words max-h-72 overflow-y-auto">
+        {cleaned || <span class="text-zinc-700 italic">no output</span>}
+      </pre>
+      {error && (
+        <div class="border-t border-zinc-800/80 px-3 py-2">
+          <pre class="text-[11px] font-mono text-red-400 whitespace-pre-wrap break-words">
+            {error}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Todo renderer ─────────────────────────────────────────────────────────
+
+const TODO_STATUS: Record<string, { icon: string; cls: string; textCls: string }> = {
+  completed: { icon: '✓', cls: 'text-green-400', textCls: 'text-zinc-600 line-through' },
+  in_progress: { icon: '◌', cls: 'text-amber-400', textCls: 'text-zinc-200' },
+  pending: { icon: '○', cls: 'text-zinc-600', textCls: 'text-zinc-400' },
+  cancelled: { icon: '×', cls: 'text-red-500', textCls: 'text-zinc-700 line-through' },
+};
+
+function TodoList({ items }: { items: TodoItem[] }) {
+  return (
+    <div class="space-y-0.5">
+      {items.map((item, i) => {
+        const s = TODO_STATUS[item.status] ?? TODO_STATUS.pending;
+        return (
+          <div key={i} class="flex items-start gap-2.5 py-1 min-w-0">
+            <span class={`shrink-0 w-3.5 text-center text-[12px] leading-tight mt-px ${s.cls}`}>
+              {s.icon}
+            </span>
+            <span
+              class={`text-[11px] font-mono leading-snug flex-1 min-w-0 break-words ${s.textCls}`}
+            >
+              {item.content}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TodoSummary({ summary }: { summary: Record<string, number> }) {
+  const stats = [
+    { label: 'done', count: summary.completed ?? 0, cls: 'text-green-500' },
+    { label: 'active', count: summary.in_progress ?? 0, cls: 'text-amber-400' },
+    { label: 'pending', count: summary.pending ?? 0, cls: 'text-zinc-500' },
+  ].filter((s) => s.count > 0);
+  return (
+    <div class="flex items-center gap-3 pt-2 mt-2 border-t border-zinc-800/60 flex-wrap">
+      {stats.map((s) => (
+        <span key={s.label} class={`text-[10px] font-mono font-semibold ${s.cls}`}>
+          {s.count} {s.label}
+        </span>
+      ))}
+      <span class="text-[10px] font-mono text-zinc-700 ml-auto">{summary.total ?? 0} total</span>
+    </div>
+  );
+}
+
+// ── Write file renderer ───────────────────────────────────────────────────
+
+function FileOpResult({ data }: { data: Record<string, unknown> }) {
+  const paths =
+    (data.files_modified as string[] | undefined) ??
+    (data.list as string[] | undefined) ??
+    (data.resolved_path ? [data.resolved_path as string] : []);
+  const bytes = data.bytes_written as number | undefined;
+  const dirs = data.dirs_created as string[] | undefined;
+  return (
+    <div class="space-y-1.5">
+      {paths.map((p) => (
+        <div key={p} class="flex items-center gap-2 min-w-0">
+          <span class="shrink-0 text-[10px] font-mono text-zinc-600">file</span>
+          <span class="text-[11px] font-mono text-zinc-300 truncate flex-1 min-w-0">{p}</span>
+        </div>
+      ))}
+      <div class="flex items-center gap-3 text-[10px] font-mono text-zinc-600 flex-wrap pt-0.5">
+        {bytes != null && (
+          <span>{bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`} written</span>
+        )}
+        {dirs && dirs.length > 0 && (
+          <span>
+            {dirs.length} dir{dirs.length > 1 ? 's' : ''} created
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── LLM tool-call list ────────────────────────────────────────────────────
+
+function LlmToolCallList({ calls }: { calls: LlmToolCall[] }) {
+  return (
+    <div class="space-y-1.5">
+      {calls.map((call, i) => {
+        const name = call.name ?? call.function?.name ?? 'unknown';
+        const argsRaw = call.arguments ?? call.function?.arguments;
+        let preview = '';
+        if (argsRaw) {
+          try {
+            const args = JSON.parse(argsRaw) as Record<string, unknown>;
+            const entries = Object.entries(args);
+            if (entries.length === 1) {
+              const [k, v] = entries[0];
+              const val = Array.isArray(v)
+                ? `${(v as unknown[]).length} items`
+                : typeof v === 'string' && v.length > 50
+                  ? v.slice(0, 47) + '…'
+                  : String(v);
+              preview = `${k}: ${val}`;
+            } else {
+              preview = entries.map(([k]) => k).join(', ');
+            }
+          } catch {
+            preview = argsRaw.slice(0, 50);
+          }
+        }
+        return (
+          <div
+            key={i}
+            class="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-zinc-900 border border-zinc-800 min-w-0"
+          >
+            <span class="text-zinc-600 text-[10px] font-mono shrink-0">→</span>
+            <span class="text-amber-300 text-[11px] font-mono font-semibold shrink-0">{name}</span>
+            {preview && (
+              <span class="text-zinc-600 text-[10px] font-mono truncate flex-1 min-w-0">
+                ({preview})
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Generic key-value fallback ────────────────────────────────────────────
+
 function KeyValueBlock({ obj }: { obj: Record<string, unknown> }) {
   return (
-    <div class="space-y-1">
+    <div class="space-y-2">
       {Object.entries(obj).map(([k, v]) => {
-        const display = typeof v === 'string' ? v : v === null ? 'null' : JSON.stringify(v);
+        if (isTodoList(v))
+          return (
+            <div key={k}>
+              <TodoList items={v} />
+            </div>
+          );
+        if (k === 'summary' && typeof v === 'object' && v !== null && 'total' in v) {
+          return <TodoSummary key={k} summary={v as Record<string, number>} />;
+        }
+        const display =
+          typeof v === 'string' ? v : v === null ? 'null' : JSON.stringify(v, null, 2);
         return (
           <div key={k} class="flex gap-2.5 min-w-0">
             <span class="shrink-0 text-[10px] font-mono text-zinc-600 w-16 text-right pt-0.5">
@@ -162,98 +431,198 @@ function KeyValueBlock({ obj }: { obj: Record<string, unknown> }) {
   );
 }
 
-/** Parse a JSON-serialised observation value and render it with appropriate structure. */
-function ObsContent({ raw, textClass = 'text-zinc-300' }: { raw: string | undefined; textClass?: string }) {
-  if (!raw) return null;
-  let parsed: unknown = raw;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    /* treat as plain string */
-  }
+// ── Tool-name-aware input/output renderers ────────────────────────────────
 
+function obsPreview(raw: string | undefined, toolName?: string): string {
+  const parsed = parseObs(raw);
+  if (parsed === undefined) return '';
   if (typeof parsed === 'string') {
-    return (
-      <pre class={`text-[11px] font-mono whitespace-pre-wrap leading-relaxed break-words ${textClass}`}>
-        {stripAnsi(parsed)}
-      </pre>
-    );
+    const line = parsed.split('\n')[0].trim();
+    return line.length > 80 ? line.slice(0, 77) + '…' : line;
   }
-  if (isChatMessages(parsed)) return <ChatMessages messages={parsed} />;
+  if (isChatMessages(parsed)) return `${(parsed as unknown[]).length} messages`;
   if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
     const obj = parsed as Record<string, unknown>;
+    if (typeof obj.command === 'string')
+      return obj.command.length > 80 ? obj.command.slice(0, 77) + '…' : obj.command;
+    if (isTodoList(obj.todos)) return `${(obj.todos as unknown[]).length} todos`;
+    if (typeof obj.path === 'string') return obj.path;
     if (typeof obj.output === 'string') {
-      const meta = Object.entries(obj).filter(([k]) => k !== 'output');
+      const line = obj.output.split('\n')[0].trim();
+      return line.length > 80 ? line.slice(0, 77) + '…' : line;
+    }
+    if (Array.isArray((obj as Record<string, unknown>).tool_calls)) {
+      return `${((obj as Record<string, unknown>).tool_calls as unknown[]).length} tool call(s)`;
+    }
+    return Object.keys(obj).join(', ');
+  }
+  if (Array.isArray(parsed)) return `${(parsed as unknown[]).length} items`;
+  return String(parsed).slice(0, 80);
+}
+
+function ToolInputContent({ raw, toolName }: { raw: string | undefined; toolName: string }) {
+  const parsed = parseObs(raw);
+  if (parsed === undefined) return null;
+
+  if (
+    (toolName === 'terminal' || toolName === 'bash' || toolName === 'shell') &&
+    typeof parsed === 'object' &&
+    parsed !== null
+  ) {
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.command === 'string')
       return (
-        <div>
-          <pre
-            class={`text-[11px] font-mono whitespace-pre-wrap leading-relaxed break-words max-h-80 overflow-y-auto ${textClass}`}
-          >
-            {stripAnsi(obj.output)}
-          </pre>
-          {meta.length > 0 && (
-            <div class="flex gap-3 mt-1.5 flex-wrap">
-              {meta.map(([k, v]) =>
-                v !== null ? (
-                  <span key={k} class="text-[10px] font-mono text-zinc-600">
-                    {k}:{' '}
-                    <span
-                      class={
-                        k === 'exit_code'
-                          ? v === 0
-                            ? 'text-green-600'
-                            : 'text-red-500'
-                          : 'text-zinc-500'
-                      }
-                    >
-                      {String(v)}
-                    </span>
-                  </span>
-                ) : null,
+        <TerminalInput
+          command={obj.command}
+          workdir={typeof obj.workdir === 'string' ? obj.workdir : undefined}
+        />
+      );
+  }
+  if (toolName === 'todo' && typeof parsed === 'object' && parsed !== null) {
+    const obj = parsed as Record<string, unknown>;
+    if (isTodoList(obj.todos)) return <TodoList items={obj.todos} />;
+  }
+  if (
+    (toolName === 'write_file' || toolName === 'write_files' || toolName === 'edit_file') &&
+    typeof parsed === 'object' &&
+    parsed !== null
+  ) {
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.path === 'string') {
+      return (
+        <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-mono text-zinc-600 shrink-0">path</span>
+            <span class="text-[11px] font-mono text-zinc-300 break-all">{obj.path}</span>
+          </div>
+          {typeof obj.content === 'string' && (
+            <div class="max-h-64 overflow-y-auto rounded-md border border-zinc-800">
+              {isDiff(obj.content) ? (
+                <DiffView text={obj.content} />
+              ) : (
+                <pre class="px-3 py-2 text-[11px] font-mono text-zinc-400 whitespace-pre-wrap leading-relaxed break-words">
+                  {obj.content}
+                </pre>
               )}
             </div>
           )}
         </div>
       );
     }
-    return <KeyValueBlock obj={obj} />;
   }
+  // Generic fallback
+  if (typeof parsed === 'string')
+    return (
+      <pre class="text-[11px] font-mono text-zinc-400 whitespace-pre-wrap leading-relaxed break-words">
+        {stripAnsi(parsed)}
+      </pre>
+    );
+  if (isChatMessages(parsed)) return <ChatMessages messages={parsed} />;
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed))
+    return <KeyValueBlock obj={parsed as Record<string, unknown>} />;
+  if (isTodoList(parsed)) return <TodoList items={parsed} />;
   return (
-    <pre class={`text-[11px] font-mono whitespace-pre-wrap leading-relaxed break-words ${textClass}`}>
+    <pre class="text-[11px] font-mono text-zinc-400 whitespace-pre-wrap break-words">
       {JSON.stringify(parsed, null, 2)}
     </pre>
   );
 }
 
-/** One-line summary shown inside a collapsed toggle button. */
-function obsPreview(raw: string | undefined): string {
-  if (!raw) return '';
-  let parsed: unknown = raw;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return raw.slice(0, 80);
+function ToolOutputContent({ raw, toolName }: { raw: string | undefined; toolName: string }) {
+  const parsed = parseObs(raw);
+  if (parsed === undefined) return null;
+
+  if (
+    (toolName === 'terminal' || toolName === 'bash' || toolName === 'shell') &&
+    typeof parsed === 'object' &&
+    parsed !== null
+  ) {
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.output === 'string')
+      return (
+        <TerminalOutput
+          output={obj.output}
+          exitCode={obj.exit_code as number | null}
+          error={obj.error as string | null}
+        />
+      );
   }
+  if (toolName === 'todo' && typeof parsed === 'object' && parsed !== null) {
+    const obj = parsed as Record<string, unknown>;
+    return (
+      <div>
+        {isTodoList(obj.todos) && <TodoList items={obj.todos} />}
+        {typeof obj.summary === 'object' && obj.summary !== null && (
+          <TodoSummary summary={obj.summary as Record<string, number>} />
+        )}
+      </div>
+    );
+  }
+  if (
+    (toolName === 'write_file' || toolName === 'write_files' || toolName === 'edit_file') &&
+    typeof parsed === 'object' &&
+    parsed !== null
+  ) {
+    return <FileOpResult data={parsed as Record<string, unknown>} />;
+  }
+  // Generic fallback
   if (typeof parsed === 'string') {
-    const line = parsed.split('\n')[0].trim();
-    return line.length > 80 ? line.slice(0, 77) + '…' : line;
-  }
-  if (isChatMessages(parsed)) {
-    const n = (parsed as unknown[]).length;
-    return `${n} message${n !== 1 ? 's' : ''}`;
+    const s = stripAnsi(parsed);
+    return isDiff(s) ? (
+      <DiffView text={s} />
+    ) : (
+      <pre class="text-[11px] font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed break-words max-h-72 overflow-y-auto">
+        {s}
+      </pre>
+    );
   }
   if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
     const obj = parsed as Record<string, unknown>;
-    if (typeof obj.command === 'string') {
-      return obj.command.length > 80 ? obj.command.slice(0, 77) + '…' : obj.command;
-    }
-    if (typeof obj.output === 'string') {
-      const line = obj.output.split('\n')[0].trim();
-      return line.length > 80 ? line.slice(0, 77) + '…' : line;
-    }
-    return Object.keys(obj).join(', ');
+    if (typeof obj.output === 'string')
+      return (
+        <TerminalOutput
+          output={obj.output}
+          exitCode={obj.exit_code as number | null}
+          error={obj.error as string | null}
+        />
+      );
+    return <KeyValueBlock obj={obj} />;
   }
-  return String(parsed).slice(0, 80);
+  if (isTodoList(parsed)) return <TodoList items={parsed} />;
+  return (
+    <pre class="text-[11px] font-mono text-zinc-300 whitespace-pre-wrap break-words">
+      {JSON.stringify(parsed, null, 2)}
+    </pre>
+  );
+}
+
+// ── Toggle row shared layout ──────────────────────────────────────────────
+
+function SectionToggle({
+  open,
+  onToggle,
+  label,
+  preview,
+  borderClass,
+  labelClass,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  label: string;
+  preview?: string;
+  borderClass: string;
+  labelClass?: string;
+}) {
+  return (
+    <button
+      class={`w-full flex items-center gap-2 px-3 min-h-[40px] text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t ${borderClass} bg-zinc-950/60 transition-colors text-left overflow-hidden active:bg-zinc-900`}
+      onClick={onToggle}
+    >
+      <IconChevron open={open} />
+      <span class={`shrink-0 ${labelClass ?? ''}`}>{label}</span>
+      {!open && preview && <span class="text-zinc-700 truncate flex-1 min-w-0">{preview}</span>}
+    </button>
+  );
 }
 
 // ── Event sub-cards ────────────────────────────────────────────────────────
@@ -269,71 +638,96 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
   const rawOutput = body['langfuse.observation.output'] as string | undefined;
   const rawInput = body['langfuse.observation.input'] as string | undefined;
 
-  // The SDK JSON-encodes the value — parse it first.
-  let parsedOutput: unknown = rawOutput;
-  try {
-    if (rawOutput) parsedOutput = JSON.parse(rawOutput);
-  } catch { /* keep raw */ }
+  // SDK JSON-encodes the output — parse it first.
+  const parsedOutput = parseObs(rawOutput);
 
-  const outputText =
-    typeof parsedOutput === 'string'
+  const isToolCallResponse =
+    typeof parsedOutput === 'object' &&
+    parsedOutput !== null &&
+    !Array.isArray(parsedOutput) &&
+    Array.isArray((parsedOutput as Record<string, unknown>).tool_calls);
+
+  const toolCalls = isToolCallResponse
+    ? ((parsedOutput as Record<string, unknown>).tool_calls as LlmToolCall[])
+    : null;
+
+  const llmText = isToolCallResponse
+    ? (((parsedOutput as Record<string, unknown>).content as string | null | undefined) ?? '')
+    : typeof parsedOutput === 'string'
       ? parsedOutput
       : typeof (parsedOutput as Record<string, unknown>)?.content === 'string'
         ? ((parsedOutput as Record<string, unknown>).content as string)
-        : parsedOutput != null
-          ? JSON.stringify(parsedOutput, null, 2)
-          : '';
+        : '';
 
-  const { thinking, output } = outputText ? splitThinking(outputText) : { thinking: null, output: '' };
+  const { thinking, output } = llmText ? splitThinking(llmText) : { thinking: null, output: '' };
 
   return (
-    <div class="rounded-md border border-indigo-900/60 overflow-hidden text-xs">
-      <div class="flex items-center gap-2 px-3 py-2 bg-indigo-950/40 text-indigo-300">
+    <div class="rounded-xl border border-indigo-900/50 overflow-hidden text-xs shadow-sm">
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-2.5 bg-indigo-950/50 text-indigo-200">
         <IconBrain />
         <span class="font-semibold font-mono tracking-wide">LLM</span>
         {model && (
-          <span class="text-zinc-500 font-mono font-normal truncate max-w-xs">{model}</span>
+          <span class="text-zinc-500 font-mono font-normal truncate flex-1 min-w-0">{model}</span>
         )}
         {totalTokens != null && (
-          <span class="ml-auto text-zinc-600 font-mono text-[11px] tabular-nums">
-            {totalTokens} tok
+          <span class="ml-auto shrink-0 text-zinc-600 font-mono text-[10px] tabular-nums">
+            {totalTokens.toLocaleString()} tok
           </span>
         )}
       </div>
 
       {rawInput && (
         <>
-          <button
-            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-indigo-900/40 bg-zinc-950/40 transition-colors text-left overflow-hidden"
-            onClick={() => setInputOpen((o) => !o)}
-          >
-            <IconChevron open={inputOpen} />
-            <span class="shrink-0">Input</span>
-            {!inputOpen && (
-              <span class="text-zinc-700 ml-1 truncate">{obsPreview(rawInput)}</span>
-            )}
-          </button>
+          <SectionToggle
+            open={inputOpen}
+            onToggle={() => setInputOpen((o) => !o)}
+            label="Input"
+            preview={obsPreview(rawInput)}
+            borderClass="border-indigo-900/30"
+          />
           {inputOpen && (
-            <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/70 max-h-64 overflow-y-auto">
-              <ObsContent raw={rawInput} textClass="text-zinc-400" />
+            <div class="border-t border-zinc-800/40 px-3 py-3 bg-zinc-950/70 max-h-72 overflow-y-auto">
+              {(() => {
+                const p = parseObs(rawInput);
+                if (isChatMessages(p)) return <ChatMessages messages={p} />;
+                if (typeof p === 'string')
+                  return (
+                    <pre class="text-[11px] text-zinc-400 font-mono whitespace-pre-wrap break-words leading-relaxed">
+                      {p}
+                    </pre>
+                  );
+                return (
+                  <pre class="text-[11px] text-zinc-400 font-mono whitespace-pre-wrap break-words">
+                    {JSON.stringify(p, null, 2)}
+                  </pre>
+                );
+              })()}
             </div>
           )}
         </>
       )}
 
+      {/* Tool calls the LLM is invoking */}
+      {toolCalls && toolCalls.length > 0 && (
+        <div class="border-t border-indigo-900/30 px-3 py-2.5 bg-zinc-950/50">
+          <LlmToolCallList calls={toolCalls} />
+        </div>
+      )}
+
+      {/* Thinking */}
       {thinking && (
         <>
-          <button
-            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-indigo-900/40 bg-zinc-950/40 transition-colors text-left"
-            onClick={() => setThinkOpen((o) => !o)}
-          >
-            <IconChevron open={thinkOpen} />
-            <span class="text-indigo-900">✦</span>
-            <span>Thinking</span>
-            <span class="text-zinc-700 ml-1">· {thinking.split('\n').length} lines</span>
-          </button>
+          <SectionToggle
+            open={thinkOpen}
+            onToggle={() => setThinkOpen((o) => !o)}
+            label="Thinking"
+            preview={`${thinking.split('\n').length} lines`}
+            borderClass="border-indigo-900/30"
+            labelClass="text-indigo-900/80"
+          />
           {thinkOpen && (
-            <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/70">
+            <div class="border-t border-zinc-800/40 px-3 py-2.5 bg-zinc-950/70 max-h-64 overflow-y-auto">
               <pre class="text-[11px] text-zinc-600 font-mono whitespace-pre-wrap leading-relaxed">
                 {thinking}
               </pre>
@@ -342,9 +736,10 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
         </>
       )}
 
+      {/* Response text */}
       {output && (
-        <div class="border-t border-indigo-900/40 px-3 py-2.5 bg-black/10">
-          <pre class="text-xs text-zinc-200 font-mono whitespace-pre-wrap leading-relaxed">
+        <div class="border-t border-indigo-900/30 px-3 py-3 bg-black/15">
+          <pre class="text-[12px] text-zinc-200 font-mono whitespace-pre-wrap leading-relaxed break-words">
             {output}
           </pre>
         </div>
@@ -362,28 +757,26 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
   const rawOutput = body['langfuse.observation.output'] as string | undefined;
 
   return (
-    <div class="rounded-md border border-amber-900/50 overflow-hidden text-xs">
-      <div class="flex items-center gap-2 px-3 py-2 bg-amber-950/30 text-amber-300">
+    <div class="rounded-xl border border-amber-900/40 overflow-hidden text-xs shadow-sm">
+      {/* Header */}
+      <div class="flex items-center gap-2 px-3 py-2.5 bg-amber-950/25 text-amber-200">
         <IconWrench />
         <span class="font-semibold font-mono tracking-wide">TOOL</span>
-        <span class="text-zinc-200 font-mono font-normal">{name}</span>
+        <span class="text-zinc-300 font-mono font-medium">{name}</span>
       </div>
 
       {rawInput && (
         <>
-          <button
-            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-amber-900/30 bg-zinc-950/40 transition-colors text-left overflow-hidden"
-            onClick={() => setInputOpen((o) => !o)}
-          >
-            <IconChevron open={inputOpen} />
-            <span class="shrink-0">Input</span>
-            {!inputOpen && (
-              <span class="text-zinc-700 ml-1 truncate">{obsPreview(rawInput)}</span>
-            )}
-          </button>
+          <SectionToggle
+            open={inputOpen}
+            onToggle={() => setInputOpen((o) => !o)}
+            label="Input"
+            preview={obsPreview(rawInput, name)}
+            borderClass="border-amber-900/20"
+          />
           {inputOpen && (
-            <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/70">
-              <ObsContent raw={rawInput} textClass="text-zinc-400" />
+            <div class="border-t border-zinc-800/40 px-3 py-3 bg-zinc-950/70">
+              <ToolInputContent raw={rawInput} toolName={name} />
             </div>
           )}
         </>
@@ -391,19 +784,17 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
 
       {rawOutput && (
         <>
-          <button
-            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 border-t border-amber-900/30 bg-zinc-950/40 transition-colors text-left overflow-hidden"
-            onClick={() => setOutputOpen((o) => !o)}
-          >
-            <IconChevron open={outputOpen} />
-            <span class="shrink-0 text-zinc-400">Output</span>
-            {!outputOpen && (
-              <span class="text-zinc-700 ml-1 truncate">{obsPreview(rawOutput)}</span>
-            )}
-          </button>
+          <SectionToggle
+            open={outputOpen}
+            onToggle={() => setOutputOpen((o) => !o)}
+            label="Output"
+            preview={obsPreview(rawOutput, name)}
+            borderClass="border-amber-900/20"
+            labelClass="text-zinc-400"
+          />
           {outputOpen && (
-            <div class="border-t border-zinc-800/60 px-3 py-2.5 bg-zinc-950/30">
-              <ObsContent raw={rawOutput} textClass="text-zinc-300" />
+            <div class="border-t border-zinc-800/40 px-3 py-3 bg-zinc-950/50">
+              <ToolOutputContent raw={rawOutput} toolName={name} />
             </div>
           )}
         </>

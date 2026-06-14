@@ -93,7 +93,13 @@ function SkeletonMobile() {
   );
 }
 
-function InstallOverlay({ onInstall, onDismiss }: { onInstall: () => void; onDismiss: () => void }) {
+function InstallOverlay({
+  onInstall,
+  onDismiss,
+}: {
+  onInstall: () => void;
+  onDismiss: () => void;
+}) {
   return (
     <div class="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-80 z-50 animate-in">
       <div class="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl shadow-black/60 p-3 flex items-center gap-3">
@@ -113,7 +119,14 @@ function InstallOverlay({ onInstall, onDismiss }: { onInstall: () => void; onDis
           aria-label="Dismiss"
           class="shrink-0 text-zinc-600 hover:text-zinc-300 transition-colors p-1"
         >
-          <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+          >
             <path d="M4 4l8 8M12 4l-8 8" />
           </svg>
         </button>
@@ -131,7 +144,10 @@ export default function JobList() {
 
   useEffect(() => {
     // Don't show the overlay when already running as an installed PWA.
-    if (window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone) {
+    if (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone
+    ) {
       return;
     }
     function onBeforeInstall(e: Event) {
