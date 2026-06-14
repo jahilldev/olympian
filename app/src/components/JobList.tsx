@@ -1,8 +1,13 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import type { JobSummaryDto } from '@olympian/api/job/job.model.js';
 import { navigate } from '../utils/navigate.ts';
 import JobCard from './JobCard.tsx';
 import StateBadge from './StateBadge.tsx';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
 
 const TERMINAL_STATES = new Set(['DONE', 'FAILED', 'CANCELLED']);
 
@@ -88,9 +93,74 @@ function SkeletonMobile() {
   );
 }
 
+function InstallOverlay({ onInstall, onDismiss }: { onInstall: () => void; onDismiss: () => void }) {
+  return (
+    <div class="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-80 z-50 animate-in">
+      <div class="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl shadow-black/60 p-3 flex items-center gap-3">
+        <img src="/icons/icon-192.png" class="w-11 h-11 rounded-xl shrink-0" alt="" />
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-zinc-100 leading-tight">Install Olympian</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Add to your home screen</p>
+        </div>
+        <button
+          onClick={onInstall}
+          class="shrink-0 text-xs font-semibold text-zinc-900 bg-zinc-100 hover:bg-white rounded-lg px-3 py-1.5 transition-colors"
+        >
+          Install
+        </button>
+        <button
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          class="shrink-0 text-zinc-600 hover:text-zinc-300 transition-colors p-1"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function JobList() {
   const [jobs, setJobs] = useState<JobSummaryDto[] | null>(null);
   const [error, setError] = useState(false);
+  const [installable, setInstallable] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const installPrompt = useRef<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    // Don't show the overlay when already running as an installed PWA.
+    if (window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone) {
+      return;
+    }
+    function onBeforeInstall(e: Event) {
+      e.preventDefault();
+      installPrompt.current = e as BeforeInstallPromptEvent;
+      setInstallable(true);
+    }
+    function onAppInstalled() {
+      installPrompt.current = null;
+      setInstallable(false);
+    }
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onAppInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onAppInstalled);
+    };
+  }, []);
+
+  async function handleInstall() {
+    const prompt = installPrompt.current;
+    if (!prompt) return;
+    await prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome === 'accepted') {
+      installPrompt.current = null;
+      setInstallable(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +201,10 @@ export default function JobList() {
           </span>
         )}
       </header>
+
+      {installable && !dismissed && (
+        <InstallOverlay onInstall={handleInstall} onDismiss={() => setDismissed(true)} />
+      )}
 
       {/* Error banner */}
       {error && (
