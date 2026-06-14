@@ -242,9 +242,11 @@ export function extractJsonBlock(text: string): unknown | null {
   // The review/agent prompts ask models to put their JSON verdict FIRST, so the first
   // ```json fence is almost always the verdict.
   const firstJsonFenceIdx = text.indexOf('```json');
+
   if (firstJsonFenceIdx !== -1) {
     const afterFence = text.slice(firstJsonFenceIdx).replace(/^```json[ \t]*\n?/, '');
     const obj = extractFirstJsonObject(afterFence);
+
     if (obj !== null) {
       candidates.push(obj);
     }
@@ -252,9 +254,11 @@ export function extractJsonBlock(text: string): unknown | null {
 
   // Strategy 2: brace-count from the first plain ``` fence (handles ```\n{...}).
   const firstPlainFenceIdx = text.indexOf('```\n');
+
   if (firstPlainFenceIdx !== -1) {
     const afterFence = text.slice(firstPlainFenceIdx + 4);
     const obj = extractFirstJsonObject(afterFence);
+
     if (obj !== null) {
       candidates.push(obj);
     }
@@ -262,6 +266,7 @@ export function extractJsonBlock(text: string): unknown | null {
 
   // Strategy 3: brace-count across the entire text (no fence markers present).
   const obj = extractFirstJsonObject(text);
+
   if (obj !== null) {
     candidates.push(obj);
   }
@@ -285,6 +290,7 @@ export function extractJsonBlock(text: string): unknown | null {
  */
 function extractFirstJsonObject(text: string): string | null {
   const start = text.indexOf('{');
+
   if (start === -1) {
     return null;
   }
@@ -295,25 +301,34 @@ function extractFirstJsonObject(text: string): string | null {
 
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
+
     if (escape) {
       escape = false;
+
       continue;
     }
+
     if (ch === '\\' && inString) {
       escape = true;
+
       continue;
     }
+
     if (ch === '"') {
       inString = !inString;
+
       continue;
     }
+
     if (inString) {
       continue;
     }
+
     if (ch === '{') {
       depth++;
     } else if (ch === '}') {
       depth--;
+
       if (depth === 0) {
         return text.slice(start, i + 1);
       }
