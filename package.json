@@ -4,7 +4,8 @@
   "description": "Hermes Agent orchestration service — an AI dark factory. Monorepo root: `api` (orchestration service) and, eventually, `app` (management/overview UI).",
   "private": true,
   "workspaces": [
-    "api"
+    "api",
+    "app"
   ],
   "engines": {
     "node": ">=20"
@@ -13,6 +14,7 @@
     "setup": "npm install && npm run prisma:setup",
     "start": "npm run -w api start:prod",
     "dev": "npm run -w api start:dev",
+    "dev:app": "npm run -w app dev",
     "prisma:setup": "npm run -w api prisma:generate && npm run -w api prisma:migrate",
     "prisma:generate": "npm run -w api prisma:generate",
     "prisma:deploy": "npm run -w api prisma:deploy",

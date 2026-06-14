@@ -1,4 +1,7 @@
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Module } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import { ConfigModule } from './config/config.module.js';
@@ -9,9 +12,16 @@ import { HealthModule } from './health/health.module.js';
 import { WorkerModule } from './worker/worker.module.js';
 import { WebhookModule } from './webhook/webhook.module.js';
 import { LangfuseModule } from './langfuse/langfuse.module.js';
+import { InterfaceModule } from './interface/interface.module.js';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 @Module({
   imports: [
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', '..', '..', 'app', 'dist'),
+      exclude: ['/interface*', '/stream*', '/webhooks*', '/health*', '/metrics*', '/langfuse*'],
+    }),
     ConfigModule,
     LoggerModule.forRootAsync({
       inject: [AppConfigService],
@@ -33,6 +43,7 @@ import { LangfuseModule } from './langfuse/langfuse.module.js';
     WebhookModule,
     WorkerModule,
     LangfuseModule,
+    InterfaceModule,
   ],
 })
 export class AppModule {}
