@@ -834,6 +834,14 @@ export class OrchestratorService {
     const plan = await this.approvedPlan(jobId);
 
     // Gather whatever context is available: failing test output and/or review issues.
+    // PR feedback is only relevant if it was submitted after the last IMPLEMENT run;
+    // anything older was already incorporated into the code by that IMPLEMENT pass.
+    const lastImplementRun = await this.prisma.agentRun.findFirst({
+      where: { jobId, phase: 'IMPLEMENT' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+
     const [lastTestRun, lastFailedReview, prFeedback] = await Promise.all([
       this.prisma.agentRun.findFirst({
         where: { jobId, phase: 'TEST' },
@@ -846,7 +854,10 @@ export class OrchestratorService {
         select: { issues: true },
       }),
       this.prisma.prRevisionFeedback.findMany({
-        where: { jobId },
+        where: {
+          jobId,
+          ...(lastImplementRun ? { createdAt: { gt: lastImplementRun.createdAt } } : {}),
+        },
         orderBy: { createdAt: 'asc' },
       }),
     ]);
@@ -930,8 +941,21 @@ export class OrchestratorService {
     ]);
     const pass = priorPasses + 1;
 
+    // Only include PR feedback submitted after the last IMPLEMENT run — older
+    // feedback was already incorporated into the code at that point.
+    const lastImplementRunForReview = await this.prisma.agentRun.findFirst({
+      where: { jobId, phase: 'IMPLEMENT' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+
     const prFeedback = await this.prisma.prRevisionFeedback.findMany({
-      where: { jobId },
+      where: {
+        jobId,
+        ...(lastImplementRunForReview
+          ? { createdAt: { gt: lastImplementRunForReview.createdAt } }
+          : {}),
+      },
       orderBy: { createdAt: 'asc' },
     });
 

@@ -83,7 +83,7 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
 
 export function buildRevisePrompt(ctx: RevisePromptContext): string {
   const parts: string[] = [
-    `You are Hermes, an autonomous engineer. Your recent changes need fixes. Edit the files in the working directory to address every issue below; do not regress already-correct work.`,
+    `You are Hermes, an autonomous engineer. Your recent changes need targeted fixes. Address ONLY the specific issues listed below — do not expand scope, re-audit the codebase, or fix things not explicitly listed. Other parts of the codebase have already been reviewed and accepted; leave them alone.`,
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
 
