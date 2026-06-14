@@ -25,6 +25,12 @@ function relativeTime(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function SectionHeading({ children }: { children: string }) {
+  return (
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-3">{children}</h2>
+  );
+}
+
 function FeedbackList({ items }: { items: FeedbackDto[] }) {
   if (items.length === 0) return null;
   return (
@@ -52,29 +58,31 @@ function ReviewCycles({ passes }: { passes: ReviewPassDto[] }) {
 
   if (cycles.length === 0) return null;
 
-  const cyclePass = passes.filter((p) => p.cycle === activeCycle);
-
   return (
     <div class="space-y-3">
-      <div class="flex gap-1 flex-wrap">
-        {cycles.map((c) => (
-          <button
-            key={c}
-            onClick={() => setActiveCycle(c)}
-            class={`text-xs px-3 py-1 rounded font-mono transition-colors ${
-              c === activeCycle
-                ? 'bg-zinc-700 text-zinc-100'
-                : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800'
-            }`}
-          >
-            Cycle {c}
-          </button>
-        ))}
-      </div>
+      {cycles.length > 1 && (
+        <div class="flex gap-1 flex-wrap">
+          {cycles.map((c) => (
+            <button
+              key={c}
+              onClick={() => setActiveCycle(c)}
+              class={`text-xs px-3 py-1 rounded font-mono transition-colors ${
+                c === activeCycle
+                  ? 'bg-zinc-700 text-zinc-100'
+                  : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800 border border-zinc-800'
+              }`}
+            >
+              Cycle {c}
+            </button>
+          ))}
+        </div>
+      )}
       <div class="space-y-3">
-        {cyclePass.map((p) => (
-          <ReviewPassCard key={p.id} pass={p} />
-        ))}
+        {passes
+          .filter((p) => p.cycle === activeCycle)
+          .map((p) => (
+            <ReviewPassCard key={p.id} pass={p} />
+          ))}
       </div>
     </div>
   );
@@ -85,7 +93,7 @@ export default function JobDetail({ id }: Props) {
   const [reviews, setReviews] = useState<ReviewPassDto[]>([]);
   const [runs, setRuns] = useState<AgentRunDto[]>([]);
   const [notFound, setNotFound] = useState(false);
-  const [planOpen, setPlanOpen] = useState(true);
+  const [planOpen, setPlanOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,7 +108,6 @@ export default function JobDetail({ id }: Props) {
         }
         const data = (await res.json()) as JobDetailDto;
         if (!cancelled) setJob(data);
-
         if (TERMINAL_STATES.has(data.state) && timer !== null) {
           clearInterval(timer);
           timer = null;
@@ -125,7 +132,6 @@ export default function JobDetail({ id }: Props) {
 
     void fetchAll();
     timer = setInterval(() => void fetchAll(), 2_000);
-
     return () => {
       cancelled = true;
       if (timer !== null) clearInterval(timer);
@@ -134,13 +140,10 @@ export default function JobDetail({ id }: Props) {
 
   if (notFound) {
     return (
-      <div class="flex flex-col items-center justify-center h-full text-zinc-500">
-        <p class="text-lg">Job not found</p>
-        <button
-          class="mt-4 text-sm text-indigo-400 hover:text-indigo-300"
-          onClick={() => navigate('/')}
-        >
-          ← All jobs
+      <div class="flex flex-col items-center justify-center h-full text-zinc-500 gap-3">
+        <p class="text-base">Job not found</p>
+        <button class="text-sm text-indigo-400 hover:text-indigo-300" onClick={() => navigate('/')}>
+          Back to all jobs
         </button>
       </div>
     );
@@ -149,49 +152,97 @@ export default function JobDetail({ id }: Props) {
   if (!job) {
     return (
       <div class="flex items-center justify-center h-full">
-        <div class="w-6 h-6 border-2 border-zinc-600 border-t-indigo-500 rounded-full animate-spin" />
+        <div class="w-6 h-6 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
   }
 
-  const latestApprovedPlan =
+  const activeRun = runs.find((r) => r.status === 'RUNNING') ?? null;
+  const latestPlan =
     [...job.plans].reverse().find((p) => p.status === 'APPROVED') ??
     job.plans[job.plans.length - 1] ??
     null;
 
   return (
     <div class="flex flex-col h-full overflow-hidden">
-      {/* Top nav */}
-      <header class="flex items-center gap-3 px-6 py-3 border-b border-zinc-800 shrink-0">
+      {/* Compact sticky header */}
+      <header class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950">
         <button
-          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-sm"
           onClick={() => navigate('/')}
         >
-          ← All jobs
+          ←
         </button>
-        <span class="text-zinc-700">/</span>
-        <span class="text-sm text-zinc-400 font-mono truncate">
+        <span class="text-zinc-700 text-sm">/</span>
+        <span class="text-xs text-zinc-500 font-mono truncate min-w-0">
           {job.repoFullName} #{job.issueNumber}
         </span>
+        <div class="ml-auto shrink-0">
+          <StateBadge state={job.state} />
+        </div>
       </header>
 
-      {/* Body — two columns */}
-      <div class="flex-1 overflow-hidden flex flex-col lg:flex-row">
-        {/* Left column */}
-        <div class="lg:w-3/5 overflow-y-auto p-6 space-y-6 border-b lg:border-b-0 lg:border-r border-zinc-800">
-          {/* Title + badge */}
+      {/* Scrollable single-column body */}
+      <div class="flex-1 overflow-y-auto">
+        <div class="max-w-3xl mx-auto px-4 py-5 space-y-6">
+
+          {/* Active run — most prominent, always first */}
+          {activeRun && (
+            <div class="rounded-xl border border-green-700 bg-green-950/40 p-4 flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-green-300">{activeRun.phase} running</p>
+                {activeRun.model && (
+                  <p class="text-xs text-green-700 truncate mt-0.5">{activeRun.model}</p>
+                )}
+              </div>
+              <button
+                class="shrink-0 bg-green-700 hover:bg-green-600 text-green-100 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
+              >
+                Watch live →
+              </button>
+            </div>
+          )}
+
+          {/* Title + meta */}
           <div class="space-y-2">
-            <h1 class="text-xl font-semibold text-zinc-100 leading-snug">{job.issueTitle}</h1>
-            <div class="flex flex-wrap items-center gap-2">
-              <StateBadge state={job.state} />
+            <h1 class="text-lg font-semibold text-zinc-100 leading-snug">{job.issueTitle}</h1>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
               <a
                 href={`https://github.com/${job.repoFullName}/issues/${job.issueNumber}`}
-                class="text-xs text-zinc-500 hover:text-zinc-400"
+                class="hover:text-zinc-300 transition-colors"
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 {job.repoFullName} #{job.issueNumber}
               </a>
+              {job.prNumber && (
+                <a
+                  href={job.prUrl ?? '#'}
+                  class={`hover:underline ${job.prIsDraft ? 'text-zinc-500' : 'text-sky-400'}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  PR #{job.prNumber}
+                  {job.prIsDraft ? ' (draft)' : ''}
+                </a>
+              )}
+              {job.confidence !== null && (
+                <span
+                  class={
+                    job.confidence >= 85
+                      ? 'text-green-400'
+                      : job.confidence >= 70
+                        ? 'text-amber-400'
+                        : 'text-red-400'
+                  }
+                >
+                  {job.confidence}% confidence
+                </span>
+              )}
+              {job.reviewCycle > 0 && <span>cycle {job.reviewCycle}</span>}
+              <span class="sm:ml-auto">{relativeTime(job.updatedAt)}</span>
             </div>
           </div>
 
@@ -202,85 +253,64 @@ export default function JobDetail({ id }: Props) {
             </div>
           )}
 
-          {/* PR info */}
-          {job.prNumber && (
-            <div class="flex items-center gap-3 text-sm rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3">
-              <a
-                href={job.prUrl ?? '#'}
-                class="text-sky-400 hover:underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                PR #{job.prNumber}
-              </a>
-              {job.prIsDraft && (
-                <span class="text-xs bg-zinc-700 text-zinc-400 px-2 py-0.5 rounded">draft</span>
-              )}
-              {job.headSha && (
-                <span class="text-xs text-zinc-500 font-mono ml-auto">
-                  {job.headSha.slice(0, 7)}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Plan */}
-          {latestApprovedPlan && (
-            <div class="space-y-2">
-              <button
-                class="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
-                onClick={() => setPlanOpen((o) => !o)}
-              >
-                <span class="font-mono">{planOpen ? '▾' : '▸'}</span> Plan
-              </button>
-              {planOpen && <PlanViewer plan={latestApprovedPlan} />}
-            </div>
-          )}
-
-          {/* Plan feedback */}
-          {job.planFeedback.length > 0 && (
-            <div class="space-y-2">
-              <h3 class="text-xs font-medium text-zinc-500 uppercase tracking-wide">
-                Plan feedback
-              </h3>
-              <FeedbackList items={job.planFeedback} />
-            </div>
-          )}
-
-          {/* Timeline */}
-          <div class="space-y-2">
-            <h3 class="text-xs font-medium text-zinc-500 uppercase tracking-wide">Timeline</h3>
+          {/* Timeline — most important content section */}
+          <section>
+            <SectionHeading>Timeline</SectionHeading>
             <Timeline transitions={job.transitions} />
-          </div>
-        </div>
+          </section>
 
-        {/* Right column */}
-        <div class="lg:w-2/5 overflow-y-auto p-6 space-y-6">
-          {/* Review cycles */}
+          {/* Runs */}
+          {runs.length > 0 && (
+            <section>
+              <SectionHeading>Runs</SectionHeading>
+              <div class="space-y-2">
+                {runs.map((run) => (
+                  <AgentRunRow key={run.id} run={run} jobId={id} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Reviews */}
           {reviews.length > 0 && (
-            <div class="space-y-2">
-              <h3 class="text-xs font-medium text-zinc-500 uppercase tracking-wide">Reviews</h3>
+            <section>
+              <SectionHeading>Reviews</SectionHeading>
               <ReviewCycles passes={reviews} />
-            </div>
+            </section>
           )}
 
           {/* PR feedback */}
           {job.prFeedback.length > 0 && (
-            <div class="space-y-2">
-              <h3 class="text-xs font-medium text-zinc-500 uppercase tracking-wide">PR feedback</h3>
+            <section>
+              <SectionHeading>PR feedback</SectionHeading>
               <FeedbackList items={job.prFeedback} />
-            </div>
+            </section>
           )}
 
-          {/* Agent runs */}
-          {runs.length > 0 && (
-            <div class="space-y-1">
-              <h3 class="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-2">Runs</h3>
-              {runs.map((run) => (
-                <AgentRunRow key={run.id} run={run} jobId={id} />
-              ))}
-            </div>
+          {/* Plan — collapsed by default */}
+          {latestPlan && (
+            <section>
+              <button
+                class="flex items-center gap-2 w-full text-left mb-3 group"
+                onClick={() => setPlanOpen((o) => !o)}
+              >
+                <h2 class="text-xs font-semibold uppercase tracking-widest text-zinc-500 group-hover:text-zinc-400 transition-colors">
+                  Plan
+                </h2>
+                <span class="text-zinc-600 text-xs font-mono">{planOpen ? '▾' : '▸'}</span>
+              </button>
+              {planOpen && <PlanViewer plan={latestPlan} />}
+            </section>
           )}
+
+          {/* Plan feedback */}
+          {job.planFeedback.length > 0 && (
+            <section>
+              <SectionHeading>Plan feedback</SectionHeading>
+              <FeedbackList items={job.planFeedback} />
+            </section>
+          )}
+
         </div>
       </div>
     </div>
