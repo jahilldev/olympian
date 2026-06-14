@@ -103,23 +103,27 @@ function splitThinking(text: string): { thinking: string | null; output: string 
 function GenerationCard({ event }: { event: LangfuseEvent }) {
   const [thinkOpen, setThinkOpen] = useState(false);
   const body = event.body;
-  const model = body['langfuse.model'] ?? body.model;
-  const tokens = body['langfuse.usage.total_tokens'] ?? body['usage.total_tokens'];
-  const rawOutput = body['langfuse.completion'] ?? body.output;
-  const { thinking, output } =
-    rawOutput != null ? splitThinking(toStr(rawOutput)) : { thinking: null, output: '' };
+  const model = body['langfuse.observation.model.name'] as string | undefined;
+  const usageRaw = body['langfuse.observation.usage_details'] as string | undefined;
+  const usage = usageRaw ? (JSON.parse(usageRaw) as Record<string, number>) : null;
+  const totalTokens = usage?.total ?? usage?.output ?? null;
+  const rawOutput = body['langfuse.observation.output'] as string | undefined;
+
+  const { thinking, output } = rawOutput
+    ? splitThinking(rawOutput)
+    : { thinking: null, output: '' };
 
   return (
     <div class="rounded-md border border-indigo-900/60 overflow-hidden text-xs">
       <div class="flex items-center gap-2 px-3 py-2 bg-indigo-950/40 text-indigo-300">
         <IconBrain />
         <span class="font-semibold font-mono tracking-wide">LLM</span>
-        {model != null && (
-          <span class="text-zinc-500 font-mono font-normal truncate max-w-xs">{String(model)}</span>
+        {model && (
+          <span class="text-zinc-500 font-mono font-normal truncate max-w-xs">{model}</span>
         )}
-        {tokens != null && (
+        {totalTokens != null && (
           <span class="ml-auto text-zinc-600 font-mono text-[11px] tabular-nums">
-            {String(tokens)} tok
+            {totalTokens} tok
           </span>
         )}
       </div>
@@ -161,10 +165,10 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
   const [outputOpen, setOutputOpen] = useState(true);
   const body = event.body;
   const name = String(body['langfuse.observation.name'] ?? body.name ?? 'unknown');
-  const rawInput = body['langfuse.input'] ?? body.input;
-  const rawOutput = body['langfuse.output'] ?? body.output;
-  const inputStr = rawInput != null ? toStr(rawInput) : null;
-  const outputStr = rawOutput != null ? toStr(rawOutput) : null;
+  const rawInput = body['langfuse.observation.input'] as string | undefined;
+  const rawOutput = body['langfuse.observation.output'] as string | undefined;
+  const inputStr = rawInput ?? null;
+  const outputStr = rawOutput ?? null;
 
   return (
     <div class="rounded-md border border-amber-900/50 overflow-hidden text-xs">

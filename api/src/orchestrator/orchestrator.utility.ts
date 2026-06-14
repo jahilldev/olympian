@@ -33,29 +33,38 @@ const RETRY_VERBS = new Set(['retry', 'restart', 'resume']);
  */
 export function parseCommand(body: string, prefix: string): Command {
   const lower = prefix.toLowerCase();
+
   for (const raw of body.split('\n')) {
     const line = raw.trim();
+
     if (!line.toLowerCase().startsWith(lower)) {
       continue;
     }
+
     const rest = line.slice(prefix.length).trim();
     const [verb = '', ...args] = rest.split(/\s+/);
     const v = verb.toLowerCase();
+
     if (APPROVE_VERBS.has(v)) {
       return { kind: 'approve' };
     }
+
     if (CANCEL_VERBS.has(v)) {
       return { kind: 'cancel' };
     }
+
     if (v === 'status') {
       return { kind: 'status' };
     }
+
     if (RETRY_VERBS.has(v)) {
       return { kind: 'retry' };
     }
+
     if (REVISE_VERBS.has(v)) {
       return { kind: 'revise', text: args.join(' ') };
     }
+
     return { kind: 'none' };
   }
   return { kind: 'none' };
@@ -64,6 +73,7 @@ export function parseCommand(body: string, prefix: string): Command {
 /** Best-effort extraction of the "Acceptance criteria" section from a plan. */
 export function acceptanceCriteria(plan: string): string | undefined {
   const match = plan.match(/##\s*Acceptance criteria\s*\n([\s\S]*?)(?:\n##\s|\s*$)/i);
+
   return match ? match[1].trim() : undefined;
 }
 
@@ -97,12 +107,14 @@ export interface PrBodyInput {
 
 export function buildPrBody(input: PrBodyInput): string {
   const lines = [input.agentSummary.trim(), '', `Closes #${input.issueNumber}`, '', '---'];
+
   if (input.meetsThreshold) {
     lines.push(`🤖 Automated self-review: confidence ${input.confidence}/100 — all checks passed.`);
   } else {
     lines.push(
       `🤖 Automated self-review: confidence ${input.confidence ?? 'n/a'}/100 (threshold ${input.threshold}) — opened below threshold for human attention.`,
     );
+
     if (input.unresolvedIssues) {
       lines.push('', '**Unresolved findings:**', '', input.unresolvedIssues);
     }
