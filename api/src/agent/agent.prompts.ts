@@ -68,7 +68,11 @@ const STATIC_ANALYSIS_INSTRUCTIONS = `**After making changes, run the project's 
 - **Any other language**: check \`Makefile\`, \`justfile\`, or \`.github/workflows/\` to find the right lint/type-check/compile commands
 Fix all errors and warnings before finishing — a clean static analysis pass is required.`;
 
-const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working directory using your tools. When finished:
+const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working directory using your tools.
+
+**Before ending your session**, verify every file required by the plan actually exists on disk with non-trivial content. List the files you created and cross-check them against the plan. If any are missing or empty, create them before finishing. Do not stop after partial implementation — the session is not done until every deliverable from the plan is on disk.
+
+When all files are in place:
 1. Run the project's static analysis (type checker, linter, compiler) as described below to validate your changes, then fix any errors before finalising.
 2. End your reply with a short Markdown summary of what you changed and which acceptance criteria are now met.
 Use \`.olympian/\` as a scratch directory for any temporary files (build logs, notes, debug output) — it is excluded from commits automatically.
