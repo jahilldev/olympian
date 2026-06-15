@@ -6,7 +6,7 @@
     "dev": "astro dev --port 4321",
     "build": "astro build",
     "preview": "astro preview",
-    "typecheck": "astro check"
+    "check": "astro check"
   },
   "dependencies": {
     "@astrojs/preact": "^4.0.0",

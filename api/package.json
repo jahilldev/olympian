@@ -13,7 +13,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node --enable-source-maps dist/main.js",
     "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings 0",
-    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:cov": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",

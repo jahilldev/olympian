@@ -14,7 +14,7 @@ import { OrchestratorService } from '../src/orchestrator/orchestrator.service.js
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { AppConfigService } from '../src/config/config.service.js';
 
-const SECRET = 'e2e-secret';
+const _SECRET = 'e2e-secret';
 const DB_FILE = `test-e2e-${process.pid}.db`;
 
 // DATABASE_URL must still be set here because it's per-process-pid and can't
@@ -168,7 +168,7 @@ describe('Hermes orchestration pipeline (e2e)', () => {
   const waitForState = async (expected: string) => {
     const deadline = Date.now() + 2_000;
     while (Date.now() < deadline) {
-      if ((await jobState()) === expected) return;
+      if ((await jobState()) === expected) { return; }
       await new Promise((r) => setTimeout(r, 50));
     }
     expect(await jobState()).toBe(expected); // surface a readable failure if still wrong
