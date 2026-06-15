@@ -168,7 +168,9 @@ describe('Hermes orchestration pipeline (e2e)', () => {
   const waitForState = async (expected: string) => {
     const deadline = Date.now() + 2_000;
     while (Date.now() < deadline) {
-      if ((await jobState()) === expected) { return; }
+      if ((await jobState()) === expected) {
+        return;
+      }
       await new Promise((r) => setTimeout(r, 50));
     }
     expect(await jobState()).toBe(expected); // surface a readable failure if still wrong
