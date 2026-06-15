@@ -13,6 +13,16 @@ interface RunMeta {
 
 const TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT']);
 
+function fmtTime(ts: string): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 function formatDuration(ms: number | null): string {
   if (ms === null) return '';
   const s = Math.floor(ms / 1000);
@@ -667,10 +677,13 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
           <span class="text-zinc-500 font-mono font-normal truncate flex-1 min-w-0">{model}</span>
         )}
         {totalTokens != null && (
-          <span class="ml-auto shrink-0 text-zinc-600 font-mono text-[10px] tabular-nums">
+          <span class="text-zinc-600 font-mono text-[10px] tabular-nums">
             {totalTokens.toLocaleString()} tok
           </span>
         )}
+        <span class="ml-auto shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
+          {fmtTime(event.timestamp)}
+        </span>
       </div>
 
       {rawInput && (
@@ -759,6 +772,9 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
         <IconWrench />
         <span class="font-semibold font-mono tracking-wide">TOOL</span>
         <span class="text-zinc-300 font-mono font-medium">{name}</span>
+        <span class="ml-auto shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
+          {fmtTime(event.timestamp)}
+        </span>
       </div>
 
       {rawInput && (
@@ -806,6 +822,7 @@ function GenericSpanCard({ event }: { event: LangfuseEvent }) {
       <span class="w-1 h-1 rounded-full bg-zinc-700 shrink-0" />
       <span>{event.type}</span>
       {name && <span class="text-zinc-600">{name}</span>}
+      <span class="ml-auto text-zinc-800 tabular-nums">{fmtTime(event.timestamp)}</span>
     </div>
   );
 }
