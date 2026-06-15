@@ -641,6 +641,18 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
   const usageRaw = body['langfuse.observation.usage_details'] as string | undefined;
   const usage = usageRaw ? (JSON.parse(usageRaw) as Record<string, number>) : null;
   const totalTokens = usage?.total ?? usage?.output ?? null;
+  const outputTokens = usage?.output ?? null;
+
+  const startTime = body.startTime as string | undefined;
+  const endTime = body.endTime as string | undefined;
+  const durationMs =
+    startTime && endTime
+      ? new Date(endTime).getTime() - new Date(startTime).getTime()
+      : null;
+  const tps =
+    outputTokens != null && durationMs != null && durationMs > 0
+      ? outputTokens / (durationMs / 1000)
+      : null;
   const rawOutput = body['langfuse.observation.output'] as string | undefined;
   const rawInput = body['langfuse.observation.input'] as string | undefined;
 
@@ -679,6 +691,11 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
         {totalTokens != null && (
           <span class="text-zinc-600 font-mono text-[10px] tabular-nums">
             {totalTokens.toLocaleString()} tok
+          </span>
+        )}
+        {tps != null && (
+          <span class="text-zinc-600 font-mono text-[10px] tabular-nums">
+            {tps.toFixed(1)} tok/s
           </span>
         )}
         <span class="ml-auto shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
