@@ -10,7 +10,7 @@ model:
 providers:
   custom:
     request_timeout_seconds: 3600 # hard cap: 1 h per LLM call
-    stale_timeout_seconds: 900 # declare a stream stale after 15 min of silence
+    stale_timeout_seconds: 1800 # declare a stream stale after 30 min of silence
 
 plugins:
   enabled:

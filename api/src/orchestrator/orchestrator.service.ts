@@ -690,6 +690,12 @@ export class OrchestratorService {
         throw new Error(`implementation agent ${res.status}; ${res.stderr.slice(0, 300)}`);
       }
 
+      if (res.stdout.trim().length < 200) {
+        throw new Error(
+          `implementation agent exited without meaningful output (${res.stdout.trim().length} chars) — likely a tool-call failure or context exhaustion`,
+        );
+      }
+
       const sha = await this.workspace.commitAll(
         ws.dir,
         implementCommitMessage(job.issueNumber, job.issueTitle, attempt),

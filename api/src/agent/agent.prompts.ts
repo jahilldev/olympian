@@ -75,9 +75,8 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 When all files are in place:
 1. Run the project's static analysis (type checker, linter, compiler) as described below to validate your changes, then fix any errors before finalising.
 2. End your reply with a short Markdown summary of what you changed and which acceptance criteria are now met.
-Use \`.olympian/\` as a scratch directory for any temporary files (build logs, notes, debug output) — it is excluded from commits automatically.
-**If you need to start a dev server or long-running process, run it in the background** (e.g., \`npm run dev > /tmp/dev.log 2>&1 &\`), give it time to start, verify it's working (curl for servers, tail logs for builds), then move on — do not wait or poll. The orchestrator will commit your file changes — do not run git yourself.
-
+Use \`.olympian/\` as a scratch directory for any temporary files (build logs, notes, debug output) — it is excluded from commits automatically. The orchestrator will commit your file changes — do not run git yourself, and do not start a dev server (the review stage handles runtime testing).
+**Use individual shell/file tool calls — do not attempt batch mode or multi-task arrays.** If a tool call fails, fall back to writing the file directly with a write-file tool or via shell redirection.
 ${STATIC_ANALYSIS_INSTRUCTIONS}`;
 
 export function buildImplementPrompt(ctx: ImplementPromptContext): string {
@@ -118,7 +117,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. **If you need to start a dev server to test, run it in the background** (\`npm run dev > /tmp/dev.log 2>&1 &\`), wait for it to reach a ready state, verify it's working (curl/logs/output files), then move on immediately — do not poll or wait for completion. The orchestrator will commit your changes — do not run git yourself.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
+    `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server (the review stage handles runtime testing).\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
   );
 
   return parts.join('\n\n');
