@@ -20,6 +20,8 @@ export interface SpawnSpecParams {
   skills?: string[];
   /** Attached as `olympian.job=<jobId>` Docker label so the container can be found and killed by job. */
   jobId?: string;
+  /** When true, publish dev-server ports to the host so Camofox can reach them. Only set for phases that use browser automation. */
+  publishPorts?: boolean;
 }
 
 /** Hermes flags shared by every invocation: headless, autonomous, tagged as a tool. */
@@ -53,9 +55,9 @@ function hermesArgs(p: SpawnSpecParams): string[] {
  */
 export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
   if (p.sandboxMode === 'docker') {
-    // Common dev-server ports published to the host so Camofox can reach whatever
-    // port the framework defaults to. Docker's port proxy handles this identically on
-    // Linux, Mac, and Windows — no host-networking tricks needed.
+    // Dev-server ports are published only when browser automation is enabled (Camofox),
+    // i.e. for REVIEW phase containers. Publishing them on every container causes port
+    // conflicts when the previous container's port proxy hasn't fully released the binding.
     const DEV_PORTS = [3000, 3001, 4000, 4200, 5000, 5173, 5174, 8000, 8080, 8888];
 
     const args = [
@@ -63,7 +65,7 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       '--rm',
       '-i',
       '--add-host=host.docker.internal:host-gateway',
-      ...DEV_PORTS.flatMap((p) => ['-p', `${p}:${p}`]),
+      ...(p.publishPorts ? DEV_PORTS.flatMap((p) => ['-p', `${p}:${p}`]) : []),
       '-v',
       `${p.cwd}:${CONTAINER_WORKDIR}`,
       '-w',

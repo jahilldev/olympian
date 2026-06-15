@@ -123,6 +123,7 @@ export class HermesAgentService {
       toolsets: opts.toolsets,
       skills: opts.skills,
       jobId: opts.jobId,
+      publishPorts: opts.phase === 'REVIEW' && !!process.env.CAMOFOX_URL,
     });
 
     const commandLine = `${spec.command} ${spec.args.join(' ')}`;
