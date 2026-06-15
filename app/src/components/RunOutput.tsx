@@ -646,9 +646,7 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
   const startTime = body.startTime as string | undefined;
   const endTime = body.endTime as string | undefined;
   const durationMs =
-    startTime && endTime
-      ? new Date(endTime).getTime() - new Date(startTime).getTime()
-      : null;
+    startTime && endTime ? new Date(endTime).getTime() - new Date(startTime).getTime() : null;
   const tps =
     outputTokens != null && durationMs != null && durationMs > 0
       ? outputTokens / (durationMs / 1000)

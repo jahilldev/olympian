@@ -18,10 +18,4 @@ plugins:
     - observability/langfuse
 
 browser:
-  camofox:
-    # When the agent runs inside Docker and navigates to localhost/127.0.0.1 page URLs,
-    # rewrite them to host.docker.internal so the container can reach host-side services.
-    # CAMOFOX_URL itself is set via env var — see api/.env.example.
-    rewrite_loopback_urls: true
-    loopback_host_alias: localhost
   inactivity_timeout: 120
