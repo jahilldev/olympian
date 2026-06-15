@@ -716,7 +716,7 @@ export class OrchestratorService {
       this.logger.warn(`[job ${jobId}] verify failed on attempt ${attempt}; iterating`);
     }
 
-    if (!committedSomething && !(await this.workspace.hasCommitsAhead(ws.dir, ws.baseBranch))) {
+    if (!committedSomething) {
       throw new Error('agent produced no changes');
     }
 
