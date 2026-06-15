@@ -31,11 +31,6 @@ export class HermesAgentService {
   ) {}
 
   /**
-   * Force-removes all olympian-* Docker containers left over from a previous
-   * process. Called on worker startup before tasks are reclaimed so the workspace
-   * directory is never accessed by two containers simultaneously.
-   */
-  /**
    * Force-removes the running container for the given job, if any.
    * Called immediately when a cancel command is received so the agent stops
    * without waiting for the timeout.
