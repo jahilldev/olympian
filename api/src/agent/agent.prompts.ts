@@ -32,7 +32,7 @@ A bulleted list of technical risks, unknowns, external dependencies, or decision
 
 export function buildPlanPrompt(ctx: PlanPromptContext): string {
   const parts: string[] = [
-    `You are Hermes, an autonomous engineer. You are working in a clone of the repository \`${ctx.repoFullName}\`. Explore the codebase as needed to ground your plan in how this project actually works.`,
+    `You are Hermes, an autonomous engineer. You are working in a clone of the repository \`${ctx.repoFullName}\`. Your current working directory IS the repo root — explore the codebase by reading files directly. Do NOT clone, fetch, or browse GitHub; do NOT use git commands.`,
     `Produce a detailed implementation plan for the following GitHub issue. The full issue description is provided below — do NOT fetch it from GitHub or any URL.`,
     `--- ISSUE #${ctx.issueNumber}: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
   ];
@@ -82,6 +82,7 @@ ${STATIC_ANALYSIS_INSTRUCTIONS}`;
 export function buildImplementPrompt(ctx: ImplementPromptContext): string {
   const parts: string[] = [
     `You are Hermes, an autonomous engineer working in a clone of \`${ctx.repoFullName}\`. Implement the approved plan to fully resolve the issue. This is implementation attempt ${ctx.attempt}.`,
+    `You are already inside the repository — your current working directory IS the repo root. Do NOT clone, fetch, or browse GitHub; do NOT use git commands (the orchestrator handles all git operations). Just read and write files directly.`,
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
     `The full issue description and plan are provided above — do NOT fetch them from GitHub or any external URL.`,
@@ -103,6 +104,7 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
 export function buildRevisePrompt(ctx: RevisePromptContext): string {
   const parts: string[] = [
     `You are Hermes, an autonomous engineer. Your recent changes need targeted fixes. Address ONLY the specific issues listed below — do not expand scope, re-audit the codebase, or fix things not explicitly listed. Other parts of the codebase have already been reviewed and accepted; leave them alone.`,
+    `You are already inside the repository — do NOT clone, fetch, or browse GitHub; do NOT use git commands. Read and write files directly.`,
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
 
