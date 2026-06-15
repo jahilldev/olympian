@@ -79,7 +79,9 @@ export function acceptanceCriteria(plan: string): string | undefined {
 }
 
 export function missingPlanSections(content: string): string[] {
-  return PLAN_REQUIRED_SECTIONS.filter((s) => !content.includes(s));
+  const lower = content.toLowerCase();
+
+  return PLAN_REQUIRED_SECTIONS.filter((s) => !lower.includes(s.toLowerCase()));
 }
 
 export function implementCommitMessage(
