@@ -14,7 +14,6 @@ import {
   buildPrBodyPrompt,
   buildRevisePrompt,
 } from '../agent/agent.prompts.js';
-import { buildTestPrompt } from '../testing/testing.prompts.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
@@ -23,7 +22,6 @@ import { formatIssues, formatIssuesMarkdown, parseReview } from '../review/revie
 import { GithubService } from '../github/github.service.js';
 import { APPROVAL_PERMISSIONS, type RepoRef, type ReviewFeedback } from '../github/github.model.js';
 import { extractAttachmentUrls } from '../github/github.utility.js';
-import { TestingService } from '../testing/testing.service.js';
 import {
   type IssueCommentEvent,
   type IssueLabeledEvent,
@@ -60,7 +58,6 @@ export class OrchestratorService {
     private readonly agent: HermesAgentService,
     private readonly workspace: WorkspaceService,
     private readonly review: ReviewService,
-    private readonly testing: TestingService,
     private readonly github: GithubService,
   ) {}
 
@@ -247,7 +244,6 @@ export class OrchestratorService {
       const retryStateMap: Record<TaskKind, JobState> = {
         PLAN: 'PLANNING',
         IMPLEMENT: 'IMPLEMENTING',
-        TEST: 'TESTING',
         REVIEW: 'SELF_REVIEWING',
         REVISE: 'REVISING',
         OPEN_PR: 'OPENING_PR',
@@ -492,8 +488,6 @@ export class OrchestratorService {
         return this.handlePlan(task.jobId);
       case 'IMPLEMENT':
         return this.handleImplement(task.jobId);
-      case 'TEST':
-        return this.handleTest(task.jobId);
       case 'REVIEW':
         return this.handleReview(task.jobId);
       case 'OPEN_PR':
@@ -720,114 +714,13 @@ export class OrchestratorService {
       throw new Error('agent produced no changes');
     }
 
-    await this.jobs.transition(jobId, 'TESTING', {
+    await this.jobs.transition(jobId, 'SELF_REVIEWING', {
       reason: 'implementation complete',
       actor: 'AGENT',
     });
 
     await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
-    await this.queue.enqueue({ jobId, kind: 'TEST' });
-  }
-
-  private async handleTest(jobId: string): Promise<void> {
-    const { job, ref } = await this.context(jobId);
-
-    const ws = await this.workspace.prepare({
-      jobId,
-      installationId: this.ghIdFromRef(ref),
-      owner: job.repoOwner,
-      repo: job.repoName,
-      branchName:
-        job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber),
-    });
-
-    const plan = await this.approvedPlan(jobId);
-    const hasBrowser = !!process.env.CAMOFOX_URL;
-
-    if (hasBrowser) {
-      await ensureCamofoxRunning(process.env.CAMOFOX_URL!);
-    }
-
-    // Pass the most recent prior test output so the agent can build on the previous
-    // run's findings rather than rediscovering the project from scratch each time.
-    const priorTestRun = await this.prisma.agentRun.findFirst({
-      where: { jobId, phase: 'TEST' },
-      orderBy: { createdAt: 'desc' },
-      select: { stdout: true },
-    });
-
-    const res = await this.agent.run({
-      jobId,
-      phase: 'TEST',
-      cwd: ws.dir,
-      prompt: buildTestPrompt({
-        repoFullName: job.repoFullName,
-        issueTitle: job.issueTitle,
-        plan,
-        hasBrowser,
-        priorOutput: priorTestRun?.stdout ?? undefined,
-      }),
-      model: this.config.get('HERMES_TESTING_MODEL') || undefined,
-      provider: this.config.get('HERMES_TESTING_PROVIDER') || undefined,
-      timeoutMs: this.config.get('HERMES_TESTING_TIMEOUT_MS'),
-    });
-
-    await this.workspace.commitAll(ws.dir, 'test: run test suite');
-
-    const testResult = res.status === 'SUCCEEDED' ? this.testing.parse(res.stdout) : null;
-
-    // Treat as passing when the agent exited cleanly (exit 0) and either the JSON
-    // verdict says passed or the agent emitted no parseable verdict at all. We only
-    // route to REVISE when the agent explicitly emits { "passed": false }.
-    if (res.status === 'SUCCEEDED' && testResult?.passed !== false) {
-      await this.jobs.transition(jobId, 'SELF_REVIEWING', {
-        reason: 'tests passed',
-        actor: 'AGENT',
-      });
-      await this.queue.enqueue({ jobId, kind: 'REVIEW' });
-    } else if (
-      res.status === 'TIMED_OUT' ||
-      (res.status === 'FAILED' && (res.exitCode ?? 0) >= 128)
-    ) {
-      // Infrastructure failure (killed by signal or timed out) — not a code problem.
-      // Throw so the queue retries the TEST task rather than triggering a REVISE cycle.
-      throw new Error(`test agent ${res.status} (exit ${res.exitCode}); retrying`);
-    } else {
-      const testRunCount = await this.prisma.agentRun.count({ where: { jobId, phase: 'TEST' } });
-      const maxTestIters = this.config.get('MAX_TEST_ITERATIONS');
-
-      if (testRunCount >= maxTestIters) {
-        const reason = `tests failed after ${testRunCount} attempts`;
-
-        this.logger.warn(`[job ${jobId}] ${reason}; failing job`);
-
-        await this.jobs.transition(jobId, 'FAILED', { reason, actor: 'AGENT' });
-
-        // Notify on PR if open, otherwise on issue
-        const target = job.prNumber ?? job.issueNumber;
-
-        const failureDetail = testResult
-          ? `\n\n**Failed tests:**\n${testResult.failures.map((f) => `- ${f.name}`).join('\n')}`
-          : '';
-
-        await this.safeComment(
-          ref,
-          target,
-          `Tests failed after ${testRunCount} attempts. Hermes gave up.${failureDetail}`,
-        );
-
-        return;
-      }
-
-      const reason = testResult
-        ? `tests failed: ${testResult.failures.map((f) => f.name).join(', ') || 'see summary'}`
-        : `test agent ${res.status}`;
-
-      this.logger.warn(`[job ${jobId}] ${reason}; routing to revise`);
-
-      await this.jobs.transition(jobId, 'REVISING', { reason, actor: 'AGENT' });
-      await this.queue.enqueue({ jobId, kind: 'REVISE' });
-    }
+    await this.queue.enqueue({ jobId, kind: 'REVIEW' });
   }
 
   private async handleRevise(jobId: string): Promise<void> {
@@ -844,7 +737,6 @@ export class OrchestratorService {
 
     const plan = await this.approvedPlan(jobId);
 
-    // Gather whatever context is available: failing test output and/or review issues.
     // PR feedback is only relevant if it was submitted after the last IMPLEMENT run;
     // anything older was already incorporated into the code by that IMPLEMENT pass.
     const lastImplementRun = await this.prisma.agentRun.findFirst({
@@ -853,12 +745,7 @@ export class OrchestratorService {
       select: { createdAt: true },
     });
 
-    const [lastTestRun, lastReviewPass, prFeedback] = await Promise.all([
-      this.prisma.agentRun.findFirst({
-        where: { jobId, phase: 'TEST' },
-        orderBy: { createdAt: 'desc' },
-        select: { status: true, stdout: true, stderr: true },
-      }),
+    const [lastReviewPass, prFeedback] = await Promise.all([
       this.prisma.reviewPass.findFirst({
         where: { jobId, cycle: job.reviewCycle },
         orderBy: { passNumber: 'desc' },
@@ -872,25 +759,6 @@ export class OrchestratorService {
         orderBy: { createdAt: 'asc' },
       }),
     ]);
-
-    const testOutput = (() => {
-      if (!lastTestRun) {
-        return undefined;
-      }
-
-      if (lastTestRun.status !== 'SUCCEEDED') {
-        return (lastTestRun.stderr || lastTestRun.stdout || '').slice(0, 4000);
-      }
-
-      // Process exited cleanly but the structured verdict said tests failed.
-      const result = this.testing.parse(lastTestRun.stdout ?? '');
-
-      if (!result || result.passed) {
-        return undefined;
-      }
-
-      return this.testing.formatFailures(result);
-    })();
 
     const issues = lastReviewPass ? (JSON.parse(lastReviewPass.issues) as ReviewIssue[]) : [];
     const issuesText = issues.length > 0 ? formatIssues(issues) : undefined;
@@ -914,7 +782,7 @@ export class OrchestratorService {
       jobId,
       phase: 'REVISE',
       cwd: ws.dir,
-      prompt: buildRevisePrompt({ plan, issuesText, testOutput, humanFeedback }),
+      prompt: buildRevisePrompt({ plan, issuesText, humanFeedback }),
     });
 
     if (rev.status === 'SUCCEEDED') {
@@ -923,8 +791,11 @@ export class OrchestratorService {
       throw new Error(`revise agent ${rev.status}; ${rev.stderr.slice(0, 300)}`);
     }
 
-    await this.jobs.transition(jobId, 'TESTING', { reason: 'revision complete', actor: 'AGENT' });
-    await this.queue.enqueue({ jobId, kind: 'TEST' });
+    await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+      reason: 'revision complete',
+      actor: 'AGENT',
+    });
+    await this.queue.enqueue({ jobId, kind: 'REVIEW' });
   }
 
   private async handleReview(jobId: string): Promise<void> {
@@ -987,6 +858,12 @@ export class OrchestratorService {
       actor: 'AGENT',
     });
 
+    const hasBrowser = !!process.env.CAMOFOX_URL;
+
+    if (hasBrowser) {
+      await ensureCamofoxRunning(process.env.CAMOFOX_URL!);
+    }
+
     const changedFiles = await this.workspace.branchChangedFiles(ws.dir, base);
 
     const reviewPrompt = buildReviewPrompt({
@@ -998,6 +875,7 @@ export class OrchestratorService {
       changedFiles,
       threshold: this.review.threshold,
       humanFeedback,
+      hasBrowser,
       parseRetry: priorUnparseable > 0,
     });
 

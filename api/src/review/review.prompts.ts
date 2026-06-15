@@ -14,6 +14,14 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
     );
   }
 
+  if (ctx.hasBrowser) {
+    parts.push(
+      `A Camofox browser is available. As part of your review, start the application's dev server in the background (e.g. \`npm run dev > /tmp/dev.log 2>&1 &\`), wait for it to be ready, then use Camofox to open it and manually exercise the acceptance criteria — click through real user flows, not just check that the page loads. Document what you observed in your reasoning after the JSON verdict.
+
+**Ports forwarded to Camofox:** 3000, 3001, 4000, 4200, 5000, 5173, 5174, 8000, 8080, 8888. Navigate to \`http://localhost:<port>\` — do not use the container hostname. After verifying, shut down the dev server (\`kill %1\` or similar) before finishing.`,
+    );
+  }
+
   parts.push(
     `Files changed on this branch:\n${ctx.changedFiles.map((f) => `- ${f}`).join('\n') || '(none detected)'}`,
     `Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text:

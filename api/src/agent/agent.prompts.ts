@@ -59,10 +59,22 @@ export function buildPlanPrompt(ctx: PlanPromptContext): string {
   return parts.join('\n\n');
 }
 
-const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working directory using your tools. Run the project's tests/build if available to validate your work.
+const STATIC_ANALYSIS_INSTRUCTIONS = `**After making changes, run the project's static analysis tooling to catch errors before committing:**
+- **TypeScript / Node.js**: check \`package.json\` scripts for \`typecheck\`, \`lint\`, \`build\` — run whichever exist (e.g. \`npm run typecheck && npm run lint\`); if no script exists, try \`npx tsc --noEmit\`
+- **Python**: run \`mypy\` and \`ruff check .\` (or \`pylint\`) if available; check \`pyproject.toml\` or \`setup.cfg\` for the configured tools
+- **Go**: run \`go build ./...\` and \`go vet ./...\`
+- **Rust**: run \`cargo check\` and \`cargo clippy\`
+- **Java / Kotlin**: run \`./gradlew compileJava\` or \`mvn compile test-compile\`
+- **Any other language**: check \`Makefile\`, \`justfile\`, or \`.github/workflows/\` to find the right lint/type-check/compile commands
+Fix all errors and warnings before finishing — a clean static analysis pass is required.`;
+
+const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working directory using your tools. When finished:
+1. Run the project's static analysis (type checker, linter, compiler) as described below to validate your changes, then fix any errors before finalising.
+2. End your reply with a short Markdown summary of what you changed and which acceptance criteria are now met.
 Use \`.olympian/\` as a scratch directory for any temporary files (build logs, notes, debug output) — it is excluded from commits automatically.
-**If you need to start a dev server or long-running process to test your work, run it in the background** (e.g., \`npm run dev > /tmp/dev.log 2>&1 &\`), give it time to reach a ready state, then verify it's working (curl for servers, tail logs for builds, check output files for CLIs). Once verified, move on — do not wait for completion or poll repeatedly. Servers and watchers run until the session ends.
-When finished, end your reply with a short Markdown summary of what you changed and which acceptance criteria are now met. The orchestrator will commit your file changes — do not run git yourself.`;
+**If you need to start a dev server or long-running process, run it in the background** (e.g., \`npm run dev > /tmp/dev.log 2>&1 &\`), give it time to start, verify it's working (curl for servers, tail logs for builds), then move on — do not wait or poll. The orchestrator will commit your file changes — do not run git yourself.
+
+${STATIC_ANALYSIS_INSTRUCTIONS}`;
 
 export function buildImplementPrompt(ctx: ImplementPromptContext): string {
   const parts: string[] = [
@@ -97,16 +109,12 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     );
   }
 
-  if (ctx.testOutput) {
-    parts.push(`--- FAILING TEST OUTPUT ---\n${ctx.testOutput}\n--- END TEST OUTPUT ---`);
-  }
-
   if (ctx.issuesText) {
     parts.push(`--- REVIEW ISSUES TO FIX ---\n${ctx.issuesText}\n--- END ISSUES ---`);
   }
 
   parts.push(
-    `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. **If you need to start a dev server to test, run it in the background** (\`npm run dev > /tmp/dev.log 2>&1 &\`), wait for it to reach a ready state, verify it's working (curl/logs/output files), then move on immediately — do not poll or wait for completion. The orchestrator will commit your changes — do not run git yourself.`,
+    `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. **If you need to start a dev server to test, run it in the background** (\`npm run dev > /tmp/dev.log 2>&1 &\`), wait for it to reach a ready state, verify it's working (curl/logs/output files), then move on immediately — do not poll or wait for completion. The orchestrator will commit your changes — do not run git yourself.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
   );
 
   return parts.join('\n\n');

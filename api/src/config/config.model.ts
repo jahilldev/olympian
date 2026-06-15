@@ -29,13 +29,7 @@ export const envSchema = z.object({
   HERMES_PRIMARY_PROVIDER: z.string().optional(),
   HERMES_REVIEW_MODEL: z.string().optional(),
   HERMES_REVIEW_PROVIDER: z.string().optional(),
-  HERMES_TESTING_MODEL: z.string().optional(),
-  HERMES_TESTING_PROVIDER: z.string().optional(),
   HERMES_TIMEOUT_MS: intFromString(7_200_000),
-  // Separate ceiling for test runs — shorter than the global timeout because
-  // a hung foreground dev server will otherwise stall the job for hours.
-  // Defaults to 30 min; raise for repos with very slow test suites.
-  HERMES_TESTING_TIMEOUT_MS: intFromString(1_800_000),
 
   // orchestration policy
   TRIGGER_LABEL: z.string().default('hermes'),
@@ -43,7 +37,6 @@ export const envSchema = z.object({
   MAX_PLAN_REVISIONS: intFromString(10),
   MAX_IMPLEMENTATION_ITERATIONS: intFromString(5),
   MAX_REVIEW_PASSES: intFromString(5),
-  MAX_TEST_ITERATIONS: intFromString(3),
   COMMAND_PREFIX: z.string().default('/hermes'),
 
   // queue / worker
