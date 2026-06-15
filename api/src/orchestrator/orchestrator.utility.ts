@@ -9,15 +9,16 @@ import { type DownloadedAttachment } from '../workspace/workspace.model.js';
  */
 export async function ensureCamofoxRunning(camofoxUrl: string): Promise<void> {
   try {
-    const status = (await fetch(`${camofoxUrl}/`).then((r) => r.json())) as {
+    const signal = AbortSignal.timeout(5_000);
+    const status = (await fetch(`${camofoxUrl}/`, { signal }).then((r) => r.json())) as {
       running?: boolean;
     };
 
     if (!status.running) {
-      await fetch(`${camofoxUrl}/start`, { method: 'POST' });
+      await fetch(`${camofoxUrl}/start`, { method: 'POST', signal: AbortSignal.timeout(5_000) });
     }
   } catch {
-    // Camofox is down or unreachable — continue without it.
+    // Camofox is down, unreachable, or timed out — continue without it.
   }
 }
 
