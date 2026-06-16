@@ -28,3 +28,6 @@ compression:
 mcp_servers:
   olympian_memory:
     url: http://localhost:3030/api/memory
+
+delegation:
+  max_concurrent_children: 2
