@@ -1,25 +1,6 @@
 # Agent Loop Roadmap
 
-Techniques identified for improving agent reliability, context efficiency, and task completion. Items marked **implemented** are already in the codebase. The rest are ordered roughly by value-to-effort ratio.
-
----
-
-## Implemented
-
-| Technique                                                            | Where                                            |
-| -------------------------------------------------------------------- | ------------------------------------------------ |
-| Context compaction with tuned threshold (80%) and pinned plan        | `api/.hermes/config.yaml`                        |
-| Post-compaction full-plan recovery instruction                       | `IMPLEMENT_OUTPUT_CONTRACT`                      |
-| MCP memory checkpointing (`memory_set`/`memory_get` per file)        | `api/src/memory/`, `agent.prompts.ts`            |
-| Hard exit guard (no exit until all plan items are `"done"`)          | `IMPLEMENT_OUTPUT_CONTRACT`, `buildRevisePrompt` |
-| Grep-first file reading (read only relevant 20–40 line windows)      | `IMPLEMENT_OUTPUT_CONTRACT`                      |
-| Per-file L1 scratch note (`.olympian/current-task.md`)               | `IMPLEMENT_OUTPUT_CONTRACT`                      |
-| Incremental static analysis gate (run after each file, not just end) | `IMPLEMENT_OUTPUT_CONTRACT`                      |
-| Subagent exploration delegation via `delegate_task` (fresh sessions) | `buildImplementPrompt`                           |
-| REVISE memory checkpointing (`fix:<n>` keys per review issue)        | `buildRevisePrompt`                              |
-| 200-char stdout minimum guard (catches confused agent exits)         | `orchestrator.service.ts`                        |
-| No-git, no-clone instruction in all agent phases                     | `agent.prompts.ts`                               |
-| Batch tool call warning                                              | `IMPLEMENT_OUTPUT_CONTRACT`                      |
+Techniques identified for improving agent reliability, context efficiency, and task completion. Ordered roughly by value-to-effort ratio.
 
 ---
 
@@ -100,4 +81,4 @@ For very large issues (50+ files), the plan is decomposed into independent sub-p
 
 For organisations running many jobs, a vector store of past agent trajectories enables semantic retrieval: _"find jobs where we encountered a similar TypeScript error and how it was fixed."_ This surfaces relevant prior experience without manual prompt engineering.
 
-**When it pays off**: when the same codebase accumulates 50+ jobs. At smaller scale, the SQLite `AgentMemory` key-value store is sufficient. The `AgentMemory` table is already in place as a foundation — adding an embedding column via `sqlite-vec` is the incremental step.
+**When it pays off**: when the same codebase accumulates 50+ jobs. At smaller scale, Hermes's built-in memory tool is sufficient for session-scoped checkpointing.
