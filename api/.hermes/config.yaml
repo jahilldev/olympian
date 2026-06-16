@@ -28,4 +28,3 @@ compression:
 mcp_servers:
   olympian_memory:
     url: http://localhost:3030/api/mcp
-    transport: http
