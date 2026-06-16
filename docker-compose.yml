@@ -16,9 +16,9 @@ services:
       # same paths the service writes to.
       WORKSPACE_ROOT: ${PWD}/workspaces
       HERMES_HOME: ${PWD}/hermes-state
-      # Pin sandbox mode so a prior `hermes:local` run (which writes SANDBOX_MODE=none
-      # to .env) can't accidentally put the compose deployment into none mode.
-      SANDBOX_MODE: docker
+      # Pin sandbox mode so a prior SANDBOX_MODE=none in .env can't accidentally
+      # put the compose deployment into bare-metal mode.
+      SANDBOX_MODE: default
     volumes:
       - hermes-data:/data
       # Same-path bind mounts: host path == container path == the env vars above.

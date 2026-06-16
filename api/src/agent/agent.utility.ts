@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { spawn } from 'node:child_process';
 import { STDOUT_CAP, type RawSpawnResult, type SpawnSpec } from './agent.model.js';
@@ -176,7 +177,12 @@ export async function generateHermesConfig(
   hermesHome: string,
   opts: HermesConfigOptions,
 ): Promise<void> {
-  const basePath = join(hermesHome, 'config.base.yaml');
+  // Always source the template from the bundled copy shipped alongside this file.
+  // Compiled: dist/agent/agent.utility.js → ../../.hermes/config.base.yaml = /app/.hermes/config.base.yaml
+  // Dev:      dist/agent/agent.utility.js → ../../.hermes/config.base.yaml = api/.hermes/config.base.yaml
+  // This means HERMES_HOME is purely the output destination — it never needs to
+  // contain config.base.yaml, so external HERMES_HOME paths (e.g. ~/.hermes) work correctly.
+  const basePath = fileURLToPath(new URL('../../.hermes/config.base.yaml', import.meta.url));
   const outPath = join(hermesHome, 'config.yaml');
 
   let raw: string;
