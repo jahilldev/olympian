@@ -56,7 +56,14 @@ const agentStub = {
               '## Risks',
               '- Prisma migration may require coordinating with existing schema changes.',
             ].join('\n')
-          : 'Done. Implemented the change.';
+          : [
+              'Implemented the requested changes.',
+              '',
+              'Created `src/feature/feature.controller.ts` with a GET /feature endpoint that returns the feature flag from the database.',
+              'Created `src/feature/feature.service.ts` with business logic and Prisma integration.',
+              'Updated `prisma/schema.prisma` to add the Feature model.',
+              'All unit tests pass.',
+            ].join('\n');
     return {
       runId: randomUUID(),
       status: 'SUCCEEDED',
