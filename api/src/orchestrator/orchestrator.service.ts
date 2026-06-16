@@ -670,6 +670,7 @@ export class OrchestratorService {
 
     for (let attempt = 1; attempt <= maxIters; attempt++) {
       const prompt = buildImplementPrompt({
+        jobId,
         repoFullName: job.repoFullName,
         issueTitle: job.issueTitle,
         issueBody: job.issueBody,
@@ -788,7 +789,7 @@ export class OrchestratorService {
       jobId,
       phase: 'REVISE',
       cwd: ws.dir,
-      prompt: buildRevisePrompt({ plan, issuesText, humanFeedback }),
+      prompt: buildRevisePrompt({ jobId, plan, issuesText, humanFeedback }),
     });
 
     if (rev.status === 'SUCCEEDED') {

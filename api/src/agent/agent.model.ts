@@ -78,6 +78,7 @@ export interface PlanPromptContext {
 }
 
 export interface ImplementPromptContext {
+  jobId: string;
   repoFullName: string;
   issueTitle: string;
   issueBody: string;
@@ -89,6 +90,7 @@ export interface ImplementPromptContext {
 }
 
 export interface RevisePromptContext {
+  jobId: string;
   plan: string;
   issuesText?: string;
   humanFeedback?: string;

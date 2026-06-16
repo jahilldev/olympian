@@ -24,3 +24,7 @@ compression:
   threshold: 0.80 # trigger at 80% of context limit (default: 0.50)
   protect_last_n: 20 # protect last 20 messages / ~10 full turns (default: 20)
   protect_first_n: 5 # pin system prompt + first 5 messages including the plan (default: 3)
+
+mcp_servers:
+  olympian_memory:
+    url: http://localhost:3030/api/memory
