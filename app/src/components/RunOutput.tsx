@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import type { LangfuseEvent, StreamPayload } from '@olympian/api/langfuse/langfuse.model.js';
 import type { AgentRunOutputDto } from '@olympian/api/agent/agent.model.js';
 import { navigate } from '../utils/navigate.ts';
@@ -899,16 +901,36 @@ function StaticOutput({
         )}
       </header>
 
-      <div ref={scrollRef} class="flex-1 overflow-y-auto bg-black px-5 py-4">
+      <div ref={scrollRef} class="flex-1 overflow-y-auto bg-black px-4 py-6 sm:px-8">
         {error && <p class="text-red-400 text-xs font-mono">Failed to load output.</p>}
         {!output && !error && <p class="text-zinc-700 text-xs font-mono italic">Loading…</p>}
-        {output && (
-          <pre class="text-xs text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed">
-            {stripAnsi(output.stdout) || (
-              <span class="text-zinc-700 italic">No output recorded.</span>
-            )}
-          </pre>
-        )}
+        {output &&
+          (() => {
+            const text = stripAnsi(output.stdout);
+            if (!text) return <p class="text-zinc-700 italic text-sm">No output recorded.</p>;
+            const rawHtml = marked.parse(text) as string;
+            const wrapped = rawHtml
+              .replace(/<table>/g, '<div class="overflow-x-auto w-full"><table class="min-w-full">')
+              .replace(/<\/table>/g, '</table></div>');
+            const html = DOMPurify.sanitize(wrapped);
+            return (
+              <div
+                class="prose prose-sm sm:prose-base prose-invert max-w-none
+                prose-headings:font-semibold prose-headings:text-zinc-100
+                prose-p:text-zinc-300 prose-p:leading-relaxed
+                prose-a:text-blue-400 hover:prose-a:text-blue-300
+                prose-strong:text-zinc-200
+                prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.8em] prose-code:before:content-none prose-code:after:content-none
+                prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800
+                prose-blockquote:border-zinc-700 prose-blockquote:text-zinc-400
+                prose-hr:border-zinc-800
+                prose-li:text-zinc-300
+                prose-table:text-zinc-300 prose-thead:border-zinc-700 prose-tbody:divide-zinc-800"
+                // eslint-disable-next-line react/no-danger
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            );
+          })()}
       </div>
     </div>
   );

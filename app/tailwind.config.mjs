@@ -1,12 +1,14 @@
+import typography from '@tailwindcss/typography';
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./src/**/*.{astro,tsx,ts}"],
+  content: ['./src/**/*.{astro,tsx,ts}'],
   theme: {
     extend: {
       fontFamily: {
-        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
     },
   },
-  plugins: [],
+  plugins: [typography],
 };

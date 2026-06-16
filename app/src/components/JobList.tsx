@@ -25,43 +25,44 @@ function MobileJobCard({ job }: { job: JobSummaryDto }) {
   const title = job.issueTitle.length > 70 ? job.issueTitle.slice(0, 69) + '…' : job.issueTitle;
   return (
     <div
-      class="border-b border-zinc-800 px-4 py-3 flex items-start gap-3 active:bg-zinc-900 cursor-pointer"
+      class="border-b border-zinc-800/60 px-4 py-4 flex items-center gap-3 active:bg-zinc-900/60 cursor-pointer"
       onClick={() => navigate(`/jobs/${job.id}`)}
     >
-      <div class="shrink-0 pt-0.5">
-        <StateBadge state={job.state} />
-      </div>
-      <div class="flex-1 min-w-0 space-y-1">
-        <p class="text-sm text-zinc-200 leading-snug">{title}</p>
-        <div class="flex items-center gap-2 text-xs text-zinc-600 flex-wrap">
-          <span class="font-mono">
+      <div class="flex-1 min-w-0 space-y-2">
+        <p class="text-sm font-medium text-zinc-100 leading-snug truncate">{title}</p>
+        <div class="flex items-center gap-2 text-xs flex-wrap">
+          <StateBadge state={job.state} />
+          <span class="font-mono text-zinc-600">
             {job.repoFullName} #{job.issueNumber}
           </span>
           {job.activeRun && (
-            <span class="flex items-center gap-1 text-green-500">
+            <span class="flex items-center gap-1 text-green-400">
               <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               {job.activeRun.phase}
             </span>
           )}
           {job.prNumber && (
-            <span class={job.prIsDraft ? 'text-zinc-600' : 'text-sky-500'}>PR #{job.prNumber}</span>
+            <span class={job.prIsDraft ? 'text-zinc-600' : 'text-sky-400'}>PR #{job.prNumber}</span>
           )}
           {job.confidence !== null && (
             <span
               class={
                 job.confidence >= 85
-                  ? 'text-green-500'
+                  ? 'text-green-400'
                   : job.confidence >= 70
-                    ? 'text-amber-500'
-                    : 'text-red-500'
+                    ? 'text-amber-400'
+                    : 'text-red-400'
               }
             >
               {job.confidence}%
             </span>
           )}
-          <span class="ml-auto">{relativeTime(job.updatedAt)}</span>
+          <span class="ml-auto text-zinc-600">{relativeTime(job.updatedAt)}</span>
         </div>
       </div>
+      <svg class="w-4 h-4 text-zinc-700 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 4l4 4-4 4" />
+      </svg>
     </div>
   );
 }
@@ -208,11 +209,11 @@ export default function JobList() {
   return (
     <div class="flex flex-col h-full">
       {/* Header */}
-      <header class="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-zinc-800 shrink-0">
-        <span class="text-lg font-mono font-medium tracking-tight text-zinc-100">Olympian</span>
+      <header class="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-zinc-800 shrink-0">
+        <span class="text-base font-mono font-semibold tracking-tight text-zinc-100">Olympian</span>
         {jobs !== null && (
-          <span class="flex items-center gap-1.5 text-sm text-zinc-400">
-            {activeCount > 0 && <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse" />}
+          <span class="flex items-center gap-1.5 text-xs font-mono text-zinc-500">
+            {activeCount > 0 && <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
             {activeCount > 0 ? `${activeCount} active` : 'idle'}
           </span>
         )}
@@ -255,7 +256,7 @@ export default function JobList() {
               {['State', 'Job', 'PR', 'Active', 'Confidence', 'Cycle', 'Updated'].map((h) => (
                 <th
                   key={h}
-                  class="py-2 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wide"
+                  class="py-2.5 px-4 text-xs font-medium text-zinc-600 uppercase tracking-widest"
                 >
                   {h}
                 </th>

@@ -182,28 +182,26 @@ export default function JobDetail() {
       {/* Scrollable single-column body */}
       <div class="flex-1 overflow-y-auto">
         <div class="max-w-3xl mx-auto px-4 py-5 space-y-6">
-          {/* Active run — most prominent, always first */}
+          {/* Title + meta */}
+          <div class="space-y-2">
+            <h1 class="text-lg font-semibold text-zinc-100 leading-snug">{job.issueTitle}</h1>
+
+          {/* Active run banner */}
           {activeRun && (
-            <div class="rounded-xl border border-green-700 bg-green-950/40 p-4 flex items-center gap-3">
-              <span class="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse shrink-0" />
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold text-green-300">{activeRun.phase} running</p>
-                {activeRun.model && (
-                  <p class="text-xs text-green-700 truncate mt-0.5">{activeRun.model}</p>
-                )}
-              </div>
+            <div class="rounded-lg border border-green-900 bg-green-950/30 px-3 py-2.5 flex items-center gap-2.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+              <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
+              {activeRun.model && (
+                <span class="text-xs text-green-900 truncate hidden sm:block">{activeRun.model}</span>
+              )}
               <button
-                class="shrink-0 bg-green-700 hover:bg-green-600 text-green-100 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                class="ml-auto shrink-0 text-xs font-medium text-green-300 hover:text-green-100 transition-colors"
                 onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
               >
                 Watch live →
               </button>
             </div>
           )}
-
-          {/* Title + meta */}
-          <div class="space-y-2">
-            <h1 class="text-lg font-semibold text-zinc-100 leading-snug">{job.issueTitle}</h1>
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
               <a
                 href={`https://github.com/${job.repoFullName}/issues/${job.issueNumber}`}
