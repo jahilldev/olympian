@@ -90,6 +90,7 @@ export interface ImplementPromptContext {
 }
 
 export interface RevisePromptContext {
+  jobId: string;
   plan: string;
   issuesText?: string;
   humanFeedback?: string;

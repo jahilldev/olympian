@@ -127,7 +127,16 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `When finished, end your reply with a short summary of the fixes. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server (the review stage handles runtime testing).\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
+    `**Progress checkpointing** — you have \`memory_set\` and \`memory_get\` MCP tools available. Use job ID \`${ctx.jobId}\`.
+1. At session start, call \`memory_get(jobId="${ctx.jobId}", prefix="fix:")\` to check for existing progress (resumed session).
+2. If fresh, call \`memory_set(jobId="${ctx.jobId}", key="fix:<n>", value="pending")\` for each numbered issue above.
+3. As you fix each issue, call \`memory_set(jobId="${ctx.jobId}", key="fix:<n>", value="done")\`.
+4. After any context compaction, immediately call \`memory_get(jobId="${ctx.jobId}", prefix="fix:")\` to recover your full list before continuing.
+5. Before ending, call \`memory_get\` and confirm every entry shows \`"done"\` — if any are still \`"pending"\`, fix them before finishing.`,
+  );
+
+  parts.push(
+    `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done — apply the fix, then mark it done in memory. The session is not complete until all issues show \`"done"\` in memory and static analysis passes.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
   );
 
   return parts.join('\n\n');

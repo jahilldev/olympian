@@ -789,7 +789,7 @@ export class OrchestratorService {
       jobId,
       phase: 'REVISE',
       cwd: ws.dir,
-      prompt: buildRevisePrompt({ plan, issuesText, humanFeedback }),
+      prompt: buildRevisePrompt({ jobId, plan, issuesText, humanFeedback }),
     });
 
     if (rev.status === 'SUCCEEDED') {
