@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import type { LangfuseEvent, StreamPayload } from '@olympian/api/langfuse/langfuse.model.js';
 import type { AgentRunOutputDto } from '@olympian/api/agent/agent.model.js';
 import { navigate } from '../utils/navigate.ts';
@@ -31,6 +31,8 @@ function formatDuration(ms: number | null): string {
 }
 
 function statusDot(status: string) {
+  if (status === 'CONNECTING')
+    return <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block" />;
   if (status === 'RUNNING')
     return <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block" />;
   if (status === 'SUCCEEDED') return <span class="text-green-400 text-sm">✓</span>;
@@ -946,6 +948,24 @@ function StreamingOutput({
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const contextPct = useMemo(() => {
+    const CONTEXT_LENGTH = 131072;
+    for (let i = events.length - 1; i >= 0; i--) {
+      const raw = events[i].body['langfuse.observation.usage_details'] as string | undefined;
+      if (raw) {
+        try {
+          const usage = JSON.parse(raw) as { input?: number };
+          if (typeof usage.input === 'number') {
+            return Math.round((usage.input / CONTEXT_LENGTH) * 100);
+          }
+        } catch {
+          // malformed JSON — skip
+        }
+      }
+    }
+    return null;
+  }, [events]);
+
   useEffect(() => {
     const es = new EventSource(`/stream/runs/${runId}`);
 
@@ -1000,6 +1020,15 @@ function StreamingOutput({
     void navigator.clipboard.writeText(text);
   }, [events]);
 
+  const ctxColour =
+    contextPct === null
+      ? null
+      : contextPct < 60
+        ? ({ bar: 'bg-green-500', text: 'text-green-400' } as const)
+        : contextPct < 80
+          ? ({ bar: 'bg-amber-500', text: 'text-amber-400' } as const)
+          : ({ bar: 'bg-red-500', text: 'text-red-400' } as const);
+
   return (
     <div class="flex flex-col h-full overflow-hidden">
       <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
@@ -1022,15 +1051,19 @@ function StreamingOutput({
             )}
           </>
         )}
-        {streamStatus === 'connecting' && (
-          <span class="text-xs text-zinc-600 italic">connecting…</span>
+        {streamStatus === 'connecting' && statusDot('CONNECTING')}
+        {contextPct !== null && ctxColour !== null && (
+          <div class="flex items-center gap-1.5 ml-auto">
+            <div class="w-20 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+              <div
+                class={`h-full rounded-full transition-all ${ctxColour.bar}`}
+                style={{ width: `${Math.min(100, contextPct)}%` }}
+              />
+            </div>
+            <span class={`text-xs font-mono tabular-nums ${ctxColour.text}`}>{contextPct}%</span>
+            <span class="text-xs text-zinc-600">ctx</span>
+          </div>
         )}
-        <button
-          class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-          onClick={copy}
-        >
-          Copy
-        </button>
       </header>
 
       <div class="relative flex-1 overflow-hidden">
