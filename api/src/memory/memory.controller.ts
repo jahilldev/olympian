@@ -5,7 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { MemoryService } from './memory.service.js';
 
-@Controller('mcp')
+@Controller('memory')
 export class MemoryController {
   private readonly logger = new Logger(MemoryController.name);
   private readonly server: McpServer;
