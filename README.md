@@ -99,8 +99,7 @@ sudo systemctl status olympian   # check it is running
 sudo journalctl -u olympian -f   # follow logs
 ```
 
-On every start the service runs `npm ci`, `npm run setup` (Prisma migrate), `npm run build`,
-and `npm prune --omit=dev` before launching the production server, so deployments are as
+On every start the service runs `npm ci`, `npm run setup` (Prisma migrate), `npm run build` before launching the production server, so deployments are as
 simple as `git pull && sudo systemctl restart olympian`.
 
 To uninstall:
