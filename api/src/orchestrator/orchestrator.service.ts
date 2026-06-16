@@ -670,6 +670,7 @@ export class OrchestratorService {
 
     for (let attempt = 1; attempt <= maxIters; attempt++) {
       const prompt = buildImplementPrompt({
+        jobId,
         repoFullName: job.repoFullName,
         issueTitle: job.issueTitle,
         issueBody: job.issueBody,
