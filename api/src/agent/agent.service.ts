@@ -43,13 +43,14 @@ export class HermesAgentService implements OnModuleInit {
       return;
     }
 
-    await generateHermesConfig(
-      hermesHome,
-      this.config.get('HERMES_CONTEXT_LENGTH'),
-      this.config.get('HERMES_COMPRESS_THRESHOLD'),
-      this.config.get('HERMES_MODEL_BASE_URL'),
-      this.config.get('SANDBOX_MODE'),
-    );
+    await generateHermesConfig(hermesHome, {
+      contextLength: this.config.get('HERMES_CONTEXT_LENGTH'),
+      compressionThreshold: this.config.get('HERMES_COMPRESS_THRESHOLD'),
+      baseUrl: this.config.get('HERMES_MODEL_BASE_URL'),
+      model: this.config.get('HERMES_PRIMARY_MODEL') || undefined,
+      provider: this.config.get('HERMES_PRIMARY_PROVIDER') || undefined,
+      sandboxMode: this.config.get('SANDBOX_MODE'),
+    });
   }
 
   /**

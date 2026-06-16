@@ -163,12 +163,18 @@ export function prepareHermesMemoryPaths(hermesHome: string): void {
  * In Docker mode, any `localhost` in the base URL is rewritten to
  * `host.docker.internal` so the container can reach the host's Ollama instance.
  */
+export interface HermesConfigOptions {
+  contextLength?: number;
+  compressionThreshold?: number;
+  baseUrl?: string;
+  model?: string;
+  provider?: string;
+  sandboxMode: 'none' | 'default';
+}
+
 export async function generateHermesConfig(
   hermesHome: string,
-  contextLength: number | undefined,
-  compressionThreshold: number | undefined,
-  baseUrl: string | undefined,
-  sandboxMode: 'none' | 'default',
+  opts: HermesConfigOptions,
 ): Promise<void> {
   const basePath = join(hermesHome, 'config.base.yaml');
   const outPath = join(hermesHome, 'config.yaml');
@@ -181,6 +187,8 @@ export async function generateHermesConfig(
     return;
   }
 
+  const { contextLength, compressionThreshold, baseUrl, model, provider, sandboxMode } = opts;
+
   const effectiveBaseUrl =
     sandboxMode === 'default' && baseUrl
       ? baseUrl.replace(/\/\/localhost([:/]|$)/g, '//host.docker.internal$1')
@@ -188,9 +196,16 @@ export async function generateHermesConfig(
 
   const config = parseYaml(raw) as Record<string, unknown>;
 
-  if (contextLength !== undefined || effectiveBaseUrl !== undefined) {
+  if (
+    contextLength !== undefined ||
+    effectiveBaseUrl !== undefined ||
+    model !== undefined ||
+    provider !== undefined
+  ) {
     config.model = {
       ...(config.model as Record<string, unknown>),
+      ...(model !== undefined && { default: model }),
+      ...(provider !== undefined && { provider }),
       ...(contextLength !== undefined && { context_length: contextLength }),
       ...(effectiveBaseUrl !== undefined && { base_url: effectiveBaseUrl }),
     };
