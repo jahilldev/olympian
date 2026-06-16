@@ -875,10 +875,6 @@ function StaticOutput({
       .catch(() => setError(true));
   }, [runId]);
 
-  const copy = useCallback(() => {
-    if (output) void navigator.clipboard.writeText(output.stdout);
-  }, [output]);
-
   return (
     <div class="flex flex-col h-full overflow-hidden">
       <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
@@ -900,14 +896,6 @@ function StaticOutput({
               <span class="text-xs text-zinc-500">{formatDuration(meta.durationMs)}</span>
             )}
           </>
-        )}
-        {output && (
-          <button
-            class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-            onClick={copy}
-          >
-            Copy
-          </button>
         )}
       </header>
 
@@ -1032,13 +1020,6 @@ function StreamingOutput({
     if (!el) return;
     setPinnedToBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 50);
   }, []);
-
-  const copy = useCallback(() => {
-    const text = events
-      .map((e) => `[${e.timestamp}] ${e.type}\n${JSON.stringify(e.body, null, 2)}`)
-      .join('\n\n');
-    void navigator.clipboard.writeText(text);
-  }, [events]);
 
   const thresholdPct = Math.round(compressionThreshold * 100);
   const ctxColour =
