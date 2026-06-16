@@ -1,7 +1,7 @@
-import { Controller, Get, Logger, Post, Query, Req, Res } from '@nestjs/common';
+import { All, Controller, Logger, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { MemoryService } from './memory.service.js';
 
@@ -9,7 +9,6 @@ import { MemoryService } from './memory.service.js';
 export class MemoryController {
   private readonly logger = new Logger(MemoryController.name);
   private readonly server: McpServer;
-  private readonly transports = new Map<string, SSEServerTransport>();
 
   constructor(private readonly memory: MemoryService) {
     this.server = new McpServer({ name: 'olympian-memory', version: '1.0.0' });
@@ -23,6 +22,7 @@ export class MemoryController {
       },
       async ({ jobId, key, value }) => {
         await this.memory.set(jobId, key, value);
+
         return { content: [{ type: 'text' as const, text: 'ok' }] };
       },
     );
@@ -36,33 +36,20 @@ export class MemoryController {
       },
       async ({ jobId, prefix }) => {
         const entries = await this.memory.get(jobId, prefix);
+
         return { content: [{ type: 'text' as const, text: JSON.stringify(entries) }] };
       },
     );
   }
 
-  @Get()
-  async handleSse(@Req() req: Request, @Res() res: Response): Promise<void> {
-    const transport = new SSEServerTransport('/api/mcp/message', res);
-    this.transports.set(transport.sessionId, transport);
-    req.on('close', () => {
-      this.transports.delete(transport.sessionId);
-    });
-    await this.server.connect(transport);
-  }
+  @All()
+  async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
-  @Post('message')
-  async handleMessage(
-    @Query('sessionId') sessionId: string,
-    @Req() req: Request,
-    @Res() res: Response,
-  ): Promise<void> {
-    const transport = this.transports.get(sessionId);
-    if (!transport) {
-      this.logger.warn(`MCP session not found: ${sessionId}`);
-      res.status(404).json({ error: 'session not found' });
-      return;
-    }
-    await transport.handlePostMessage(req, res);
+    await this.server.connect(transport);
+
+    await transport.handleRequest(req, res, (req as Request & { body: unknown }).body);
+
+    await transport.close();
   }
 }
