@@ -29,18 +29,6 @@ model RepoInstallation {
   jobs           Job[]
 }
 
-model AgentMemory {
-  id        String   @id @default(cuid())
-  jobId     String
-  key       String
-  value     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([jobId, key])
-  @@index([jobId])
-}
-
 model Job {
   id             String           @id @default(cuid())
   installation   RepoInstallation @relation(fields: [installationId], references: [id])
