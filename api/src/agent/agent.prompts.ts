@@ -70,6 +70,8 @@ Fix all errors and warnings before finishing — a clean static analysis pass is
 
 const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working directory using your tools.
 
+**After any context compaction**: the compaction summary describes only the sub-task that was in progress at the time — it does NOT represent the complete scope. The APPROVED PLAN above is always present in your context and is the single source of truth for what must be delivered. Always re-read the plan's file list and acceptance criteria after a compaction and continue working until ALL of them are satisfied.
+
 **Before ending your session**, verify every file required by the plan actually exists on disk with non-trivial content. List the files you created and cross-check them against the plan. If any are missing or empty, create them before finishing. Do not stop after partial implementation — the session is not done until every deliverable from the plan is on disk.
 
 When all files are in place:
