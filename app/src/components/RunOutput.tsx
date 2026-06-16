@@ -1036,7 +1036,7 @@ function StreamingOutput({
           class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
-          ← Job detail
+          ← Back
         </button>
         <span class="text-zinc-700">/</span>
         {meta && (
