@@ -26,7 +26,7 @@ compression:
   protect_first_n: 5 # pin system prompt + first 5 messages including the plan (default: 3)
 
 mcp_servers:
-  olympian_memory:
+  olympian:
     url: http://localhost:3030/api/memory
 
 delegation:

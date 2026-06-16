@@ -95,13 +95,13 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
     `The full issue description and plan are provided above — do NOT fetch them from GitHub or any external URL.`,
-    `**Progress checkpointing** — you have \`mcp_olympian_memory_memory_set\` and \`mcp_olympian_memory_memory_get\` MCP tools available. Use job ID \`${ctx.jobId}\`.
-1. At session start, call \`mcp_olympian_memory_memory_get(jobId="${ctx.jobId}", prefix="plan:")\` to check for existing progress (resumed session).
-2. If fresh, call \`mcp_olympian_memory_memory_set(jobId="${ctx.jobId}", key="plan:<filepath>", value="pending")\` for each file in the plan.
-3. As you complete each file, call \`mcp_olympian_memory_memory_set(jobId="${ctx.jobId}", key="plan:<filepath>", value="done")\`.
-4. After any context compaction, immediately call \`mcp_olympian_memory_memory_get(jobId="${ctx.jobId}", prefix="plan:")\` to recover your full progress list before continuing.
-5. Before ending, call \`mcp_olympian_memory_memory_get\` and confirm every entry shows \`"done"\` — if any are still \`"pending"\`, complete them first.`,
-    `**Codebase exploration** — if \`mcp_olympian_memory_memory_get\` returned no existing progress (fresh session), before writing any files, run a read-only exploration subagent to locate the files you will need:
+    `**Progress checkpointing** — you have \`mcp_olympian_memory_set\` and \`mcp_olympian_memory_get\` MCP tools available. Use job ID \`${ctx.jobId}\`.
+1. At session start, call \`mcp_olympian_memory_get(jobId="${ctx.jobId}", prefix="plan:")\` to check for existing progress (resumed session).
+2. If fresh, call \`mcp_olympian_memory_set(jobId="${ctx.jobId}", key="plan:<filepath>", value="pending")\` for each file in the plan.
+3. As you complete each file, call \`mcp_olympian_memory_set(jobId="${ctx.jobId}", key="plan:<filepath>", value="done")\`.
+4. After any context compaction, immediately call \`mcp_olympian_memory_get(jobId="${ctx.jobId}", prefix="plan:")\` to recover your full progress list before continuing.
+5. Before ending, call \`mcp_olympian_memory_get\` and confirm every entry shows \`"done"\` — if any are still \`"pending"\`, complete them first.`,
+    `**Codebase exploration** — if \`mcp_olympian_memory_get\` returned no existing progress (fresh session), before writing any files, run a read-only exploration subagent to locate the files you will need:
 \`\`\`
 delegate_task(
   goal="Locate every file I will need to create or modify for this plan",
@@ -144,12 +144,12 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `**Progress checkpointing** — you have \`mcp_olympian_memory_memory_set\` and \`mcp_olympian_memory_memory_get\` MCP tools available. Use job ID \`${ctx.jobId}\`.
-1. At session start, call \`mcp_olympian_memory_memory_get(jobId="${ctx.jobId}", prefix="fix:")\` to check for existing progress (resumed session).
-2. If fresh, call \`mcp_olympian_memory_memory_set(jobId="${ctx.jobId}", key="fix:<n>", value="pending")\` for each numbered issue above.
-3. As you fix each issue, call \`mcp_olympian_memory_memory_set(jobId="${ctx.jobId}", key="fix:<n>", value="done")\`.
-4. After any context compaction, immediately call \`mcp_olympian_memory_memory_get(jobId="${ctx.jobId}", prefix="fix:")\` to recover your full list before continuing.
-5. Before ending, call \`mcp_olympian_memory_memory_get\` and confirm every entry shows \`"done"\` — if any are still \`"pending"\`, fix them before finishing.`,
+    `**Progress checkpointing** — you have \`mcp_olympian_memory_set\` and \`mcp_olympian_memory_get\` MCP tools available. Use job ID \`${ctx.jobId}\`.
+1. At session start, call \`mcp_olympian_memory_get(jobId="${ctx.jobId}", prefix="fix:")\` to check for existing progress (resumed session).
+2. If fresh, call \`mcp_olympian_memory_set(jobId="${ctx.jobId}", key="fix:<n>", value="pending")\` for each numbered issue above.
+3. As you fix each issue, call \`mcp_olympian_memory_set(jobId="${ctx.jobId}", key="fix:<n>", value="done")\`.
+4. After any context compaction, immediately call \`mcp_olympian_memory_get(jobId="${ctx.jobId}", prefix="fix:")\` to recover your full list before continuing.
+5. Before ending, call \`mcp_olympian_memory_get\` and confirm every entry shows \`"done"\` — if any are still \`"pending"\`, fix them before finishing.`,
   );
 
   parts.push(
