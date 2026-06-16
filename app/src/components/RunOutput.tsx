@@ -1055,7 +1055,7 @@ function StreamingOutput({
         )}
         {contextPct !== null && ctxColour !== null && (
           <div class="flex items-center gap-1.5 ml-auto">
-            <div class="w-12 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+            <div class="w-8 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
               <div
                 class={`h-full rounded-full transition-all ${ctxColour.bar}`}
                 style={{ width: `${Math.min(100, contextPct)}%` }}
