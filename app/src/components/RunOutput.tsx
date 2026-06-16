@@ -1045,16 +1045,17 @@ function StreamingOutput({
               {meta.phase}
             </span>
             {meta.model && <span class="text-xs text-zinc-500 truncate">{meta.model}</span>}
-            <span class="flex items-center gap-1.5">{statusDot(meta.status)}</span>
+            <span class="flex items-center gap-1.5">
+              {statusDot(streamStatus === 'connecting' ? 'CONNECTING' : meta.status)}
+            </span>
             {meta.durationMs !== null && (
               <span class="text-xs text-zinc-500">{formatDuration(meta.durationMs)}</span>
             )}
           </>
         )}
-        {streamStatus === 'connecting' && statusDot('CONNECTING')}
         {contextPct !== null && ctxColour !== null && (
           <div class="flex items-center gap-1.5 ml-auto">
-            <div class="w-20 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+            <div class="w-12 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
               <div
                 class={`h-full rounded-full transition-all ${ctxColour.bar}`}
                 style={{ width: `${Math.min(100, contextPct)}%` }}
