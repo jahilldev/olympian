@@ -57,7 +57,7 @@ describe('buildSpawnSpec', () => {
 
   it('mounts the workspace and hermes memory paths into the container', () => {
     const spec = buildSpawnSpec({
-      sandboxMode: 'docker',
+      sandboxMode: 'default',
       hermesBin: 'hermes',
       dockerImage: 'img',
       cwd: '/jobs/abc',

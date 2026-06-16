@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import { AppConfigService } from './config.service.js';
+import { ConfigController } from './config.controller.js';
 import { validateEnv } from './config.utility.js';
 
 @Global()
@@ -15,6 +16,7 @@ import { validateEnv } from './config.utility.js';
       validate: validateEnv,
     }),
   ],
+  controllers: [ConfigController],
   providers: [AppConfigService],
   exports: [AppConfigService],
 })

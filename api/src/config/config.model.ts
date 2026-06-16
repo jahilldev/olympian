@@ -30,6 +30,9 @@ export const envSchema = z.object({
   HERMES_REVIEW_MODEL: z.string().optional(),
   HERMES_REVIEW_PROVIDER: z.string().optional(),
   HERMES_TIMEOUT_MS: intFromString(7_200_000),
+  HERMES_CONTEXT_LENGTH: z.coerce.number().int().optional(),
+  HERMES_COMPRESS_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
+  HERMES_MODEL_BASE_URL: z.string().optional(),
 
   // orchestration policy
   TRIGGER_LABEL: z.string().default('hermes'),
@@ -54,7 +57,7 @@ export const envSchema = z.object({
   BRANCH_PREFIX: z.string().default('hermes/issue-'),
 
   // sandbox
-  SANDBOX_MODE: z.enum(['none', 'docker']).default('none'),
+  SANDBOX_MODE: z.enum(['none', 'default']).default('default'),
   DOCKER_AGENT_IMAGE: z.string().default('hermes-agent:latest'),
   VERIFY_COMMAND: z.string().optional(),
 });

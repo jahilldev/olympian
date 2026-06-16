@@ -947,16 +947,36 @@ function StreamingOutput({
   );
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [contextLength, setContextLength] = useState(131072);
+  const [compressionThreshold, setCompressionThreshold] = useState(0.5);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/config', { signal: controller.signal })
+      .then((r) =>
+        r.ok
+          ? (r.json() as Promise<{ contextLength?: number; compressionThreshold?: number }>)
+          : Promise.reject(new Error(`${r.status}`)),
+      )
+      .then(({ contextLength: cl, compressionThreshold: ct }) => {
+        if (cl !== undefined) setContextLength(cl);
+        if (ct !== undefined) setCompressionThreshold(ct);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // keep defaults on failure
+      });
+    return () => controller.abort();
+  }, []);
 
   const contextPct = useMemo(() => {
-    const CONTEXT_LENGTH = 131072;
     for (let i = events.length - 1; i >= 0; i--) {
       const raw = events[i].body['langfuse.observation.usage_details'] as string | undefined;
       if (raw) {
         try {
           const usage = JSON.parse(raw) as { input?: number };
           if (typeof usage.input === 'number') {
-            return Math.round((usage.input / CONTEXT_LENGTH) * 100);
+            return Math.min(100, Math.round((usage.input / contextLength) * 100));
           }
         } catch {
           // malformed JSON — skip
@@ -964,7 +984,7 @@ function StreamingOutput({
       }
     }
     return null;
-  }, [events]);
+  }, [events, contextLength]);
 
   useEffect(() => {
     const es = new EventSource(`/stream/runs/${runId}`);
@@ -1020,12 +1040,13 @@ function StreamingOutput({
     void navigator.clipboard.writeText(text);
   }, [events]);
 
+  const thresholdPct = Math.round(compressionThreshold * 100);
   const ctxColour =
     contextPct === null
       ? null
-      : contextPct < 60
+      : contextPct < thresholdPct
         ? ({ bar: 'bg-green-500', text: 'text-green-400' } as const)
-        : contextPct < 80
+        : contextPct < 92
           ? ({ bar: 'bg-amber-500', text: 'text-amber-400' } as const)
           : ({ bar: 'bg-red-500', text: 'text-red-400' } as const);
 

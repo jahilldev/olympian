@@ -23,9 +23,8 @@ implement → self-review → PR, with humans only ever approving the plan and t
 ## Prerequisites
 
 - Node.js 20+
-- Hermes — run `npm run hermes:local` from the repo root to wire an **isolated**,
-  project-local `HERMES_HOME` to your existing `hermes` binary (or `npm run hermes:docker`
-  for a fully containerized agent). See the [project README](../README.md#2-provision-hermes-automated-isolated).
+- Hermes — run `npm run hermes:docker` from the repo root to build the agent sandbox image
+  and wire an isolated, project-local `HERMES_HOME`. See the [project README](../README.md#2-provision-hermes).
 - A GitHub App (for the live flow) — see the [project README](../README.md)
 
 ## Installation
@@ -76,7 +75,8 @@ npm run typecheck   # tsc --noEmit
 All environment variables are validated at boot (`src/config/config.model.ts`); the full
 list with defaults lives in [`.env.example`](.env.example). Common knobs: `TRIGGER_LABEL`,
 `REVIEW_CONFIDENCE_THRESHOLD`, `WORKER_CONCURRENCY`, `SANDBOX_MODE`, `VERIFY_COMMAND`,
-`HERMES_BIN` / `HERMES_PRIMARY_MODEL` / `HERMES_REVIEW_MODEL` / `HERMES_TESTING_MODEL` / `HERMES_MAX_TURNS`.
+`HERMES_BIN` / `HERMES_PRIMARY_MODEL` / `HERMES_REVIEW_MODEL` / `HERMES_TESTING_MODEL`,
+`HERMES_CONTEXT_LENGTH` / `HERMES_COMPRESS_THRESHOLD` / `HERMES_MODEL_BASE_URL`.
 
 ## Docker
 

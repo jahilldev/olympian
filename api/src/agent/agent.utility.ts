@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { spawn } from 'node:child_process';
 import { STDOUT_CAP, type RawSpawnResult, type SpawnSpec } from './agent.model.js';
 
@@ -8,7 +10,7 @@ const HERMES_CONTAINER_HOME = '/root/.hermes';
 const CONTAINER_WORKDIR = '/workspace';
 
 export interface SpawnSpecParams {
-  sandboxMode: 'none' | 'docker';
+  sandboxMode: 'none' | 'default';
   hermesBin: string;
   dockerImage: string;
   hermesHome?: string;
@@ -54,7 +56,7 @@ function hermesArgs(p: SpawnSpecParams): string[] {
  * paths bind-mounted so MEMORY.md, USER.md, and skills survive across invocations.
  */
 export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
-  if (p.sandboxMode === 'docker') {
+  if (p.sandboxMode === 'default') {
     // Dev-server ports are published only when browser automation is enabled (Camofox),
     // i.e. for REVIEW phase containers. Publishing them on every container causes port
     // conflicts when the previous container's port proxy hasn't fully released the binding.
@@ -73,10 +75,12 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
     ];
 
     // Mount individual hermes memory paths so learning persists across invocations.
-    // Only MEMORY.md, USER.md, and skills/ are mounted — the baked config.yaml and
-    // SOUL.md inside the image are left untouched.
+    // config.yaml is also mounted so user settings (compression threshold, context
+    // length, etc.) take effect inside the container rather than falling back to
+    // baked-in defaults.
     if (p.hermesHome) {
       const mounts: Array<[string, string]> = [
+        [join(p.hermesHome, 'config.yaml'), `${HERMES_CONTAINER_HOME}/config.yaml`],
         [join(p.hermesHome, 'MEMORY.md'), `${HERMES_CONTAINER_HOME}/MEMORY.md`],
         [join(p.hermesHome, 'USER.md'), `${HERMES_CONTAINER_HOME}/USER.md`],
         [join(p.hermesHome, 'skills'), `${HERMES_CONTAINER_HOME}/skills`],
@@ -149,6 +153,57 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
 export function prepareHermesMemoryPaths(hermesHome: string): void {
   writeFileSync(join(hermesHome, 'MEMORY.md'), '', { flag: 'a' });
   writeFileSync(join(hermesHome, 'USER.md'), '', { flag: 'a' });
+}
+
+/**
+ * Generates `config.yaml` from `config.base.yaml` with env-var overrides applied
+ * for context_length, compression.threshold, and base_url. The generated file is
+ * gitignored; config.base.yaml is the source-controlled template.
+ *
+ * In Docker mode, any `localhost` in the base URL is rewritten to
+ * `host.docker.internal` so the container can reach the host's Ollama instance.
+ */
+export async function generateHermesConfig(
+  hermesHome: string,
+  contextLength: number | undefined,
+  compressionThreshold: number | undefined,
+  baseUrl: string | undefined,
+  sandboxMode: 'none' | 'default',
+): Promise<void> {
+  const basePath = join(hermesHome, 'config.base.yaml');
+  const outPath = join(hermesHome, 'config.yaml');
+
+  let raw: string;
+
+  try {
+    raw = await readFile(basePath, 'utf8');
+  } catch {
+    return;
+  }
+
+  const effectiveBaseUrl =
+    sandboxMode === 'default' && baseUrl
+      ? baseUrl.replace(/\/\/localhost([:/]|$)/g, '//host.docker.internal$1')
+      : baseUrl;
+
+  const config = parseYaml(raw) as Record<string, unknown>;
+
+  if (contextLength !== undefined || effectiveBaseUrl !== undefined) {
+    config.model = {
+      ...(config.model as Record<string, unknown>),
+      ...(contextLength !== undefined && { context_length: contextLength }),
+      ...(effectiveBaseUrl !== undefined && { base_url: effectiveBaseUrl }),
+    };
+  }
+
+  if (compressionThreshold !== undefined) {
+    config.compression = {
+      ...(config.compression as Record<string, unknown>),
+      threshold: compressionThreshold,
+    };
+  }
+
+  await writeFile(outPath, stringifyYaml(config), 'utf8');
 }
 
 function cap(buf: string): string {

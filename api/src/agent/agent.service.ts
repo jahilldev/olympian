@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -11,7 +11,12 @@ import {
   type AgentRunStatus,
   type AgentRunOutputDto,
 } from './agent.model.js';
-import { buildSpawnSpec, spawnProcess, prepareHermesMemoryPaths } from './agent.utility.js';
+import {
+  buildSpawnSpec,
+  spawnProcess,
+  prepareHermesMemoryPaths,
+  generateHermesConfig,
+} from './agent.utility.js';
 import { LangfuseService } from '../langfuse/langfuse.service.js';
 
 /**
@@ -20,7 +25,7 @@ import { LangfuseService } from '../langfuse/langfuse.service.js';
  * an AgentRun audit row. The orchestrator owns git, so this never commits.
  */
 @Injectable()
-export class HermesAgentService {
+export class HermesAgentService implements OnModuleInit {
   private readonly logger = new Logger(HermesAgentService.name);
 
   constructor(
@@ -30,13 +35,30 @@ export class HermesAgentService {
     private readonly langfuse: LangfuseService,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    const hermesHomeRaw = this.config.get('HERMES_HOME') || undefined;
+    const hermesHome = hermesHomeRaw ? resolve(hermesHomeRaw) : undefined;
+
+    if (!hermesHome) {
+      return;
+    }
+
+    await generateHermesConfig(
+      hermesHome,
+      this.config.get('HERMES_CONTEXT_LENGTH'),
+      this.config.get('HERMES_COMPRESS_THRESHOLD'),
+      this.config.get('HERMES_MODEL_BASE_URL'),
+      this.config.get('SANDBOX_MODE'),
+    );
+  }
+
   /**
    * Force-removes the running container for the given job, if any.
    * Called immediately when a cancel command is received so the agent stops
    * without waiting for the timeout.
    */
   killContainerForJob(jobId: string): void {
-    if (this.config.get('SANDBOX_MODE') !== 'docker') {
+    if (this.config.get('SANDBOX_MODE') !== 'default') {
       return;
     }
 
@@ -69,7 +91,7 @@ export class HermesAgentService {
   }
 
   killOrphanedContainers(): void {
-    if (this.config.get('SANDBOX_MODE') !== 'docker') {
+    if (this.config.get('SANDBOX_MODE') !== 'default') {
       return;
     }
     const list = spawn('docker', ['ps', '-q', '--filter', 'name=olympian-'], {
@@ -102,7 +124,7 @@ export class HermesAgentService {
     // Resolve to absolute: docker run -v requires absolute bind-mount sources.
     const hermesHome = hermesHomeRaw ? resolve(hermesHomeRaw) : undefined;
 
-    if (sandboxMode === 'docker' && hermesHome) {
+    if (sandboxMode === 'default' && hermesHome) {
       prepareHermesMemoryPaths(hermesHome);
     }
 

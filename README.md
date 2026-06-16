@@ -54,14 +54,16 @@ Module layout (one service per module): `config`, `prisma`, `metrics`, `health`,
 
 This is an npm-workspaces monorepo, driven from the root:
 
-- **`api/`** — the orchestration service (this is the whole product today).
-- **`app/`** — a management/overview UI (planned; not yet present).
+- **`api/`** — the orchestration service (API and agent orchestration).
+- **`app/`** — a management/overview UI (PWA application for monitoring).
 
 Root scripts fan out to the workspaces: `npm run build`, `npm run lint`,
 `npm run typecheck`, `npm test`, `npm run test:e2e`, `npm run dev`, plus the
 `prisma:*` and `hermes:*` helpers. See the root [`package.json`](package.json).
 
-## Quick start (local)
+## Quick start
+
+### Development
 
 ```bash
 cp api/.env.example api/.env    # fill in GitHub App + Hermes values
@@ -77,142 +79,7 @@ curl localhost:3030/health/ready  # readiness (DB)
 curl localhost:3030/metrics       # Prometheus metrics
 ```
 
-## Required external setup
-
-These can't be scripted for you and gate the live run (not the build or tests):
-
-### 1. Register a GitHub App
-
-- **Permissions:** Issues _Read & write_, Pull requests _Read & write_, Contents _Read &
-  write_, Metadata _Read-only_.
-- **Subscribe to events:** Issues, Issue comment, Pull request review, Installation.
-- **Webhook URL:** `https://<your-host>/webhooks/github` and a **webhook secret**.
-- Generate a **private key** (PEM). Install the App on the target repos.
-- Put the values in `.env`: `GITHUB_APP_ID`, `GITHUB_WEBHOOK_SECRET`, and either
-  `GITHUB_APP_PRIVATE_KEY` (inline, `\n`-escaped) or `GITHUB_APP_PRIVATE_KEY_PATH`.
-
-For local dev, tunnel webhooks with [smee.io](https://smee.io) or ngrok to
-`localhost:3030/webhooks/github`.
-
-### 2. Provision Hermes (automated, isolated)
-
-Hermes keys all of its config, credentials, sessions, and state off `HERMES_HOME`. The
-setup script gives the orchestrator a **project-local `HERMES_HOME`** so it never reads or
-writes your global `~/.hermes`:
-
-```bash
-npm run hermes:local     # default: reuse your system `hermes` binary, isolated HERMES_HOME
-npm run hermes:docker    # strongest: build the agent sandbox image, run agents in a container
-```
-
-- **`system` mode (default):** uses the `hermes` already on your PATH but points
-  `HERMES_HOME` at `./.hermes/home`, so any local Hermes config/context stays out of
-  orchestration. No Docker, no reinstall.
-- **`docker` mode:** builds [`api/Dockerfile.agent`](api/Dockerfile.agent) and runs every
-  agent invocation in a container (`SANDBOX_MODE=docker`), mounting only the job directory
-  and the isolated `HERMES_HOME` (read-only). True isolation; requires Docker.
-
-The script writes `HERMES_BIN` / `HERMES_HOME` / `SANDBOX_MODE` into `api/.env` and creates
-the isolated home. It does **not** copy your credentials — configure the isolated home
-separately (the script prints the exact command), e.g.:
-
-```bash
-HERMES_HOME="$(pwd)/.hermes/home" hermes model   # provider setup wizard, scoped to the isolated home
-# …or set HERMES_PRIMARY_MODEL / HERMES_PRIMARY_PROVIDER + an API key in api/.env
-```
-
-### 3. Camofox browser (optional)
-
-[Camofox](https://github.com/jo-inc/camofox-browser) is a self-hosted Firefox-based
-browser server with fingerprint spoofing. When configured, Hermes's browser tools
-(`browser_navigate`, `browser_click`, etc.) route through it instead of cloud providers
-like Browserbase.
-
-**Start Camofox** (Docker, port 9377):
-
-```bash
-git clone https://github.com/jo-inc/camofox-browser
-cd camofox-browser
-make up          # builds + starts on port 9377
-```
-
-**Wire it to Olympian** — add to `api/.env`:
-
-```bash
-CAMOFOX_URL=http://localhost:9377
-```
-
-That's all. In `SANDBOX_MODE=docker` the orchestrator automatically rewrites the URL to
-`host.docker.internal:9377` before passing it into the agent container, and the baked
-hermes config (`api/.hermes/config.yaml`) already enables loopback URL rewriting so the
-agent can reach host-side services when navigating pages.
-
-To opt out: leave `CAMOFOX_URL` empty (or unset) — Hermes falls back to `agent-browser`
-(a local Chromium install) or errors if no browser backend is available.
-
-## Using it
-
-1. Label an issue `hermes` (or your `TRIGGER_LABEL`).
-2. Hermes posts a plan. Reply with comments to iterate, or `/hermes approve` to build.
-3. A draft PR appears. **Approve** the PR review to finish, or **request changes** to loop.
-
-Issue-comment commands (maintainers only — write access required):
-
-- `/hermes approve` — approve the plan and start implementation
-- `/hermes cancel` — stop the job
-- `/hermes status` — report current state
-
-## Sandboxing
-
-- `SANDBOX_MODE=docker` (default) runs each agent invocation inside `DOCKER_AGENT_IMAGE`,
-  mounting **only** that job's directory and the persistent Hermes memory files. Each job
-  lives in its own directory keyed by job id, so raising `WORKER_CONCURRENCY` runs N
-  isolated jobs in parallel. Requires Docker and a pre-built agent image (see below).
-- `SANDBOX_MODE=none` runs `hermes` as a subprocess in the job's worktree. Useful for
-  local development without Docker.
-
-## Configuration
-
-All config is validated at boot (see `src/config/config.model.ts`). Full reference and
-defaults live in [`api/.env.example`](api/.env.example). Key knobs:
-
-| Variable                                                                     | Purpose                                                                                   |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `TRIGGER_LABEL`                                                              | Label that starts a job (default `hermes`).                                               |
-| `REVIEW_CONFIDENCE_THRESHOLD`                                                | Min self-review confidence to open a PR (default 85).                                     |
-| `MAX_PLAN_REVISIONS` / `MAX_IMPLEMENTATION_ITERATIONS` / `MAX_REVIEW_PASSES` | Loop caps.                                                                                |
-| `WORKER_CONCURRENCY`                                                         | Parallel jobs (default 2).                                                                |
-| `VERIFY_COMMAND`                                                             | Optional tests/build command used as an acceptance gate.                                  |
-| `SANDBOX_MODE`                                                               | `none` or `docker`.                                                                       |
-| `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL` / `HERMES_MAX_TURNS`   | Hermes invocation.                                                                        |
-| `HERMES_REVIEW_MODEL` / `HERMES_REVIEW_PROVIDER`                             | Optional independent model for the self-review cycle.                                     |
-| `HERMES_TESTING_MODEL` / `HERMES_TESTING_PROVIDER`                           | Optional lighter-weight model for the testing step. Falls back to `HERMES_PRIMARY_MODEL`. |
-
-## Docker
-
-```bash
-# 1. Build the agent sandbox image (needed for SANDBOX_MODE=docker, the default).
-npm run hermes:docker
-
-# 2. Configure the service.
-cd api && cp .env.example .env   # fill in GitHub App + model values
-
-# 3. Start.
-docker compose up --build        # from repo root: builds the service image
-```
-
-SQLite lives on a named volume (`hermes-data`); there is no separate database container.
-Agent workspaces and the Hermes memory state (`MEMORY.md`, `USER.md`, `skills/`) are
-bind-mounted from `./workspaces/` and `./hermes-state/` at the **same absolute path**
-inside the service container, so sibling agent containers spawned via the Docker socket
-can reference those directories using the same host path the service wrote to.
-
-> **Langfuse observability** — the env var forwarding and URL rewriting are in place, but
-> the `POST /api/public/otel/v1/traces` ingestion endpoint has not yet been implemented.
-> Traces sent by the agent plugin are currently dropped. Enable Langfuse only after the
-> trace ingestion module is added.
-
-## Production (systemd)
+### Production (systemd)
 
 Run `setup.sh` once to register the `olympian` systemd service under your current user:
 
@@ -243,6 +110,148 @@ sudo systemctl disable --now olympian
 sudo rm /etc/systemd/system/olympian.service
 sudo systemctl daemon-reload
 ```
+
+## Required external setup
+
+These can't be scripted for you and gate the live run (not the build or tests):
+
+### 1. Register a GitHub App
+
+- **Permissions:** Issues _Read & write_, Pull requests _Read & write_, Contents _Read &
+  write_, Metadata _Read-only_.
+- **Subscribe to events:** Issues, Issue comment, Pull request review, Installation.
+- **Webhook URL:** `https://<your-host>/webhooks/github` and a **webhook secret**.
+- Generate a **private key** (PEM). Install the App on the target repos.
+- Put the values in `.env`: `GITHUB_APP_ID`, `GITHUB_WEBHOOK_SECRET`, and either
+  `GITHUB_APP_PRIVATE_KEY` (inline, `\n`-escaped) or `GITHUB_APP_PRIVATE_KEY_PATH`.
+
+For local dev, tunnel webhooks with [smee.io](https://smee.io) or ngrok to
+`localhost:3030/webhooks/github`.
+
+### 2. Provision Hermes
+
+```bash
+npm run hermes:docker    # builds api/Dockerfile.agent; writes SANDBOX_MODE/DOCKER_AGENT_IMAGE/HERMES_HOME to api/.env
+```
+
+Each agent invocation runs inside an isolated container with only the job worktree and
+the shared `HERMES_HOME` (`api/.hermes/`) bind-mounted. The orchestrator generates
+`config.yaml` from `config.base.yaml` at startup, injecting env-var overrides
+(`HERMES_CONTEXT_LENGTH`, `HERMES_COMPRESS_THRESHOLD`, `HERMES_MODEL_BASE_URL`) and
+rewriting `localhost` → `host.docker.internal` for in-container connectivity.
+
+After running the script, set your model and provider in `api/.env`:
+
+```
+HERMES_PRIMARY_MODEL=<model>
+HERMES_PRIMARY_PROVIDER=<provider>
+HERMES_MODEL_BASE_URL=http://localhost:11434/v1   # if using a local endpoint
+```
+
+For cloud providers, add the relevant API key (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
+
+**System mode (no Docker):** set in `api/.env`:
+
+```
+SANDBOX_MODE=none
+HERMES_HOME=~/.hermes   # your existing global Hermes home — credentials and model config already there
+```
+
+Hermes reads its own `~/.hermes/config.yaml` directly. `HERMES_PRIMARY_MODEL`,
+`HERMES_PRIMARY_PROVIDER`, and `HERMES_TIMEOUT_MS` still apply as they are passed as
+CLI flags at invocation time.
+
+### 3. Camofox browser (optional)
+
+[Camofox](https://github.com/jo-inc/camofox-browser) is a self-hosted Firefox-based
+browser server with fingerprint spoofing. When configured, Hermes's browser tools
+(`browser_navigate`, `browser_click`, etc.) route through it instead of cloud providers
+like Browserbase.
+
+**Start Camofox** (Docker, port 9377):
+
+```bash
+git clone https://github.com/jo-inc/camofox-browser
+cd camofox-browser
+make up          # builds + starts on port 9377
+```
+
+**Wire it to Olympian** — add to `api/.env`:
+
+```bash
+CAMOFOX_URL=http://localhost:9377
+```
+
+That's all. In `SANDBOX_MODE=default` the orchestrator automatically rewrites the URL to
+`host.docker.internal:9377` before passing it into the agent container.
+
+To opt out: leave `CAMOFOX_URL` empty (or unset) — Hermes falls back to `agent-browser`
+(a local Chromium install) or errors if no browser backend is available.
+
+## Using it
+
+1. Label an issue `hermes` (or your `TRIGGER_LABEL`).
+2. Hermes posts a plan. Reply with comments to iterate, or `/hermes approve` to build.
+3. A draft PR appears. **Approve** the PR review to finish, or **request changes** to loop.
+
+Issue-comment commands (maintainers only — write access required):
+
+- `/hermes approve` — approve the plan and start implementation
+- `/hermes cancel` — stop the job
+- `/hermes status` — report current state
+
+## Sandboxing
+
+- `SANDBOX_MODE=default` (default) — each agent invocation runs inside `DOCKER_AGENT_IMAGE`.
+  Only the job's worktree and the Hermes memory files (`MEMORY.md`, `USER.md`, `skills/`,
+  `config.yaml`) are bind-mounted into the container. Requires Docker and a pre-built
+  image (`npm run hermes:docker`). Raising `WORKER_CONCURRENCY` runs N fully isolated
+  jobs in parallel.
+- `SANDBOX_MODE=none` — `hermes` runs as a subprocess directly in the job's worktree,
+  using the system-level Hermes binary (`HERMES_BIN`). No Docker required; useful for
+  local development or environments where Docker is unavailable.
+
+## Configuration
+
+All config is validated at boot (see `src/config/config.model.ts`). Full reference and
+defaults live in [`api/.env.example`](api/.env.example). Key knobs:
+
+| Variable                                                                        | Purpose                                                                                   |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `TRIGGER_LABEL`                                                                 | Label that starts a job (default `hermes`).                                               |
+| `REVIEW_CONFIDENCE_THRESHOLD`                                                   | Min self-review confidence to open a PR (default 85).                                     |
+| `MAX_PLAN_REVISIONS` / `MAX_IMPLEMENTATION_ITERATIONS` / `MAX_REVIEW_PASSES`    | Loop caps.                                                                                |
+| `WORKER_CONCURRENCY`                                                            | Parallel jobs (default 2).                                                                |
+| `VERIFY_COMMAND`                                                                | Optional tests/build command used as an acceptance gate.                                  |
+| `SANDBOX_MODE`                                                                  | `default` (Docker container per run) or `none` (system Hermes binary, no container).      |
+| `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL`                           | Hermes invocation.                                                                        |
+| `HERMES_CONTEXT_LENGTH` / `HERMES_COMPRESS_THRESHOLD` / `HERMES_MODEL_BASE_URL` | Injected into Hermes `config.yaml` at startup; omit to let Hermes use its own defaults.   |
+| `HERMES_REVIEW_MODEL` / `HERMES_REVIEW_PROVIDER`                                | Optional independent model for the self-review cycle.                                     |
+| `HERMES_TESTING_MODEL` / `HERMES_TESTING_PROVIDER`                              | Optional lighter-weight model for the testing step. Falls back to `HERMES_PRIMARY_MODEL`. |
+
+## Docker
+
+```bash
+# 1. Build the agent sandbox image.
+npm run hermes:docker
+
+# 2. Configure the service.
+cd api && cp .env.example .env   # fill in GitHub App + model values
+
+# 3. Start.
+docker compose up --build        # from repo root: builds the service image
+```
+
+SQLite lives on a named volume (`hermes-data`); there is no separate database container.
+Agent workspaces and the Hermes memory state (`MEMORY.md`, `USER.md`, `skills/`) are
+bind-mounted from `./workspaces/` and `./hermes-state/` at the **same absolute path**
+inside the service container, so sibling agent containers spawned via the Docker socket
+can reference those directories using the same host path the service wrote to.
+
+> **Langfuse observability** — the env var forwarding and URL rewriting are in place, but
+> the `POST /api/public/otel/v1/traces` ingestion endpoint has not yet been implemented.
+> Traces sent by the agent plugin are currently dropped. Enable Langfuse only after the
+> trace ingestion module is added.
 
 ## Operations
 
