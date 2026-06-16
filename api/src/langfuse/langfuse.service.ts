@@ -55,8 +55,13 @@ export class LangfuseService {
     this.buffers.delete(sessionId);
   }
 
-  observe(sessionId: string): Observable<LangfuseEvent> | null {
-    return this.subjects.get(sessionId)?.asObservable() ?? null;
+  observe(sessionId: string): Observable<LangfuseEvent> {
+    if (!this.subjects.has(sessionId)) {
+      this.subjects.set(sessionId, new Subject<LangfuseEvent>());
+      this.buffers.set(sessionId, []);
+    }
+
+    return this.subjects.get(sessionId)!.asObservable();
   }
 
   getBuffer(sessionId: string): LangfuseEvent[] {

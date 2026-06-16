@@ -11,7 +11,7 @@ import {
   UnauthorizedException,
   type MessageEvent,
 } from '@nestjs/common';
-import { concat, EMPTY, interval, merge, of, type Observable } from 'rxjs';
+import { concat, interval, merge, of, type Observable } from 'rxjs';
 import { concatMap, filter, map, shareReplay, take, takeUntil } from 'rxjs/operators';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { type StreamPayload } from './langfuse.model.js';
@@ -100,9 +100,9 @@ export class LangfuseController {
 
     const history$ = of(encode({ type: 'history', events: this.langfuse.getBuffer(runId) }));
 
-    const live$ = (this.langfuse.observe(runId) ?? EMPTY).pipe(
-      map((event) => encode({ type: 'event', event })),
-    );
+    const live$ = this.langfuse
+      .observe(runId)
+      .pipe(map((event) => encode({ type: 'event', event })));
 
     // Poll every 3 s; when the run leaves RUNNING, emit 'done' and close the stream.
     // shareReplay so both takeUntil and merge share a single polling subscription.
