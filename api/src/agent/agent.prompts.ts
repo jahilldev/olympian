@@ -75,9 +75,9 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 **Efficient file reading**: before reading any file in full, use grep/search to locate the specific function, class, or symbol you need. Read only the relevant 20–40 line window around each match. Full file reads are expensive — reserve them for understanding overall file structure only.
 
 **For each file you write**:
-1. Write one line to \`.olympian/current-task.md\` describing what you are about to implement (e.g. \`Writing src/auth/middleware.ts — JWT validation\`). This records your current L1 state and aids recovery after compaction.
-2. Write the file.
-3. Run the project's static analysis command immediately and fix any errors before moving to the next file. Do not accumulate errors across files.
+1. Write the file.
+2. Run the project's static analysis command immediately and fix any errors before moving to the next file. Do not accumulate errors across files.
+3. Call \`progress(action="done", task="<path or short description>")\` once the file is written and static analysis is clean.
 
 **Before ending your session**, verify every file required by the plan actually exists on disk with non-trivial content. List the files you created and cross-check them against the plan. If any are missing or empty, create them before finishing. Do not stop after partial implementation — the session is not done until every deliverable from the plan is on disk.
 
@@ -95,13 +95,11 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
     `The full issue description and plan are provided above — do NOT fetch them from GitHub or any external URL.`,
-    `**Progress checkpointing** — use the built-in \`memory\` tool, prefixing every entry with \`[job:${ctx.jobId}]\` to isolate this job's state from others.
-1. At session start, call \`memory(action="search", content="[job:${ctx.jobId}]")\` to check for existing progress (resumed session).
-2. If fresh, call \`memory(action="add", content="[job:${ctx.jobId}] plan:<filepath>=pending")\` for each file in the plan.
-3. As you complete each file, call \`memory(action="add", content="[job:${ctx.jobId}] plan:<filepath>=done")\`.
-4. After any context compaction, immediately call \`memory(action="search", content="[job:${ctx.jobId}]")\` to recover your full progress list before continuing.
-5. Before ending, search for \`[job:${ctx.jobId}]\` and confirm every file shows \`=done\`. If any show \`=pending\`, complete them first.`,
-    `**Codebase exploration** — if the memory search returned no existing progress (fresh session), before writing any files, run a read-only exploration subagent to locate the files you will need:
+    `**Progress checkpointing** — use the \`progress\` tool to survive context compaction.
+1. At session start, call \`progress(action="init", tasks=["src/foo/bar.ts", ...])\` with every file or task from your plan.
+2. After completing each file or task, call \`progress(action="done", task="src/foo/bar.ts")\`.
+3. After any context compaction, call \`progress(action="read")\` to recover your task list and see what remains before continuing.`,
+    `**Codebase exploration** — call \`progress(action="read")\` first. If it returns "(no progress log — call init first)" you are in a fresh session — before writing any files, run a read-only exploration subagent to locate the files you will need:
 \`\`\`
 delegate_task(
   goal="Locate every file I will need to create or modify for this plan",
@@ -110,7 +108,7 @@ delegate_task(
   max_iterations=10
 )
 \`\`\`
-Use the returned summary to confirm file paths and locations before writing anything. Skip this step if memory shows an existing session — you already did it.`,
+Use the returned summary to confirm file paths and locations before writing anything. Skip this step if \`progress(action="read")\` returns a task list — you already explored and can continue from where you left off.`,
   ];
 
   if (ctx.guidance) {
@@ -144,16 +142,14 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `**Progress checkpointing** — use the built-in \`memory\` tool, prefixing every entry with \`[job:${ctx.jobId}]\` to isolate this job's state from others.
-1. At session start, call \`memory(action="search", content="[job:${ctx.jobId}]")\` to check for existing progress (resumed session).
-2. If fresh, call \`memory(action="add", content="[job:${ctx.jobId}] fix:<n>=pending")\` for each numbered issue above.
-3. As you fix each issue, call \`memory(action="add", content="[job:${ctx.jobId}] fix:<n>=done")\`.
-4. After any context compaction, immediately call \`memory(action="search", content="[job:${ctx.jobId}]")\` to recover your full list before continuing.
-5. Before ending, search for \`[job:${ctx.jobId}]\` and confirm every issue shows \`=done\`. If any show \`=pending\`, fix them before finishing.`,
+    `**Progress checkpointing** — use the \`progress\` tool to survive context compaction.
+1. At session start, call \`progress(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with the numbered list of issues to fix.
+2. After fixing each issue, call \`progress(action="done", task="Fix N: <description>")\`.
+3. After any context compaction, call \`progress(action="read")\` to recover your fix list and see what remains before continuing.`,
   );
 
   parts.push(
-    `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done — apply the fix, then mark it done in memory. The session is not complete until all issues show \`"done"\` in memory and static analysis passes.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
+    `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done — apply the fix, then call \`progress(action="done", ...)\`. The session is not complete until every fix shows as done in the progress log and static analysis passes.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
   );
 
   return parts.join('\n\n');
