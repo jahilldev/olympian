@@ -77,7 +77,8 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 **For each file you write**:
 1. Write the file.
 2. Run the project's static analysis command immediately and fix any errors before moving to the next file. Do not accumulate errors across files.
-3. Call \`checkpoint(action="done", task="<path or short description>")\` once the file is written and static analysis is clean.
+
+If your context is ever compacted mid-session and you lose your task list, call \`checkpoint(action="read")\` — the \`checkpoint\` tool writes \`.olympian/progress.md\` and you can use it to record completions at any point during the session.
 
 **Before ending your session**, verify every file required by the plan actually exists on disk with non-trivial content. List the files you created and cross-check them against the plan. If any are missing or empty, create them before finishing. Do not stop after partial implementation — the session is not done until every deliverable from the plan is on disk.
 
@@ -89,19 +90,25 @@ Use \`.olympian/\` as a scratch directory for any temporary files (build logs, n
 ${STATIC_ANALYSIS_INSTRUCTIONS}`;
 
 export function buildImplementPrompt(ctx: ImplementPromptContext): string {
+  const isRetry = ctx.attempt > 1 || !!ctx.guidance;
+
   const parts: string[] = [
     `You are Hermes, an autonomous engineer working in a clone of \`${ctx.repoFullName}\`. Implement the approved plan to fully resolve the issue. This is implementation attempt ${ctx.attempt}.`,
     `You are already inside the repository — your current working directory IS the repo root. Do NOT clone, fetch, or browse GitHub; do NOT use git commands (the orchestrator handles all git operations). Just read and write files directly.`,
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
     `The full issue description and plan are provided above — do NOT fetch them from GitHub or any external URL.`,
-    `**Task checkpointing** — use the \`checkpoint\` tool to survive context compaction.
-1. At session start, derive your task list then call \`checkpoint(action="init", tasks=["..."])\`:
-   - First attempt with no additional guidance: tasks are the files/deliverables listed in the approved plan.
-   - Retry with additional guidance (see below): read the guidance carefully first — tasks are the specific items it calls out, not the full plan file list.
-2. After completing each file or task (write + static analysis clean), call \`checkpoint(action="done", task="...")\`.
-3. After any context compaction, call \`checkpoint(action="read")\` to recover your task list and see what remains before continuing.`,
-    `**Codebase exploration** — call \`checkpoint(action="read")\` first. If it returns "(no progress log — call init first)" you are in a fresh session — before writing any files, run a read-only exploration subagent to locate the files you will need:
+  ];
+
+  if (ctx.guidance) {
+    parts.push(
+      `--- MANDATORY CORRECTIONS (read in full before doing anything else) ---\n${ctx.guidance}\n--- END CORRECTIONS ---\n\nThis is a retry — the workspace already contains code from the previous attempt. Do NOT recreate files that already exist and do NOT re-implement work that is already done. Survey the workspace first, then address ONLY the specific items listed in the corrections above.`,
+    );
+  }
+
+  if (!isRetry) {
+    parts.push(
+      `**Codebase exploration** — before writing any files, run a read-only exploration subagent to locate the files you will need:
 \`\`\`
 delegate_task(
   goal="Locate every file I will need to create or modify for this plan",
@@ -110,11 +117,8 @@ delegate_task(
   max_iterations=10
 )
 \`\`\`
-Use the returned summary to confirm file paths and locations before writing anything. Skip this step if \`checkpoint(action="read")\` returns a task list — you already explored and can continue from where you left off.`,
-  ];
-
-  if (ctx.guidance) {
-    parts.push(`Additional guidance you MUST address in this attempt:\n${ctx.guidance}`);
+Use the returned summary to confirm file paths and locations before writing anything.`,
+    );
   }
 
   if (ctx.attachments) {
@@ -144,14 +148,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `**Task checkpointing** — use the \`checkpoint\` tool to survive context compaction.
-1. Read every feedback item and review issue above in full. Then call \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make.
-2. After fixing each issue (changes applied + static analysis clean), call \`checkpoint(action="done", task="Fix N: <description>")\`.
-3. After any context compaction, call \`checkpoint(action="read")\` to recover your fix list and see what remains before continuing.`,
-  );
-
-  parts.push(
-    `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done — apply the fix, then call \`checkpoint(action="done", ...)\`. The session is not complete until every fix shows as done in the checkpoint log and static analysis passes.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
+    `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done. The session is not complete until every fix is applied and static analysis passes. If your context is compacted mid-session and you lose track of remaining fixes, call \`checkpoint(action="read")\` to recover your state.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
   );
 
   return parts.join('\n\n');
