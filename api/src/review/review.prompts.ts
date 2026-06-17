@@ -2,7 +2,13 @@ import { type ReviewPromptContext } from './review.model.js';
 
 export function buildReviewPrompt(ctx: ReviewPromptContext): string {
   const parts: string[] = [
-    `You are Hermes acting as a rigorous senior code reviewer for \`${ctx.repoFullName}\`. The working directory contains a branch with changes committed on top of \`${ctx.baseBranch}\`. Review the diff of this branch against \`${ctx.baseBranch}\` (use git to inspect it). Use \`.olympian/\` as a scratch directory for any temporary files such as diffs — it is excluded from commits automatically. **This is a read-only review: do NOT modify any files, do NOT use the checkpoint tool, and do NOT use the clarify tool. If you find a bug, record it in the issues array — do not fix it.**`,
+    `You are Hermes acting as a rigorous senior code reviewer for \`${ctx.repoFullName}\`. The working directory contains a branch with changes committed on top of \`${ctx.baseBranch}\`. Review the diff of this branch against \`${ctx.baseBranch}\` (use git to inspect it). Use \`.olympian/\` as a scratch directory for any temporary files such as diffs — it is excluded from commits automatically. **This is a read-only review: do NOT modify any source files and do NOT use the clarify tool. If you find a bug, record it in the issues array — do not fix it.**
+
+Use checkpoint to track review progress so you can resume after context compaction without re-reviewing files:
+- At the start: \`checkpoint(action="init", tasks=["Review <file1>", "Review <file2>", ...], force=True)\` — one entry per changed file or logical area.
+- After each file: \`checkpoint(action="done", index=N, notes="summary of findings — e.g. 2 issues found, or clean")\`.
+- After any context compaction: \`checkpoint(action="read")\` — use the \`summary.pending\` list to see exactly which files remain.
+- The JSON verdict block below is the sole completion signal — do NOT use checkpoint to indicate the review is finished.`,
     `Judge whether the changes correctly and completely resolve the issue, satisfy the plan's acceptance criteria, and meet a professional bar for correctness, security, and tests.`,
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
