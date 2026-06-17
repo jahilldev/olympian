@@ -74,10 +74,10 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 
 **Efficient file reading**: before reading any file in full, use grep/search to locate the specific function, class, or symbol you need. Read only the relevant 20–40 line window around each match. Full file reads are expensive — reserve them for understanding overall file structure only.
 
-**For each file you write**:
+**For each task in your checkpoint list**:
 1. Write the file.
-2. Run the project's static analysis command immediately and fix any errors before moving to the next file. Do not accumulate errors across files.
-3. Call \`checkpoint(action="done", index=N)\` where N is the 1-based position of that task in the list — this persists your progress across any context compaction.
+2. Run static analysis and fix all errors before continuing.
+3. Call \`checkpoint(action="done", index=N)\`. **Do not start the next task until this call succeeds.** This is a hard gate, not optional bookkeeping — it is the only signal that a task is complete.
 
 If context is ever compacted and you lose your task list, call \`checkpoint(action="read")\` to recover it.
 
@@ -145,7 +145,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `Once you have read all feedback above, call \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint. After completing each fix, call \`checkpoint(action="done", index=N)\` where N matches the fix number. If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
+    `Once you have read all feedback above, call \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint. After completing each fix, call \`checkpoint(action="done", index=N)\` where N matches the fix number — **do not move to the next fix until this call succeeds**. If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
   );
 
   parts.push(
