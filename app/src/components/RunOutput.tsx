@@ -765,13 +765,33 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
       )}
 
       {/* Response text */}
-      {output && (
-        <div class="border-t border-indigo-900/30 px-3 py-3 bg-black/15">
-          <pre class="text-[12px] text-zinc-200 font-mono whitespace-pre-wrap leading-relaxed break-words">
-            {output}
-          </pre>
-        </div>
-      )}
+      {output &&
+        (() => {
+          const rawHtml = marked.parse(output) as string;
+          const wrapped = rawHtml
+            .replace(/<table>/g, '<div class="overflow-x-auto w-full"><table class="min-w-full">')
+            .replace(/<\/table>/g, '</table></div>');
+          const html = DOMPurify.sanitize(wrapped);
+          return (
+            <div class="border-t border-indigo-900/30 px-3 py-3 bg-black/15">
+              <div
+                class="prose prose-sm prose-invert max-w-none
+              prose-headings:font-semibold prose-headings:text-zinc-100
+              prose-p:text-zinc-300 prose-p:leading-relaxed
+              prose-a:text-blue-400 hover:prose-a:text-blue-300
+              prose-strong:text-zinc-200
+              prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.8em] prose-code:before:content-none prose-code:after:content-none
+              prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800
+              prose-blockquote:border-zinc-700 prose-blockquote:text-zinc-400
+              prose-hr:border-zinc-800
+              prose-li:text-zinc-300
+              prose-table:text-zinc-300 prose-thead:border-zinc-700 prose-tbody:divide-zinc-800"
+                // eslint-disable-next-line react/no-danger
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            </div>
+          );
+        })()}
     </div>
   );
 }
