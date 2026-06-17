@@ -9,7 +9,7 @@ providers:
 plugins:
   enabled:
     - web_fetch
-    - progress
+    - checkpoint
     - observability/langfuse
 
 browser:

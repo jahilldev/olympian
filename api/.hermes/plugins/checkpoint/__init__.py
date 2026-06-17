@@ -21,11 +21,11 @@ def _path() -> Path:
 
 def register(ctx) -> None:
     schema = {
-        "name": "progress",
+        "name": "checkpoint",
         "description": (
-            "Append-only task progress log for the current job. "
-            "Call init at session start with your full task list. "
-            "Call done after each task completes. "
+            "Append-only task checkpoint log for the current job. "
+            "Call init at session start with your derived task list. "
+            "Call done after each task completes and static analysis is clean. "
             "Call read after context compaction to recover current state. "
             "init always overwrites, so stale files from prior attempts are never reused."
         ),
@@ -86,8 +86,8 @@ def register(ctx) -> None:
         return json.dumps({"error": f"Unknown action '{action}'. Use: init, done, read"})
 
     ctx.register_tool(
-        name="progress",
-        toolset="progress",
+        name="checkpoint",
+        toolset="checkpoint",
         schema=schema,
         handler=handler,
     )

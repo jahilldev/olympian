@@ -1,5 +1,0 @@
-name: progress
-version: 1.0.0
-description: Append-only task progress tracker for the current job workspace
-provides_tools:
-  - progress
