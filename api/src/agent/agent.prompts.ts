@@ -77,9 +77,11 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 **For each task in your checkpoint list**:
 1. Write the file.
 2. Run static analysis and fix all errors before continuing.
-3. Call \`checkpoint(action="done", index=N)\`. **Do not start the next task until this call succeeds.** This is a hard gate, not optional bookkeeping — it is the only signal that a task is complete.
+3. Call \`checkpoint(action="done", index=N, notes="brief description of what was done or any caveats")\`. **Do not start the next task until this call succeeds.** This is a hard gate, not optional bookkeeping — it is the only signal that a task is complete.
 
-If context is ever compacted and you lose your task list, call \`checkpoint(action="read")\` to recover it.
+If a task becomes irrelevant or was already handled, call \`checkpoint(action="skip", index=N, notes="reason")\` rather than leaving it as \`[ ]\`.
+
+If context is ever compacted and you lose your task list, call \`checkpoint(action="read")\` — the response includes both the file content and a structured \`summary\` with \`pending\`, \`completed\`, and \`skipped\` index lists so you can see exactly where you are.
 
 **Before ending your session**, verify every file required by the plan actually exists on disk with non-trivial content. List the files you created and cross-check them against the plan. If any are missing or empty, create them before finishing. Do not stop after partial implementation — the session is not done until every deliverable from the plan is on disk.
 
@@ -115,7 +117,7 @@ delegate_task(
   max_iterations=10
 )
 \`\`\`
-Use the returned summary to confirm file paths and current state before writing anything. Once you understand exactly what needs to be done, call \`checkpoint(action="init", tasks=[...])\` with your definitive task list — this wipes any checkpoint from a prior attempt and starts fresh.`,
+Use the returned summary to confirm file paths and current state before writing anything. Once you understand exactly what needs to be done, call \`checkpoint(action="init", tasks=[...], force=True)\` with your definitive task list. \`force=True\` is required here because a prior attempt may have left completed tasks in the file.`,
   );
 
   if (ctx.attachments) {
@@ -157,15 +159,17 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `**Your first tool call must be** \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint.
+    `**Your first tool call must be** \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...], force=True)\` with a numbered entry for every specific fix you must make. \`force=True\` is required — a prior revision pass may have left completed tasks in the file.
 
 **For each fix, follow these steps in order — skipping any step means the fix is not done:**
 1. Edit the file using a file-write tool.
 2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
 3. Run static analysis and fix any errors.
-4. Call \`checkpoint(action="done", index=N)\` — **do not move to the next fix until this call succeeds**.
+4. Call \`checkpoint(action="done", index=N, notes="what was changed and why")\` — **do not move to the next fix until this call succeeds**.
 
-If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
+If a fix is superseded or no longer applicable, call \`checkpoint(action="skip", index=N, notes="reason")\` — never leave a fix as \`[ ]\`.
+
+If context is compacted, call \`checkpoint(action="read")\` — the response includes a structured \`summary\` with \`pending\`, \`completed\`, and \`skipped\` index lists.`,
   );
 
   parts.push(
