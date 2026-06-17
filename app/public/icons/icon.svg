@@ -1,0 +1,61 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Olympian PWA Icon</title>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="28%" r="75%">
+      <stop offset="0%" stop-color="#32205F"/>
+      <stop offset="58%" stop-color="#121428"/>
+      <stop offset="100%" stop-color="#070912"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="283" y1="229" x2="740" y2="793" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#CFA8FF"/>
+      <stop offset="23%" stop-color="#8E49FF"/>
+      <stop offset="58%" stop-color="#5B4BF2"/>
+      <stop offset="100%" stop-color="#3D2DCC"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="310" y1="210" x2="700" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFF27A"/>
+      <stop offset="45%" stop-color="#FFD229"/>
+      <stop offset="100%" stop-color="#F4A900"/>
+    </linearGradient>
+    <filter id="shadow" x="110" y="130" width="804" height="804" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="34" stdDeviation="34" flood-color="#000000" flood-opacity="0.40"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#6E54FF" flood-opacity="0.22"/>
+    </filter>
+    <filter id="leafShadow" x="230" y="150" width="570" height="300" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#12081F" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <rect x="42" y="42" width="940" height="940" rx="190" stroke="#6E54FF" stroke-opacity="0.25" stroke-width="2"/>
+
+  <g filter="url(#shadow)">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M512 811C677.133 811 811 677.133 811 512C811 346.867 677.133 213 512 213C346.867 213 213 346.867 213 512C213 677.133 346.867 811 512 811ZM512 674C601.47 674 674 601.47 674 512C674 422.53 601.47 350 512 350C422.53 350 350 422.53 350 512C350 601.47 422.53 674 512 674Z" fill="url(#ring)"/>
+    <path d="M260 499C265 394 326 304 415 260C365 316 338 388 338 512C338 628 395 674 512 674C422 674 350 601 350 512C350 423 423 350 512 350C611 350 690 438 672 538C682 388 626 302 568 260C679 285 764 380 764 512C764 613 714 701 637 755C742 710 811 615 811 512C811 347 677 213 512 213C356 213 229 332 214 484C213 493 213 503 213 512C213 604 255 686 322 741C277 680 258 599 260 499Z" fill="white" opacity="0.10"/>
+  </g>
+
+  <g filter="url(#leafShadow)" fill="url(#gold)">
+    <!-- left laurel -->
+    <path d="M381 289C351 287 324 298 302 322C330 331 361 319 381 289Z"/>
+    <path d="M342 330C313 334 289 350 273 379C303 381 331 363 342 330Z"/>
+    <path d="M312 377C285 386 266 406 256 438C286 434 309 413 312 377Z"/>
+    <path d="M292 429C268 444 253 468 251 501C278 489 297 462 292 429Z"/>
+    <path d="M414 276C394 254 367 243 332 248C348 277 379 291 414 276Z"/>
+    <path d="M369 311C348 291 320 284 287 294C307 320 339 330 369 311Z"/>
+    <path d="M331 355C307 339 278 337 248 353C272 375 304 379 331 355Z"/>
+    <path d="M302 406C276 395 249 399 222 420C250 437 282 436 302 406Z"/>
+
+    <!-- right laurel -->
+    <path d="M643 289C673 287 700 298 722 322C694 331 663 319 643 289Z"/>
+    <path d="M682 330C711 334 735 350 751 379C721 381 693 363 682 330Z"/>
+    <path d="M712 377C739 386 758 406 768 438C738 434 715 413 712 377Z"/>
+    <path d="M732 429C756 444 771 468 773 501C746 489 727 462 732 429Z"/>
+    <path d="M610 276C630 254 657 243 692 248C676 277 645 291 610 276Z"/>
+    <path d="M655 311C676 291 704 284 737 294C717 320 685 330 655 311Z"/>
+    <path d="M693 355C717 339 746 337 776 353C752 375 720 379 693 355Z"/>
+    <path d="M722 406C748 395 775 399 802 420C774 437 742 436 722 406Z"/>
+  </g>
+
+  <path d="M320 353C377 294 451 260 512 260C573 260 647 294 704 353" stroke="#FFD229" stroke-width="16" stroke-linecap="round" opacity="0.55"/>
+  <path d="M311 622C352 716 429 761 512 761C595 761 672 716 713 622" stroke="#25177A" stroke-width="10" stroke-linecap="round" opacity="0.28"/>
+</svg>
