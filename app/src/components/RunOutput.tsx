@@ -1130,7 +1130,7 @@ function StreamingOutput({
               obsType === 'generation' && prevType != null && prevType !== 'generation';
             return (
               <div key={i}>
-                {showDivider && <hr class="border-zinc-800/60 my-1" />}
+                {showDivider && <hr class="border-zinc-800 my-4" />}
                 <EventCard event={ev} />
               </div>
             );
