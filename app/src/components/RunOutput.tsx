@@ -881,7 +881,7 @@ function StaticOutput({
     <div class="flex flex-col h-full overflow-hidden">
       <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
         <button
-          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
           ← Back
@@ -1056,7 +1056,7 @@ function StreamingOutput({
     <div class="flex flex-col h-full overflow-hidden">
       <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
         <button
-          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
           ← Back
@@ -1187,7 +1187,7 @@ export default function RunOutput() {
       <div class="flex flex-col h-full overflow-hidden">
         <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
           <button
-            class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
             onClick={() => navigate(`/jobs/${jobId}`)}
           >
             ← Back

@@ -37,7 +37,7 @@ export default function StateBadge({ state }: Props) {
   const label = STATE_LABELS[state] ?? state.toLowerCase().replace(/_/g, ' ');
   return (
     <span
-      class={`inline-block px-2 py-0.5 rounded-md text-xs font-medium font-mono whitespace-nowrap ${cls}`}
+      class={`inline-block px-2 py-0.5 rounded-md text-xs font-medium font-mono whitespace-nowrap uppercase tracking-wide ${cls}`}
     >
       {label}
     </span>
