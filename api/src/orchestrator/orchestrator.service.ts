@@ -771,20 +771,8 @@ export class OrchestratorService {
       ? (JSON.parse(reviewPasses[0].issues) as ReviewIssue[])
       : [];
 
-    // Carry forward any issues from the immediately preceding pass that the
-    // reviewer omitted from the latest JSON (e.g. partial fixes reported only
-    // in the summary but not re-listed as outstanding).
-    if (reviewPasses.length > 1) {
-      const priorIssueList = JSON.parse(reviewPasses[1].issues) as ReviewIssue[];
-      const latestTitles = new Set(latestIssues.map((i) => i.title.toLowerCase()));
-      for (const issue of priorIssueList) {
-        if (!latestTitles.has(issue.title.toLowerCase())) {
-          latestIssues.push(issue);
-        }
-      }
-    }
-
-    const issuesText = latestIssues.length > 0 ? formatIssues(latestIssues) : undefined;
+    const priorIssues: ReviewIssue[] =
+      reviewPasses.length > 1 ? (JSON.parse(reviewPasses[1].issues) as ReviewIssue[]) : [];
 
     const humanFeedback =
       prFeedback.length > 0
@@ -805,7 +793,13 @@ export class OrchestratorService {
       jobId,
       phase: 'REVISE',
       cwd: ws.dir,
-      prompt: buildRevisePrompt({ jobId, plan, issuesText, humanFeedback }),
+      prompt: buildRevisePrompt({
+        jobId,
+        plan,
+        latestIssuesText: latestIssues.length > 0 ? formatIssues(latestIssues) : undefined,
+        priorIssuesText: priorIssues.length > 0 ? formatIssues(priorIssues) : undefined,
+        humanFeedback,
+      }),
     });
 
     if (rev.status === 'SUCCEEDED') {

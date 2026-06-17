@@ -140,8 +140,20 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     );
   }
 
-  if (ctx.issuesText) {
-    parts.push(`--- REVIEW ISSUES TO FIX ---\n${ctx.issuesText}\n--- END ISSUES ---`);
+  const issueSections: string[] = [];
+
+  if (ctx.latestIssuesText) {
+    issueSections.push(`Issues from the latest review:\n${ctx.latestIssuesText}`);
+  }
+
+  if (ctx.priorIssuesText) {
+    issueSections.push(
+      `Issues from the prior review pass (the reviewer may have overlooked some when updating their list — verify whether each is still present before skipping it):\n${ctx.priorIssuesText}`,
+    );
+  }
+
+  if (issueSections.length > 0) {
+    parts.push(`--- REVIEW ISSUES TO FIX ---\n${issueSections.join('\n\n')}\n--- END ISSUES ---`);
   }
 
   parts.push(
