@@ -781,6 +781,7 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
   const [outputOpen, setOutputOpen] = useState(false);
   const body = event.body;
   const name = String(body['langfuse.observation.name'] ?? body.name ?? 'unknown');
+  const displayName = name.replace(/^Tool:\s*/i, '');
   const rawInput = body['langfuse.observation.input'] as string | undefined;
   const rawOutput = body['langfuse.observation.output'] as string | undefined;
 
@@ -790,7 +791,7 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
       <div class="flex items-center gap-2 px-3 py-2.5 bg-amber-950/25 text-amber-200">
         <IconWrench />
         <span class="font-semibold font-mono tracking-wide">TOOL</span>
-        <span class="text-zinc-300 font-mono font-medium">{name}</span>
+        <span class="text-zinc-300 font-mono font-medium">{displayName}</span>
         <span class="ml-auto shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
           {fmtTime(event.timestamp)}
         </span>
