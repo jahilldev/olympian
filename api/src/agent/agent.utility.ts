@@ -85,6 +85,7 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
         [join(p.hermesHome, 'MEMORY.md'), `${HERMES_CONTAINER_HOME}/MEMORY.md`],
         [join(p.hermesHome, 'USER.md'), `${HERMES_CONTAINER_HOME}/USER.md`],
         [join(p.hermesHome, 'skills'), `${HERMES_CONTAINER_HOME}/skills`],
+        [join(p.hermesHome, 'plugins'), `${HERMES_CONTAINER_HOME}/plugins`],
       ];
 
       for (const [host, container] of mounts) {
