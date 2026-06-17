@@ -72,7 +72,7 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 
 **After any context compaction**: the compaction summary describes only the sub-task that was in progress at the time — it does NOT represent the complete scope. The APPROVED PLAN above is always present in your context and is the single source of truth for what must be delivered. Always re-read the plan's file list and acceptance criteria after a compaction and continue working until ALL of them are satisfied.
 
-**Efficient file reading**: before reading any file in full, use grep/search to locate the specific function, class, or symbol you need. Read only the relevant 20–40 line window around each match. Full file reads are expensive — reserve them for understanding overall file structure only.
+**Efficient file reading**: before reading any file in full, use \`search_files\` to locate the specific function, class, or symbol you need. Read only the relevant 20–40 line window around each match. Full file reads are expensive — reserve them for understanding overall file structure only.
 
 **For each task in your checkpoint list**:
 1. Write the file.
@@ -161,7 +161,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
 
 **For each fix, follow these steps in order — skipping any step means the fix is not done:**
 1. Edit the file using a file-write tool.
-2. Read back the changed lines with grep or read_file to confirm the edit is on disk. If the file content does not reflect your change, write it again.
+2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
 3. Run static analysis and fix any errors.
 4. Call \`checkpoint(action="done", index=N)\` — **do not move to the next fix until this call succeeds**.
 
