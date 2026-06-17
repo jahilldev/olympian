@@ -1,9 +1,9 @@
-"""progress plugin — append-only task progress tracker for the current job workspace.
+"""checkpoint plugin — in-place task checklist for the current job workspace.
 
 Writes to .olympian/progress.md in the process working directory (the job's
 worktree). init() overwrites on each fresh invocation so stale files from a
-previous attempt never cause a false resume. done() appends, so the log
-survives context compaction. read() lets the agent recover state after compaction.
+previous attempt never cause a false resume. done(index=N) marks the Nth task
+[x] by position so read() always shows a clear picture of pending vs completed.
 """
 
 import json
@@ -23,10 +23,10 @@ def register(ctx) -> None:
     schema = {
         "name": "checkpoint",
         "description": (
-            "Append-only task checkpoint log for the current job. "
+            "In-place task checklist for the current job. "
             "Call init at session start with your derived task list. "
-            "Call done after each task completes and static analysis is clean. "
-            "Call read after context compaction to recover current state. "
+            "Call done(index=N) after each task completes — it marks the Nth task [x] by position. "
+            "Call read after context compaction to see pending ([ ]) vs done ([x]) items. "
             "init always overwrites, so stale files from prior attempts are never reused."
         ),
         "parameters": {
@@ -36,9 +36,9 @@ def register(ctx) -> None:
                     "type": "string",
                     "enum": ["init", "done", "read"],
                     "description": (
-                        "init: write the task list (overwrites any prior file). "
-                        "done: append a completion marker for a finished task. "
-                        "read: return the current progress log."
+                        "init: write the task checklist (overwrites any prior file). "
+                        "done: mark task at position index as [x]. "
+                        "read: return the current checklist."
                     ),
                 },
                 "tasks": {
@@ -46,9 +46,9 @@ def register(ctx) -> None:
                     "items": {"type": "string"},
                     "description": "Full list of tasks to track. Required for action=init.",
                 },
-                "task": {
-                    "type": "string",
-                    "description": "The task that was just completed. Required for action=done.",
+                "index": {
+                    "type": "integer",
+                    "description": "1-based position of the task to mark done. Required for action=done.",
                 },
             },
             "required": ["action"],
@@ -62,20 +62,43 @@ def register(ctx) -> None:
             tasks = args.get("tasks") or []
             if not tasks:
                 return json.dumps({"error": "tasks list is required for action=init"})
-            lines = ["# Progress\n\n## Todo\n\n"]
+            lines = ["# Progress\n\n"]
             for task in tasks:
-                lines.append(f"- {task}\n")
-            lines.append("\n## Done\n\n")
+                lines.append(f"- [ ] {task}\n")
             _path().write_text("".join(lines), encoding="utf-8")
             return json.dumps({"ok": True, "tasks": len(tasks)})
 
         if action == "done":
-            task = args.get("task", "").strip()
-            if not task:
-                return json.dumps({"error": "task is required for action=done"})
-            with _path().open("a", encoding="utf-8") as f:
-                f.write(f"- \u2713 {task}\n")
-            return json.dumps({"ok": True})
+            raw = args.get("index")
+            if raw is None:
+                return json.dumps({"error": "index is required for action=done (1-based)"})
+            try:
+                idx = int(raw)
+                if idx < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return json.dumps({"error": "index must be a positive integer"})
+            p = _path()
+            if not p.exists():
+                return json.dumps({"error": "no progress log — call init first"})
+            content = p.read_text(encoding="utf-8")
+            lines = content.splitlines(keepends=True)
+            task_num = 0
+            new_lines = []
+            matched = False
+            for line in lines:
+                if "[ ]" in line or "[x]" in line:
+                    task_num += 1
+                    if task_num == idx and "[ ]" in line:
+                        line = line.replace("[ ]", "[x]", 1)
+                        matched = True
+                new_lines.append(line)
+            if not matched:
+                if task_num < idx:
+                    return json.dumps({"error": f"index {idx} out of range (only {task_num} tasks)"})
+                return json.dumps({"ok": True, "note": f"task {idx} was already done"})
+            p.write_text("".join(new_lines), encoding="utf-8")
+            return json.dumps({"ok": True, "index": idx})
 
         if action == "read":
             p = _path()

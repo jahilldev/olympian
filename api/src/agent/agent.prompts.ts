@@ -77,7 +77,7 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 **For each file you write**:
 1. Write the file.
 2. Run the project's static analysis command immediately and fix any errors before moving to the next file. Do not accumulate errors across files.
-3. Call \`checkpoint(action="done", task="<path or short description>")\` to record completion — this persists your progress across any context compaction.
+3. Call \`checkpoint(action="done", index=N)\` where N is the 1-based position of that task in the list — this persists your progress across any context compaction.
 
 If context is ever compacted and you lose your task list, call \`checkpoint(action="read")\` to recover it.
 
@@ -145,7 +145,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `Once you have read all feedback above, call \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint. After completing each fix, call \`checkpoint(action="done", task="Fix N: <description>")\`. If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
+    `Once you have read all feedback above, call \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint. After completing each fix, call \`checkpoint(action="done", index=N)\` where N matches the fix number. If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
   );
 
   parts.push(
