@@ -36,7 +36,6 @@ import {
   missingPlanSections,
   parseCommand,
   reviseCommitMessage,
-  ensureCamofoxRunning,
 } from './orchestrator.utility.js';
 
 /**
@@ -881,10 +880,6 @@ export class OrchestratorService {
     });
 
     const hasBrowser = !!process.env.CAMOFOX_URL;
-
-    if (hasBrowser) {
-      await ensureCamofoxRunning(process.env.CAMOFOX_URL!);
-    }
 
     const changedFiles = await this.workspace.branchChangedFiles(ws.dir, base);
 

@@ -2,26 +2,6 @@ import { type Command } from './orchestrator.model.js';
 import { PLAN_REQUIRED_SECTIONS } from './orchestrator.model.js';
 import { type DownloadedAttachment } from '../workspace/workspace.model.js';
 
-/**
- * Checks whether the Camofox browser process is running and starts it if not.
- * Swallows all errors so a Camofox outage never blocks a test run — the agent
- * will surface a sensible error message on its own if the browser is unreachable.
- */
-export async function ensureCamofoxRunning(camofoxUrl: string): Promise<void> {
-  try {
-    const signal = AbortSignal.timeout(5_000);
-    const status = (await fetch(`${camofoxUrl}/`, { signal }).then((r) => r.json())) as {
-      running?: boolean;
-    };
-
-    if (!status.running) {
-      await fetch(`${camofoxUrl}/start`, { method: 'POST', signal: AbortSignal.timeout(5_000) });
-    }
-  } catch {
-    // Camofox is down, unreachable, or timed out — continue without it.
-  }
-}
-
 const APPROVE_VERBS = new Set(['approve', 'approved', 'lgtm', 'ship', 'go']);
 const CANCEL_VERBS = new Set(['cancel', 'stop', 'abort']);
 const REVISE_VERBS = new Set(['revise', 'iterate', 'change', 'update']);

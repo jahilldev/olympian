@@ -32,7 +32,11 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
       `A Camofox browser is available for a smoke-test of the running application. **This is secondary to the code review — do not let it block your verdict.**
 
 Steps (do them exactly once in this order, then move on):
-1. Start the dev server in the background: \`npm run dev > /tmp/dev.log 2>&1 &\` (or whichever start command the project uses).
+1. Start the dev server bound to all interfaces so Camofox can reach it through Docker's port proxy. Determine the framework from package.json first, then use the appropriate command:
+   - Vite: \`npm run dev -- --host 0.0.0.0 > /tmp/dev.log 2>&1 &\`
+   - Next.js: \`npm run dev > /tmp/dev.log 2>&1 &\` (binds all interfaces by default)
+   - Create React App: \`HOST=0.0.0.0 npm start > /tmp/dev.log 2>&1 &\`
+   - Other: check for a \`--host\` flag or \`HOST\` env var, then fall back to \`npm run dev > /tmp/dev.log 2>&1 &\`
 2. Wait a fixed 10 seconds: \`sleep 10\`.
 3. Check once with curl: \`curl -sf http://localhost:<port> -o /dev/null && echo OK || echo FAILED\`. Do NOT retry — if it prints FAILED, note it in your assessment and continue.
 4. If the server responded, use Camofox to open \`http://localhost:<port>\` and click through the key user flows from the acceptance criteria. Spend no more than a few interactions per flow.
