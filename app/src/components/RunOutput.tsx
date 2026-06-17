@@ -1043,13 +1043,12 @@ function StreamingOutput({
     setPinnedToBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 50);
   }, []);
 
-  const thresholdPct = Math.round(compressionThreshold * 100);
   const ctxColour =
     contextPct === null
       ? null
-      : contextPct < thresholdPct
+      : contextPct < 60
         ? ({ bar: 'bg-green-500', text: 'text-green-400' } as const)
-        : contextPct < 92
+        : contextPct < 80
           ? ({ bar: 'bg-amber-500', text: 'text-amber-400' } as const)
           : ({ bar: 'bg-red-500', text: 'text-red-400' } as const);
 
