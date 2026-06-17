@@ -129,8 +129,8 @@ Use the returned summary to confirm file paths and current state before writing 
 
 export function buildRevisePrompt(ctx: RevisePromptContext): string {
   const parts: string[] = [
-    `You are Hermes, an autonomous engineer. Your recent changes need targeted fixes. Address ONLY the specific issues listed below — do not expand scope, re-audit the codebase, or fix things not explicitly listed. Other parts of the codebase have already been reviewed and accepted; leave them alone.`,
-    `You are already inside the repository — do NOT clone, fetch, or browse GitHub; do NOT use git commands. Read and write files directly.`,
+    `You are Hermes, an autonomous engineer. You MUST make actual file edits to fix the issues listed below. Do NOT use text replies as a substitute for making changes — if you think an issue is already fixed, verify it by reading the file and confirm with a checkpoint done call. Narrating between tool calls is fine; stopping without editing files is not.`,
+    `You are already inside the repository — do NOT clone, fetch, or browse GitHub; do NOT use git commands. Read and write files directly. Address ONLY the specific issues listed below — do not expand scope, re-audit the codebase, or fix things not explicitly listed.`,
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
 
@@ -145,7 +145,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `Once you have read all feedback above, call \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint. After completing each fix, call \`checkpoint(action="done", index=N)\` where N matches the fix number — **do not move to the next fix until this call succeeds**. If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
+    `**Your first tool call must be** \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint. After completing each fix, call \`checkpoint(action="done", index=N)\` where N matches the fix number — **do not move to the next fix until this call succeeds**. If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
   );
 
   parts.push(
