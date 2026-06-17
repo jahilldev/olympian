@@ -1,4 +1,4 @@
-# <img src="app/public/icons/icon.svg" alt="" width="60" valign="middle" /> Olympian
+# <img src="app/public/icons/icon.svg" alt="" width="50" valign="middle" /> Olympian
 
 An **AI dark factory**: label a GitHub issue and the service drives the
 [Hermes Agent](https://github.com/nousresearch/hermes-agent) CLI through the entire
