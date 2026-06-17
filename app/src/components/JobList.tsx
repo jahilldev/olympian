@@ -60,7 +60,15 @@ function MobileJobCard({ job }: { job: JobSummaryDto }) {
           <span class="ml-auto text-zinc-600">{relativeTime(job.updatedAt)}</span>
         </div>
       </div>
-      <svg class="w-4 h-4 text-zinc-700 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg
+        class="w-4 h-4 text-zinc-700 shrink-0"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
         <path d="M6 4l4 4-4 4" />
       </svg>
     </div>
@@ -213,7 +221,9 @@ export default function JobList() {
         <span class="text-base font-mono font-semibold tracking-tight text-zinc-100">Olympian</span>
         {jobs !== null && (
           <span class="flex items-center gap-1.5 text-xs font-mono text-zinc-500">
-            {activeCount > 0 && <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+            {activeCount > 0 && (
+              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            )}
             {activeCount > 0 ? `${activeCount} active` : 'idle'}
           </span>
         )}

@@ -186,26 +186,28 @@ export default function JobDetail() {
           <div class="space-y-2">
             <h1 class="text-lg font-semibold text-zinc-100 leading-snug">{job.issueTitle}</h1>
 
-          {/* Active run banner */}
-          {activeRun && (
-            <div class="rounded-lg border border-green-900 bg-green-950/30 px-3 py-2.5 flex items-center gap-2.5">
-              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
-              <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
-              {activeRun.model && (
-                <span class="text-xs text-green-900 truncate hidden sm:block">{activeRun.model}</span>
-              )}
-              <button
-                class="ml-auto shrink-0 text-xs font-medium text-green-300 hover:text-green-100 transition-colors"
-                onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
-              >
-                Watch live →
-              </button>
-            </div>
-          )}
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+            {/* Active run banner */}
+            {activeRun && (
+              <div class="rounded-lg border border-green-900 bg-green-950/30 px-3 py-2.5 flex items-center gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+                <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
+                {activeRun.model && (
+                  <span class="text-xs text-green-900 truncate hidden sm:block">
+                    {activeRun.model}
+                  </span>
+                )}
+                <button
+                  class="ml-auto shrink-0 text-xs font-medium text-green-300 hover:text-green-100 transition-colors"
+                  onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
+                >
+                  Watch live →
+                </button>
+              </div>
+            )}
+            <div class="flex items-center gap-x-3 text-xs text-zinc-500 min-w-0">
               <a
                 href={`https://github.com/${job.repoFullName}/issues/${job.issueNumber}`}
-                class="hover:text-zinc-300 transition-colors"
+                class="hover:text-zinc-300 transition-colors truncate min-w-0"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -214,7 +216,7 @@ export default function JobDetail() {
               {job.prNumber && (
                 <a
                   href={job.prUrl ?? '#'}
-                  class={`hover:underline ${job.prIsDraft ? 'text-zinc-500' : 'text-sky-400'}`}
+                  class={`shrink-0 hover:underline ${job.prIsDraft ? 'text-zinc-500' : 'text-sky-400'}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -224,19 +226,19 @@ export default function JobDetail() {
               )}
               {job.confidence !== null && (
                 <span
-                  class={
+                  class={`shrink-0 ${
                     job.confidence >= 85
                       ? 'text-green-400'
                       : job.confidence >= 70
                         ? 'text-amber-400'
                         : 'text-red-400'
-                  }
+                  }`}
                 >
-                  {job.confidence}% confidence
+                  {job.confidence}%
                 </span>
               )}
-              {job.reviewCycle > 0 && <span>cycle {job.reviewCycle}</span>}
-              <span class="sm:ml-auto">{relativeTime(job.updatedAt)}</span>
+              {job.reviewCycle > 0 && <span class="shrink-0">cycle {job.reviewCycle}</span>}
+              <span class="ml-auto shrink-0 whitespace-nowrap">{relativeTime(job.updatedAt)}</span>
             </div>
           </div>
 
