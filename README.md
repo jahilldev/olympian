@@ -54,8 +54,8 @@ Module layout (one service per module): `config`, `prisma`, `metrics`, `health`,
 
 This is an npm-workspaces monorepo, driven from the root:
 
-- **`api/`** — the orchestration service (API and agent orchestration).
-- **`app/`** — a management/overview UI (PWA application for monitoring).
+- **`api/`** — The orchestration service (API and agent orchestration).
+- **`app/`** — A management/overview UI for tasks (PWA application for monitoring).
 
 Root scripts fan out to the workspaces: `npm run build`, `npm run lint`,
 `npm run typecheck`, `npm test`, `npm run test:e2e`, `npm run dev`, plus the
