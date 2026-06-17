@@ -751,10 +751,11 @@ export class OrchestratorService {
       select: { createdAt: true },
     });
 
-    const [lastReviewPass, prFeedback] = await Promise.all([
-      this.prisma.reviewPass.findFirst({
+    const [reviewPasses, prFeedback] = await Promise.all([
+      this.prisma.reviewPass.findMany({
         where: { jobId, cycle: job.reviewCycle },
         orderBy: { passNumber: 'desc' },
+        take: 2,
         select: { issues: true },
       }),
       this.prisma.prRevisionFeedback.findMany({
@@ -766,8 +767,24 @@ export class OrchestratorService {
       }),
     ]);
 
-    const issues = lastReviewPass ? (JSON.parse(lastReviewPass.issues) as ReviewIssue[]) : [];
-    const issuesText = issues.length > 0 ? formatIssues(issues) : undefined;
+    const latestIssues: ReviewIssue[] = reviewPasses[0]
+      ? (JSON.parse(reviewPasses[0].issues) as ReviewIssue[])
+      : [];
+
+    // Carry forward any issues from the immediately preceding pass that the
+    // reviewer omitted from the latest JSON (e.g. partial fixes reported only
+    // in the summary but not re-listed as outstanding).
+    if (reviewPasses.length > 1) {
+      const priorIssueList = JSON.parse(reviewPasses[1].issues) as ReviewIssue[];
+      const latestTitles = new Set(latestIssues.map((i) => i.title.toLowerCase()));
+      for (const issue of priorIssueList) {
+        if (!latestTitles.has(issue.title.toLowerCase())) {
+          latestIssues.push(issue);
+        }
+      }
+    }
+
+    const issuesText = latestIssues.length > 0 ? formatIssues(latestIssues) : undefined;
 
     const humanFeedback =
       prFeedback.length > 0

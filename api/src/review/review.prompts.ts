@@ -23,7 +23,7 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
       .join('\n');
 
     parts.push(
-      `--- ISSUES FROM PRIOR REVIEW PASS (verify each is now resolved) ---\n${formatted}\n--- END PRIOR ISSUES ---\n\nFor each prior issue, explicitly state in your summary whether it is resolved. If any remain, include them in your "issues" array. Then perform a full independent review of all changes to catch any additional problems not listed above.`,
+      `--- ISSUES FROM PRIOR REVIEW PASS (verify each is now resolved) ---\n${formatted}\n--- END PRIOR ISSUES ---\n\nFor each prior issue, explicitly state in your summary whether it is resolved. **If an issue is not fully resolved — including partial fixes — it MUST appear in your JSON "issues" array.** Mentioning it only in the summary is not sufficient; the issues array is the only signal the next revision receives. Then perform a full independent review of all changes to catch any additional problems not listed above.`,
     );
   }
 
