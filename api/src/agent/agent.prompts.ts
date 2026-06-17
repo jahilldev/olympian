@@ -145,7 +145,15 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `**Your first tool call must be** \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint. After completing each fix, call \`checkpoint(action="done", index=N)\` where N matches the fix number — **do not move to the next fix until this call succeeds**. If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
+    `**Your first tool call must be** \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make. This wipes any prior checkpoint.
+
+**For each fix, follow these steps in order — skipping any step means the fix is not done:**
+1. Edit the file using a file-write tool.
+2. Read back the changed lines with grep or read_file to confirm the edit is on disk. If the file content does not reflect your change, write it again.
+3. Run static analysis and fix any errors.
+4. Call \`checkpoint(action="done", index=N)\` — **do not move to the next fix until this call succeeds**.
+
+If context is compacted, call \`checkpoint(action="read")\` to recover your fix list.`,
   );
 
   parts.push(
