@@ -14,6 +14,19 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
     );
   }
 
+  if (ctx.priorIssues && ctx.priorIssues.length > 0) {
+    const formatted = ctx.priorIssues
+      .map((issue, i) => {
+        const loc = issue.file ? ` (${issue.file})` : '';
+        return `${i + 1}. [${issue.severity}] ${issue.title}${loc}\n   ${issue.detail}`;
+      })
+      .join('\n');
+
+    parts.push(
+      `--- ISSUES FROM PRIOR REVIEW PASS (verify each is now resolved) ---\n${formatted}\n--- END PRIOR ISSUES ---\n\nFor each prior issue, explicitly state in your summary whether it is resolved. If any remain, include them in your "issues" array. Then perform a full independent review of all changes to catch any additional problems not listed above.`,
+    );
+  }
+
   if (ctx.hasBrowser) {
     parts.push(
       `A Camofox browser is available for a smoke-test of the running application. **This is secondary to the code review — do not let it block your verdict.**

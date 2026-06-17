@@ -830,6 +830,21 @@ export class OrchestratorService {
     ]);
     const pass = priorPasses + 1;
 
+    // Fetch issues from the immediately preceding pass (if any) so the reviewer
+    // can explicitly verify each was resolved in addition to doing a full fresh review.
+    const priorPassRecord =
+      pass > 1
+        ? await this.prisma.reviewPass.findFirst({
+            where: { jobId, cycle },
+            orderBy: { passNumber: 'desc' },
+            select: { issues: true },
+          })
+        : null;
+
+    const priorIssues = priorPassRecord
+      ? (JSON.parse(priorPassRecord.issues) as ReviewIssue[])
+      : undefined;
+
     // Only include PR feedback submitted after the last IMPLEMENT run — older
     // feedback was already incorporated into the code at that point.
     const lastImplementRunForReview = await this.prisma.agentRun.findFirst({
@@ -882,6 +897,7 @@ export class OrchestratorService {
       changedFiles,
       threshold: this.review.threshold,
       humanFeedback,
+      priorIssues,
       hasBrowser,
       parseRetry: priorUnparseable > 0,
     });

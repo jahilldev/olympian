@@ -35,6 +35,8 @@ export interface ReviewPromptContext {
   changedFiles: string[];
   threshold: number;
   humanFeedback?: string;
+  /** Issues raised by the immediately preceding review pass — verify each is resolved. */
+  priorIssues?: ReviewIssue[];
   /** When true, a Camofox browser is reachable — include browser verification instructions. */
   hasBrowser?: boolean;
   /** Set when retrying after an unparseable response to prompt for JSON-only output. */
