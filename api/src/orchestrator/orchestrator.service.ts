@@ -803,6 +803,12 @@ export class OrchestratorService {
     });
 
     if (rev.status === 'SUCCEEDED') {
+      if (rev.stdout.trim().length < 200) {
+        throw new Error(
+          `revise agent exited without meaningful output (${rev.stdout.trim().length} chars) — likely a tool-call failure or out-of-band message`,
+        );
+      }
+
       await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
     } else {
       throw new Error(`revise agent ${rev.status}; ${rev.stderr.slice(0, 300)}`);
