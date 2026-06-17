@@ -21,3 +21,6 @@ compression:
 
 delegation:
   max_concurrent_children: 2
+
+agent:
+  max_turns: 300 # default is 90; complex IMPLEMENT/REVISE jobs need far more
