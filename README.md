@@ -199,6 +199,20 @@ Issue-comment commands (maintainers only — write access required):
 - `/hermes cancel` — stop the job
 - `/hermes status` — report current state
 
+## Frontend
+
+A management dashboard is served at `http://localhost:3030` by the same NestJS process — no second server or Docker change required.
+
+**Job Planner** - Coming soon
+
+**Job list** — all jobs in reverse-chronological order, each showing state, confidence score, PR link, and the active task.
+
+**Job detail** — timeline of every state transition, all plan revisions (with diff), every review pass (confidence gauge, issues list), and the full list of agent runs.
+
+**Live stream** — while an agent is running, its LLM calls and tool invocations appear in real time. The Hermes agent ships a Langfuse/OTLP plugin that fires trace events during execution; the service receives them at `POST /langfuse/api/public/otel/v1/traces` and fans them out to the browser over SSE at `GET /stream/runs/:runId`.
+
+The Astro + Preact frontend is built to `app/dist/` and served via NestJS `ServeStaticModule`. All routes not matching an API prefix fall back to `index.html` for client-side routing.
+
 ## Sandboxing
 
 - `SANDBOX_MODE=default` (default) — each agent invocation runs inside `DOCKER_AGENT_IMAGE`.
