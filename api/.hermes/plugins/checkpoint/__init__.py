@@ -23,11 +23,16 @@ def register(ctx) -> None:
     schema = {
         "name": "checkpoint",
         "description": (
-            "In-place task checklist for the current job. "
-            "Call init at session start with your derived task list. "
-            "Call done(index=N) after each task completes — it marks the Nth task [x] by position. "
-            "Call read after context compaction to see pending ([ ]) vs done ([x]) items. "
-            "init always overwrites, so stale files from prior attempts are never reused."
+            "Persistent task checklist for the current job session.\n\n"
+            "ALWAYS pass the action as the 'action' parameter — never as a bare key.\n\n"
+            "Three actions:\n"
+            "  checkpoint(action='init', tasks=['Task 1', 'Task 2', ...])  — start a fresh checklist; overwrites any prior file\n"
+            "  checkpoint(action='done', index=N)                          — mark the Nth task complete (1-based); call this after every completed task\n"
+            "  checkpoint(action='read')                                   — read the current checklist (use after context compaction to recover your task list)\n\n"
+            "Rules:\n"
+            "- Call init once at the start of each session with your complete task list.\n"
+            "- Call done(index=N) immediately after finishing each task — do not batch or skip.\n"
+            "- Call read if context was compacted and you need to know which tasks remain."
         ),
         "parameters": {
             "type": "object",
@@ -36,19 +41,18 @@ def register(ctx) -> None:
                     "type": "string",
                     "enum": ["init", "done", "read"],
                     "description": (
-                        "init: write the task checklist (overwrites any prior file). "
-                        "done: mark task at position index as [x]. "
-                        "read: return the current checklist."
+                        "Which operation to perform. Must be exactly one of: 'init', 'done', 'read'. "
+                        "Pass as {\"action\": \"done\", \"index\": 2} — NOT as {\"done\": 2}."
                     ),
                 },
                 "tasks": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Full list of tasks to track. Required for action=init.",
+                    "description": "Required for action='init'. Full list of task descriptions to track.",
                 },
                 "index": {
                     "type": "integer",
-                    "description": "1-based position of the task to mark done. Required for action=done.",
+                    "description": "Required for action='done'. The 1-based position of the task to mark complete.",
                 },
             },
             "required": ["action"],
