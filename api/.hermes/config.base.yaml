@@ -23,4 +23,4 @@ delegation:
   max_concurrent_children: 2
 
 agent:
-  max_turns: 300 # default is 90; complex IMPLEMENT/REVISE jobs need far more
+  max_turns: 1000 # default is 90; complex IMPLEMENT/REVISE jobs need far more — HERMES_TIMEOUT_MS is the real backstop
