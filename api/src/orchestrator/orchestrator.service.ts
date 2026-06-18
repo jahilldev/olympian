@@ -23,6 +23,7 @@ import { buildRevisePrompt } from '../revise/revise.prompts.js';
 import { reviseCommitMessage } from '../revise/revise.utility.js';
 import { buildVerifyPrompt } from '../verify/verify.prompts.js';
 import { parseVerifyCommand } from '../verify/verify.utility.js';
+import { VerifyService } from '../verify/verify.service.js';
 import { buildSummaryPrompt } from '../summary/summary.prompts.js';
 import { buildPrBody } from '../summary/summary.utility.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
@@ -71,6 +72,7 @@ export class OrchestratorService {
     private readonly agent: HermesAgentService,
     private readonly workspace: WorkspaceService,
     private readonly review: ReviewService,
+    private readonly verify: VerifyService,
     private readonly github: GithubService,
   ) {}
 
@@ -272,6 +274,7 @@ export class OrchestratorService {
       const retryStateMap: Record<TaskKind, JobState> = {
         PLAN: 'PLANNING',
         IMPLEMENT: 'IMPLEMENTING',
+        VERIFY: 'VERIFYING',
         REVIEW: 'SELF_REVIEWING',
         REVISE: 'REVISING',
         OPEN_PR: 'OPENING_PR',
@@ -516,6 +519,8 @@ export class OrchestratorService {
         return this.handlePlan(task.jobId);
       case 'IMPLEMENT':
         return this.handleImplement(task.jobId);
+      case 'VERIFY':
+        return this.handleVerify(task.jobId);
       case 'REVIEW':
         return this.handleReview(task.jobId);
       case 'OPEN_PR':
@@ -708,80 +713,139 @@ export class OrchestratorService {
     const downloaded = await this.workspace.downloadAttachments(ws.dir, ghId, attachmentRefs);
     const attachments = formatDownloadedAttachments(downloaded);
 
-    const maxIters = this.config.get('MAX_IMPLEMENTATION_ITERATIONS');
-    // `undefined` = not yet discovered. Discovery is deferred until after the first
-    // implement attempt (below) so the IMPLEMENT stage always begins — and resumes
-    // after a restart — in IMPLEMENT rather than in the VERIFY discovery step.
-    let verifyCommand: string | null | undefined;
-    let committedSomething = false;
+    // A single implementation pass. Tests/build are NOT run here — that is the
+    // dedicated VERIFY stage, and any failure (verify or review) routes to REVISE.
+    const prompt = buildImplementPrompt({
+      jobId,
+      repoFullName: job.repoFullName,
+      issueTitle: job.issueTitle,
+      issueBody: job.issueBody,
+      plan,
+      attempt: 1,
+      guidance,
+      attachments,
+    });
 
-    for (let attempt = 1; attempt <= maxIters; attempt++) {
-      const prompt = buildImplementPrompt({
-        jobId,
-        repoFullName: job.repoFullName,
-        issueTitle: job.issueTitle,
-        issueBody: job.issueBody,
-        plan,
-        attempt,
-        guidance,
-        attachments,
-      });
+    await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
 
-      await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
+    const res = await this.agent.run({ jobId, phase: 'IMPLEMENT', cwd: ws.dir, prompt });
 
-      const res = await this.agent.run({
-        jobId,
-        phase: 'IMPLEMENT',
-        cwd: ws.dir,
-        prompt,
-      });
-
-      if (res.status !== 'SUCCEEDED') {
-        throw new Error(`implementation agent ${res.status}; ${res.stderr.slice(0, 300)}`);
-      }
-
-      if (res.stdout.trim().length < 200) {
-        throw new Error(
-          `implementation agent exited without meaningful output (${res.stdout.trim().length} chars) — likely a tool-call failure or context exhaustion`,
-        );
-      }
-
-      const sha = await this.workspace.commitAll(
-        ws.dir,
-        implementCommitMessage(job.issueNumber, job.issueTitle, attempt),
-      );
-
-      committedSomething ||= sha !== null;
-
-      await this.jobs.incrementAttempts(jobId);
-
-      // Discover the verify command once code exists to test, and only once per job.
-      if (verifyCommand === undefined) {
-        verifyCommand = await this.verifyCommandFor(job, ws.dir);
-      }
-
-      const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
-
-      if (!verify || verify.ok) {
-        break;
-      }
-
-      guidance = `The verification command failed (exit non-zero). Fix the root cause.\n\n${verify.output.slice(0, 4000)}`;
-
-      this.logger.warn(`[job ${jobId}] verify failed on attempt ${attempt}; iterating`);
+    if (res.status !== 'SUCCEEDED') {
+      throw new Error(`implementation agent ${res.status}; ${res.stderr.slice(0, 300)}`);
     }
 
-    if (!committedSomething) {
+    if (res.stdout.trim().length < 200) {
+      throw new Error(
+        `implementation agent exited without meaningful output (${res.stdout.trim().length} chars) — likely a tool-call failure or context exhaustion`,
+      );
+    }
+
+    const sha = await this.workspace.commitAll(
+      ws.dir,
+      implementCommitMessage(job.issueNumber, job.issueTitle, 1),
+    );
+
+    if (sha === null) {
       throw new Error('agent produced no changes');
     }
 
-    await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+    await this.jobs.incrementAttempts(jobId);
+    await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
+
+    await this.jobs.transition(jobId, 'VERIFYING', {
       reason: 'implementation complete',
       actor: 'AGENT',
     });
 
-    await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
-    await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+    await this.queue.enqueue({ jobId, kind: 'VERIFY' });
+  }
+
+  /**
+   * The VERIFY stage: run the repo's discovered tests/build command against the
+   * committed branch as a ground-truth gate. A pass advances to self-review; a failure
+   * routes to REVISE (re-verified after the fix). It runs after IMPLEMENT and after
+   * every REVISE, so all post-implement failures funnel through REVISE.
+   */
+  private async handleVerify(jobId: string): Promise<void> {
+    const { job, ref } = await this.context(jobId);
+
+    if (job.state !== 'VERIFYING') {
+      await this.jobs.transition(jobId, 'VERIFYING', { reason: 're-verifying', actor: 'AGENT' });
+    }
+
+    const ws = await this.workspace.prepare({
+      jobId,
+      installationId: this.ghIdFromRef(ref),
+      owner: job.repoOwner,
+      repo: job.repoName,
+      branchName:
+        job.branchName ?? branchNameFor(this.config.get('BRANCH_PREFIX'), job.issueNumber),
+    });
+
+    const cycle = job.reviewCycle;
+    const verifyCommand = await this.verifyCommandFor(job, ws.dir);
+
+    // No automated checks in the repo (yet) — nothing to run, proceed to self-review.
+    if (!verifyCommand) {
+      await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+        reason: 'no verify command; skipping to review',
+        actor: 'AGENT',
+      });
+      await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+      return;
+    }
+
+    await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
+
+    const startedAt = Date.now();
+    const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
+    const durationMs = Date.now() - startedAt;
+    const result = verify ?? { ok: true, output: '' };
+
+    const attempt = (await this.verify.countForCycle(jobId, cycle)) + 1;
+
+    await this.verify.record({
+      jobId,
+      cycle,
+      attempt,
+      command: verifyCommand,
+      ok: result.ok,
+      output: result.output,
+      durationMs,
+    });
+
+    if (result.ok) {
+      await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+        reason: `verify passed (attempt ${attempt})`,
+        actor: 'AGENT',
+      });
+      await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+      return;
+    }
+
+    this.logger.warn(`[job ${jobId}] verify failed on attempt ${attempt}`);
+
+    // Cap the VERIFY→REVISE loop; beyond it, open a draft PR with tests still red.
+    if (attempt < this.config.get('MAX_VERIFY_ATTEMPTS')) {
+      await this.jobs.transition(jobId, 'REVISING', {
+        reason: `verify failed (attempt ${attempt})`,
+        actor: 'AGENT',
+      });
+      await this.queue.enqueue({ jobId, kind: 'REVISE' });
+      return;
+    }
+
+    await this.safeComment(
+      ref,
+      job.prNumber ?? job.issueNumber,
+      `The verification command (\`${verifyCommand}\`) is still failing after ${attempt} attempts. Opening a draft PR for human review.`,
+    );
+
+    await this.jobs.transition(jobId, 'OPENING_PR', {
+      reason: 'verify cap reached',
+      actor: 'AGENT',
+    });
+    await this.queue.enqueue({ jobId, kind: 'OPEN_PR' });
   }
 
   private async handleRevise(jobId: string): Promise<void> {
@@ -841,6 +905,19 @@ export class OrchestratorService {
           )
         : undefined;
 
+    // If the most recent verify in this cycle failed, the build/tests are the priority
+    // fix — surface their output to the revise agent.
+    const lastVerify = await this.prisma.verifyRun.findFirst({
+      where: { jobId, cycle: job.reviewCycle },
+      orderBy: { createdAt: 'desc' },
+      select: { ok: true, command: true, output: true },
+    });
+
+    const verifyFailure =
+      lastVerify && !lastVerify.ok
+        ? `The verification command \`${lastVerify.command}\` failed:\n\n${lastVerify.output.slice(0, 4000)}`
+        : undefined;
+
     const revisionNumber =
       (await this.prisma.agentRun.count({ where: { jobId, phase: 'REVISE' } })) + 1;
 
@@ -853,6 +930,7 @@ export class OrchestratorService {
       prompt: buildRevisePrompt({
         jobId,
         plan,
+        verifyFailure,
         latestIssuesText: latestIssues.length > 0 ? formatIssues(latestIssues) : undefined,
         priorIssuesText: priorIssues.length > 0 ? formatIssues(priorIssues) : undefined,
         humanFeedback,
@@ -871,11 +949,11 @@ export class OrchestratorService {
       throw new Error(`revise agent ${rev.status}; ${rev.stderr.slice(0, 300)}`);
     }
 
-    await this.jobs.transition(jobId, 'SELF_REVIEWING', {
+    await this.jobs.transition(jobId, 'VERIFYING', {
       reason: 'revision complete',
       actor: 'AGENT',
     });
-    await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+    await this.queue.enqueue({ jobId, kind: 'VERIFY' });
   }
 
   private async handleReview(jobId: string): Promise<void> {
@@ -957,13 +1035,14 @@ export class OrchestratorService {
 
     const changedFiles = await this.workspace.branchChangedFiles(ws.dir, base);
 
-    // Ground-truth signal: run the repo's discovered verify command against the
-    // committed branch and feed the result to the reviewer. Because review runs after
-    // both IMPLEMENT and REVISE, this also makes revisions verify-gated. null = no
-    // command available; a failure forces FAIL regardless of the model's verdict.
-    const verifyCommand = await this.verifyCommandFor(job, ws.dir);
-    const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
-    const verifyOk = verify ? verify.ok : null;
+    // The VERIFY stage already ran (and passed, or there was no command) before review
+    // was enqueued — carry its result through for the record and the gate.
+    const lastVerify = await this.prisma.verifyRun.findFirst({
+      where: { jobId, cycle },
+      orderBy: { createdAt: 'desc' },
+      select: { ok: true },
+    });
+    const verifyOk = lastVerify ? lastVerify.ok : null;
 
     // Scope check: files changed on the branch the approved plan never declared.
     const outOfPlanFiles = outOfPlanChanges(changedFiles, planFilePaths(plan));
@@ -980,7 +1059,6 @@ export class OrchestratorService {
       priorIssues,
       hasBrowser,
       parseRetry: priorUnparseable > 0,
-      verify: verify ?? undefined,
       outOfPlanFiles,
     });
 

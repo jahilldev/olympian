@@ -6,15 +6,13 @@ delivery lifecycle — planning, implementation, self-review, and a draft PR —
 human only ever approving the plan and the final PR. No human writes code.
 
 ```
-issue labeled ──▶ PLAN ──▶ (human approves plan) ──▶ IMPLEMENT ──▶ SELF-REVIEW ⇄ REVISE
-                    ▲             │                                        │
-                    └─ feedback ──┘                          (rubric + verify pass)
-                                                                          │
-                                                                          ▼
-                              (human approves PR) ◀── AWAIT PR REVIEW ◀── OPEN DRAFT PR
-                                      │                     ▲
-                                      ▼                     └── changes requested ──▶ IMPLEMENT
-                                    DONE
+issue labeled ─▶ PLAN ─▶ (approve plan) ─▶ IMPLEMENT ─▶ VERIFY ─▶ SELF-REVIEW ─▶ OPEN DRAFT PR
+                  ▲          │                              ▲         │                  │
+                  └ feedback ┘                              └─ REVISE ◀─┘                ▼
+                                                  (verify OR review fails → revise → re-verify)
+                                                                                (approve PR) ─▶ DONE
+                                                                                         │
+                                                            changes requested ─▶ IMPLEMENT ┘
 ```
 
 ## How it works
@@ -24,16 +22,17 @@ issue labeled ──▶ PLAN ──▶ (human approves plan) ──▶ IMPLEMENT
    plan as an issue comment.
 3. **Plan approval loop.** A maintainer replies `/hermes approve` to proceed, or leaves a
    comment with corrections — each comment re-plans until approved (capped by `MAX_PLAN_REVISIONS`).
-4. **Implement.** Hermes writes the code on a branch (`hermes/issue-<n>`). The repo's
-   verify command (tests/build) — **discovered per-repo by the agent and executed by the
-   orchestrator** — gates the work, iterating up to `MAX_IMPLEMENTATION_ITERATIONS`.
-5. **Self-review.** Hermes reviews its own diff and returns a rubric verdict
+4. **Implement.** Hermes writes the code on a branch (`hermes/issue-<n>`) in a single pass.
+5. **Verify.** The repo's tests/build command — **discovered per-repo by the agent and
+   executed by the orchestrator** (ground truth) — runs as its own stage. A failure routes
+   to **Revise** and re-verifies, up to `MAX_VERIFY_ATTEMPTS`; a pass advances to review.
+6. **Self-review.** Hermes reviews its own diff and returns a rubric verdict
    `{confidence, verdict, dimensions{correctness,tests,planCoverage,security}, issues[]}`.
-   The PR gate is the **rubric** (all dimensions pass, no high/critical issues) plus a
-   **green verify run** — confidence is advisory only. Otherwise it revises and re-reviews,
-   up to `MAX_REVIEW_PASSES`.
-6. **Draft PR.** The branch is pushed and a **draft** PR is opened, linking the issue.
-7. **PR approval loop.** Approve the PR review → the job is `DONE`. Request changes → the
+   The PR gate is the **rubric** (all dimensions pass, no high/critical issues); confidence
+   is advisory only. A failure routes to **Revise** (→ Verify → review again), up to
+   `MAX_REVIEW_PASSES`. Every post-implement failure — verify or review — funnels through Revise.
+7. **Draft PR.** The branch is pushed and a **draft** PR is opened, linking the issue.
+8. **PR approval loop.** Approve the PR review → the job is `DONE`. Request changes → the
    implementation loop runs again and pushes an update.
 
 The orchestrator owns git; Hermes only edits files. **Prisma (SQLite) is the source of
@@ -238,7 +237,7 @@ defaults live in [`api/.env.example`](api/.env.example). Key knobs:
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `TRIGGER_LABEL`                                                                 | Label that starts a job (default `hermes`).                                               |
 | `REVIEW_CONFIDENCE_THRESHOLD`                                                   | Advisory self-review confidence shown in status/PR body (default 85); not the gate.       |
-| `MAX_PLAN_REVISIONS` / `MAX_IMPLEMENTATION_ITERATIONS` / `MAX_REVIEW_PASSES`    | Loop caps.                                                                                |
+| `MAX_PLAN_REVISIONS` / `MAX_VERIFY_ATTEMPTS` / `MAX_REVIEW_PASSES`              | Loop caps.                                                                                |
 | `WORKER_CONCURRENCY`                                                            | Parallel jobs (default 2).                                                                |
 | `SANDBOX_MODE`                                                                  | `default` (Docker container per run) or `none` (system Hermes binary, no container).      |
 | `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL`                           | Hermes invocation.                                                                        |

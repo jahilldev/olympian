@@ -58,6 +58,7 @@ model Job {
   prFeedback  PrRevisionFeedback[]
   runs        AgentRun[]
   reviews     ReviewPass[]
+  verifyRuns  VerifyRun[]
   pr          PullRequestRef?
   tasks       QueueTask[]
 
@@ -153,6 +154,24 @@ model ReviewPass {
   createdAt  DateTime @default(now())
 
   @@unique([jobId, cycle, passNumber])
+  @@index([jobId])
+}
+
+// One execution of the repo's verify command (tests/build) — the ground-truth gate
+// run as its own pipeline stage after IMPLEMENT and after every REVISE. A failure
+// routes the job to REVISE; a pass advances it to self-review.
+model VerifyRun {
+  id         String   @id @default(cuid())
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId      String
+  cycle      Int      // implementation round (matches Job.reviewCycle)
+  attempt    Int      // verify attempt within this cycle
+  command    String
+  ok         Boolean
+  output     String // truncated combined stdout/stderr
+  durationMs Int
+  createdAt  DateTime @default(now())
+
   @@index([jobId])
 }
 

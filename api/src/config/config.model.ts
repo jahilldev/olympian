@@ -38,7 +38,8 @@ export const envSchema = z.object({
   TRIGGER_LABEL: z.string().default('hermes'),
   REVIEW_CONFIDENCE_THRESHOLD: z.coerce.number().int().min(0).max(100).default(85),
   MAX_PLAN_REVISIONS: intFromString(10),
-  MAX_IMPLEMENTATION_ITERATIONS: intFromString(5),
+  // Max VERIFY→REVISE iterations per cycle before opening a draft PR with tests still red.
+  MAX_VERIFY_ATTEMPTS: intFromString(3),
   MAX_REVIEW_PASSES: intFromString(5),
   COMMAND_PREFIX: z.string().default('/hermes'),
 

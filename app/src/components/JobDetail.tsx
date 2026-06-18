@@ -2,12 +2,14 @@ import { useState, useEffect } from 'preact/hooks';
 import type { JobDetailDto, FeedbackDto } from '@olympian/api/job/job.model.js';
 import type { ReviewPassDto } from '@olympian/api/review/review.model.js';
 import type { AgentRunDto } from '@olympian/api/agent/agent.model.js';
+import type { VerifyRunDto } from '@olympian/api/verify/verify.model.js';
 import { navigate } from '../utils/navigate.ts';
 import StateBadge from './StateBadge.tsx';
 import Timeline from './Timeline.tsx';
 import ReviewPassCard from './ReviewPassCard.tsx';
 import PlanViewer from './PlanViewer.tsx';
 import AgentRunRow from './AgentRunRow.tsx';
+import VerifyRunRow from './VerifyRunRow.tsx';
 
 const TERMINAL_STATES = new Set(['DONE', 'FAILED', 'CANCELLED']);
 
@@ -89,6 +91,7 @@ export default function JobDetail() {
   const [job, setJob] = useState<JobDetailDto | null>(null);
   const [reviews, setReviews] = useState<ReviewPassDto[]>([]);
   const [runs, setRuns] = useState<AgentRunDto[]>([]);
+  const [verifications, setVerifications] = useState<VerifyRunDto[]>([]);
   const [notFound, setNotFound] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
 
@@ -114,13 +117,15 @@ export default function JobDetail() {
       }
 
       try {
-        const [revRes, runRes] = await Promise.all([
+        const [revRes, runRes, verRes] = await Promise.all([
           fetch(`/api/jobs/${id}/reviews`),
           fetch(`/api/jobs/${id}/runs`),
+          fetch(`/api/jobs/${id}/verifications`),
         ]);
         if (!cancelled) {
           if (revRes.ok) setReviews((await revRes.json()) as ReviewPassDto[]);
           if (runRes.ok) setRuns((await runRes.json()) as AgentRunDto[]);
+          if (verRes.ok) setVerifications((await verRes.json()) as VerifyRunDto[]);
         }
       } catch {
         // non-fatal
@@ -255,14 +260,23 @@ export default function JobDetail() {
             <Timeline transitions={job.transitions} />
           </section>
 
-          {/* Runs */}
-          {runs.length > 0 && (
+          {/* Runs — agent runs and verify executions, interleaved chronologically */}
+          {(runs.length > 0 || verifications.length > 0) && (
             <section>
               <SectionHeading>Runs</SectionHeading>
               <div class="space-y-2">
-                {runs.map((run) => (
-                  <AgentRunRow key={run.id} run={run} jobId={id} />
-                ))}
+                {[
+                  ...runs.map((r) => ({ kind: 'agent' as const, at: r.createdAt, run: r })),
+                  ...verifications.map((v) => ({ kind: 'verify' as const, at: v.createdAt, run: v })),
+                ]
+                  .sort((a, b) => (a.at < b.at ? 1 : -1))
+                  .map((item) =>
+                    item.kind === 'agent' ? (
+                      <AgentRunRow key={`a-${item.run.id}`} run={item.run} jobId={id} />
+                    ) : (
+                      <VerifyRunRow key={`v-${item.run.id}`} run={item.run} />
+                    ),
+                  )}
               </div>
             </section>
           )}

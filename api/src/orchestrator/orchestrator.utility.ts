@@ -55,6 +55,7 @@ const STATE_LABELS: Record<string, string> = {
   PLANNING: 'agent is writing a plan',
   AWAITING_PLAN_APPROVAL: 'waiting for plan approval',
   IMPLEMENTING: 'agent is writing code',
+  VERIFYING: 'running tests/build',
   SELF_REVIEWING: 'agent is reviewing its own changes',
   REVISING: 'agent is revising code after review feedback',
   OPENING_PR: 'opening a pull request',

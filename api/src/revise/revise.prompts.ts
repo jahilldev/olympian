@@ -8,6 +8,12 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
 
+  if (ctx.verifyFailure) {
+    parts.push(
+      `--- FAILING TESTS / BUILD (highest priority — the change cannot be accepted while this fails) ---\n${ctx.verifyFailure}\n--- END FAILURE ---\n\nFix the root cause of this failure first.`,
+    );
+  }
+
   if (ctx.humanFeedback) {
     parts.push(
       `--- HUMAN PR REVIEW FEEDBACK (highest priority — every point must be addressed) ---\n${ctx.humanFeedback}\n--- END FEEDBACK ---`,
