@@ -45,7 +45,7 @@ model Job {
   prNumber       Int?
   headSha        String?
   confidence     Int?             // latest review confidence (0-100)
-  verifyCommand  String?          // agent-discovered tests/build command; null = not yet discovered, "" = no checks
+  verifyCommand  String?          // agent-discovered tests/build command; null/"" = none found yet (re-discovered until a real command appears)
   reviewCycle    Int              @default(0) // incremented each time handleImplement completes
   attempts       Int              @default(0)
   error          String?

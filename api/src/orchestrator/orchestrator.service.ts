@@ -1221,15 +1221,19 @@ export class OrchestratorService {
   }
 
   /**
-   * Resolves the repo's verification command. Discovered once per job by a dedicated
-   * agent step (the agent is good at finding the right command for any toolchain) and
-   * persisted, then reused across cycles. The orchestrator EXECUTES it (see
-   * workspace.runVerify) so the pass/fail result is ground truth, not self-reported.
-   * Returns null when there is no command (no checks in the repo, or discovery failed).
+   * Resolves the repo's verification command. A dedicated agent step discovers it (the
+   * agent is good at finding the right command for any toolchain); the orchestrator
+   * EXECUTES it (see workspace.runVerify) so the pass/fail result is ground truth, not
+   * self-reported. Returns null when there is no command.
+   *
+   * A previously discovered, NON-EMPTY command is stable, so it is cached and reused
+   * across cycles. A null (never discovered) or empty (no checks found yet) value
+   * re-triggers discovery — so a greenfield project that adds a test runner mid-job is
+   * picked up on a later cycle rather than running ungated forever.
    */
   private async verifyCommandFor(job: Job, dir: string): Promise<string | null> {
-    if (job.verifyCommand !== null) {
-      return job.verifyCommand.trim() === '' ? null : job.verifyCommand;
+    if (job.verifyCommand && job.verifyCommand.trim() !== '') {
+      return job.verifyCommand;
     }
 
     const res = await this.agent.run({
