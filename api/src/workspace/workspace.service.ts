@@ -173,17 +173,23 @@ export class WorkspaceService {
   }
 
   /**
-   * Runs the configured VERIFY_COMMAND (tests/build) in the worktree. Returns null
-   * when no command is configured. Used by the implementation loop as an acceptance gate.
+   * Runs an agent-discovered verification command (tests/build) in the worktree as a
+   * ground-truth acceptance gate. The command itself is discovered per-repo by the
+   * orchestrator (the agent picks it; the orchestrator executes it so the result is
+   * non-spoofable). Returns null when no command is available (the caller treats that
+   * as "no gate").
    */
-  async runVerify(dir: string): Promise<{ ok: boolean; output: string } | null> {
-    const command = this.config.get('VERIFY_COMMAND');
-
+  async runVerify(
+    dir: string,
+    command: string | null,
+  ): Promise<{ ok: boolean; output: string } | null> {
     if (!command || command.trim().length === 0) {
       return null;
     }
 
-    const VERIFY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+    this.logger.log(`[verify] running in ${dir}: ${command}`);
+
+    const VERIFY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes — install + tests/build
 
     return new Promise((resolve) => {
       let output = '';

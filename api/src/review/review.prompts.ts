@@ -27,6 +27,26 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
     );
   }
 
+  // Ground truth: the orchestrator ran the project's verify command (tests/build).
+  // The model cannot override this — a red verify forces a FAIL.
+  if (ctx.verify) {
+    if (ctx.verify.ok) {
+      parts.push(
+        `--- VERIFY COMMAND (ground truth) ---\nThe project's verification command (tests/build) was run by the orchestrator and PASSED. You may still fail the change for other reasons, but the build/tests are green.\n--- END VERIFY ---`,
+      );
+    } else {
+      parts.push(
+        `--- VERIFY COMMAND (ground truth — the change CANNOT pass) ---\nThe project's verification command (tests/build) was run by the orchestrator and FAILED. This is authoritative: a change with a failing verify command must NOT pass. You MUST set "verdict" to "FAIL", set "dimensions.tests" to false, and add the failure as a high-severity issue describing the root cause to fix. Output below (truncated):\n\n${ctx.verify.output.slice(0, 4000)}\n--- END VERIFY ---`,
+      );
+    }
+  }
+
+  if (ctx.outOfPlanFiles && ctx.outOfPlanFiles.length > 0) {
+    parts.push(
+      `--- SCOPE CHECK ---\nThese files were changed on the branch but are NOT mentioned in the approved plan's "Files to change" section. Confirm each change is a justified and necessary part of resolving the issue. Flag any change that looks like unrelated scope creep, an accidental edit, or a regression risk as an issue (set "dimensions.planCoverage" to false if the diff strays materially from the plan):\n${ctx.outOfPlanFiles.map((f) => `- ${f}`).join('\n')}\n--- END SCOPE CHECK ---`,
+    );
+  }
+
   if (ctx.hasBrowser) {
     parts.push(
       `A Camofox browser is available for a smoke-test of the running application. **This is secondary to the code review — do not let it block your verdict.**
@@ -53,15 +73,21 @@ If the server fails to start, skip the browser step and note it in your summary 
     `Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text:
 \`\`\`json
 {
-  "confidence": <integer 0-100, your confidence the change is correct and complete>,
+  "confidence": <integer 0-100, advisory only — your subjective confidence>,
   "verdict": "PASS" | "FAIL",
+  "dimensions": {
+    "correctness": <true|false: the change is logically correct and resolves the issue>,
+    "tests": <true|false: tests/build pass and the change is adequately covered>,
+    "planCoverage": <true|false: every acceptance criterion in the plan is met and the diff stays within the plan's scope>,
+    "security": <true|false: no injection, secret-leak, auth, or unsafe-input problems introduced>
+  },
   "summary": "<one-paragraph assessment>",
   "issues": [
     { "severity": "low|medium|high|critical", "title": "<short>", "detail": "<what's wrong and how to fix>", "file": "<path, optional>" }
   ]
 }
 \`\`\`
-Set "verdict" to "PASS" only if confidence >= ${ctx.threshold} and there are no high/critical issues. List every concrete problem in "issues"; use an empty array if there are none. You may include detailed reasoning after the JSON block.`,
+**The rubric is the gate, not the confidence number.** Set "verdict" to "PASS" ONLY when ALL FOUR dimensions are true AND there are no high/critical issues. Mark a dimension false the moment you are not confident it fully holds — err toward false. List every concrete problem in "issues" (empty array if none). You may include detailed reasoning after the JSON block.`,
   );
 
   if (ctx.parseRetry) {

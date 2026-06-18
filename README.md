@@ -8,7 +8,7 @@ human only ever approving the plan and the final PR. No human writes code.
 ```
 issue labeled ──▶ PLAN ──▶ (human approves plan) ──▶ IMPLEMENT ──▶ SELF-REVIEW ⇄ REVISE
                     ▲             │                                        │
-                    └─ feedback ──┘                          (confidence ≥ threshold)
+                    └─ feedback ──┘                          (rubric + verify pass)
                                                                           │
                                                                           ▼
                               (human approves PR) ◀── AWAIT PR REVIEW ◀── OPEN DRAFT PR
@@ -24,11 +24,14 @@ issue labeled ──▶ PLAN ──▶ (human approves plan) ──▶ IMPLEMENT
    plan as an issue comment.
 3. **Plan approval loop.** A maintainer replies `/hermes approve` to proceed, or leaves a
    comment with corrections — each comment re-plans until approved (capped by `MAX_PLAN_REVISIONS`).
-4. **Implement.** Hermes writes the code on a branch (`hermes/issue-<n>`). An optional
-   `VERIFY_COMMAND` (tests/build) gates the work, iterating up to `MAX_IMPLEMENTATION_ITERATIONS`.
-5. **Self-review.** Hermes reviews its own diff and returns a JSON verdict
-   `{confidence, verdict, issues[]}`. Below `REVIEW_CONFIDENCE_THRESHOLD` it revises and
-   re-reviews, up to `MAX_REVIEW_PASSES`.
+4. **Implement.** Hermes writes the code on a branch (`hermes/issue-<n>`). The repo's
+   verify command (tests/build) — **discovered per-repo by the agent and executed by the
+   orchestrator** — gates the work, iterating up to `MAX_IMPLEMENTATION_ITERATIONS`.
+5. **Self-review.** Hermes reviews its own diff and returns a rubric verdict
+   `{confidence, verdict, dimensions{correctness,tests,planCoverage,security}, issues[]}`.
+   The PR gate is the **rubric** (all dimensions pass, no high/critical issues) plus a
+   **green verify run** — confidence is advisory only. Otherwise it revises and re-reviews,
+   up to `MAX_REVIEW_PASSES`.
 6. **Draft PR.** The branch is pushed and a **draft** PR is opened, linking the issue.
 7. **PR approval loop.** Approve the PR review → the job is `DONE`. Request changes → the
    implementation loop runs again and pushes an update.
@@ -46,9 +49,11 @@ each Hermes prompt is rebuilt deterministically from the database.
 - **GitHub App** — webhooks, scoped installation tokens, comments, draft PRs, reviews.
 - **Hermes Agent CLI** — invoked headless: `hermes -z --yolo --source tool --max-turns N`.
 
-Module layout (one service per module): `config`, `prisma`, `metrics`, `health`,
-`github`, `webhook`, `job`, `queue`, `worker`, `agent`, `workspace`,
-`review`, `orchestrator`.
+Module layout: `config`, `prisma`, `metrics`, `health`, `github`, `webhook`, `job`,
+`queue`, `worker`, `agent` (shared CLI runner + prompt fragments), `workspace`,
+`orchestrator`, and one module per agent work phase — `planning`, `implement`,
+`revise`, `review`, `verify`, `summary` — each owning that phase's prompts, models,
+and utilities.
 
 ## Monorepo layout
 
@@ -232,10 +237,9 @@ defaults live in [`api/.env.example`](api/.env.example). Key knobs:
 | Variable                                                                        | Purpose                                                                                   |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `TRIGGER_LABEL`                                                                 | Label that starts a job (default `hermes`).                                               |
-| `REVIEW_CONFIDENCE_THRESHOLD`                                                   | Min self-review confidence to open a PR (default 85).                                     |
+| `REVIEW_CONFIDENCE_THRESHOLD`                                                   | Advisory self-review confidence shown in status/PR body (default 85); not the gate.       |
 | `MAX_PLAN_REVISIONS` / `MAX_IMPLEMENTATION_ITERATIONS` / `MAX_REVIEW_PASSES`    | Loop caps.                                                                                |
 | `WORKER_CONCURRENCY`                                                            | Parallel jobs (default 2).                                                                |
-| `VERIFY_COMMAND`                                                                | Optional tests/build command used as an acceptance gate.                                  |
 | `SANDBOX_MODE`                                                                  | `default` (Docker container per run) or `none` (system Hermes binary, no container).      |
 | `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL`                           | Hermes invocation.                                                                        |
 | `HERMES_CONTEXT_LENGTH` / `HERMES_COMPRESS_THRESHOLD` / `HERMES_MODEL_BASE_URL` | Injected into Hermes `config.yaml` at startup; omit to let Hermes use its own defaults.   |
@@ -260,11 +264,6 @@ Agent workspaces and the Hermes memory state (`MEMORY.md`, `USER.md`, `skills/`)
 bind-mounted from `./workspaces/` and `./hermes-state/` at the **same absolute path**
 inside the service container, so sibling agent containers spawned via the Docker socket
 can reference those directories using the same host path the service wrote to.
-
-> **Langfuse observability** — the env var forwarding and URL rewriting are in place, but
-> the `POST /api/public/otel/v1/traces` ingestion endpoint has not yet been implemented.
-> Traces sent by the agent plugin are currently dropped. Enable Langfuse only after the
-> trace ingestion module is added.
 
 ## Operations
 

@@ -1,5 +1,4 @@
 import { type Command } from './orchestrator.model.js';
-import { PLAN_REQUIRED_SECTIONS } from './orchestrator.model.js';
 import { type DownloadedAttachment } from '../workspace/workspace.model.js';
 
 const APPROVE_VERBS = new Set(['approve', 'approved', 'lgtm', 'ship', 'go']);
@@ -51,60 +50,6 @@ export function parseCommand(body: string, prefix: string): Command {
   return { kind: 'none' };
 }
 
-/** Best-effort extraction of the "Acceptance criteria" section from a plan. */
-export function acceptanceCriteria(plan: string): string | undefined {
-  const match = plan.match(/##\s*Acceptance criteria\s*\n([\s\S]*?)(?:\n##\s|\s*$)/i);
-
-  return match ? match[1].trim() : undefined;
-}
-
-export function missingPlanSections(content: string): string[] {
-  const lower = content.toLowerCase();
-
-  return PLAN_REQUIRED_SECTIONS.filter((s) => !lower.includes(s.toLowerCase()));
-}
-
-export function implementCommitMessage(
-  issueNumber: number,
-  title: string,
-  attempt: number,
-): string {
-  return (
-    `feat: resolve #${issueNumber} ${title}`.slice(0, 72) +
-    (attempt > 1 ? ` (attempt ${attempt})` : '')
-  );
-}
-
-export function reviseCommitMessage(pass: number): string {
-  return `fix: address review findings (pass ${pass})`;
-}
-
-export interface PrBodyInput {
-  issueNumber: number;
-  agentSummary: string;
-  confidence: number | null;
-  threshold: number;
-  meetsThreshold: boolean;
-  unresolvedIssues?: string;
-}
-
-export function buildPrBody(input: PrBodyInput): string {
-  const lines = [input.agentSummary.trim(), '', `Closes #${input.issueNumber}`, '', '---'];
-
-  if (input.meetsThreshold) {
-    lines.push(`🤖 Automated self-review: confidence ${input.confidence}/100 — all checks passed.`);
-  } else {
-    lines.push(
-      `🤖 Automated self-review: confidence ${input.confidence ?? 'n/a'}/100 (threshold ${input.threshold}) — opened below threshold for human attention.`,
-    );
-
-    if (input.unresolvedIssues) {
-      lines.push('', '**Unresolved findings:**', '', input.unresolvedIssues);
-    }
-  }
-  return lines.join('\n');
-}
-
 const STATE_LABELS: Record<string, string> = {
   TRIAGED: 'waiting to start',
   PLANNING: 'agent is writing a plan',
@@ -131,6 +76,10 @@ export interface StatusContext {
   commandPrefix: string;
   lastReviewIssues?: string;
   lastReviewIssueCount?: number;
+  /** Last verify result: true=green, false=red, null=no command discovered. */
+  verifyOk?: boolean | null;
+  /** Rubric dimensions the last review marked as failing. */
+  failedChecks?: string[];
 }
 
 export function buildStatusReport(ctx: StatusContext): string {
@@ -146,10 +95,20 @@ export function buildStatusReport(ctx: StatusContext): string {
   if (ctx.reviewPassCount > 0 || ctx.state === 'SELF_REVIEWING' || ctx.state === 'REVISING') {
     const passLine = `- **Review passes completed:** ${ctx.reviewPassCount}`;
     lines.push(
-      ctx.confidence != null ? `${passLine} — last confidence: ${ctx.confidence}/100` : passLine,
+      ctx.confidence != null
+        ? `${passLine} — last confidence: ${ctx.confidence}/100 (advisory)`
+        : passLine,
     );
   } else if (ctx.confidence != null) {
-    lines.push(`- **Last review confidence:** ${ctx.confidence}/100`);
+    lines.push(`- **Last review confidence:** ${ctx.confidence}/100 (advisory)`);
+  }
+
+  if (ctx.verifyOk != null) {
+    lines.push(`- **Tests/build:** ${ctx.verifyOk ? '✅ passing' : '❌ failing'}`);
+  }
+
+  if (ctx.failedChecks && ctx.failedChecks.length > 0) {
+    lines.push(`- **Failing review checks:** ${ctx.failedChecks.join(', ')}`);
   }
 
   if (ctx.prNumber) {

@@ -1,9 +1,4 @@
-import {
-  acceptanceCriteria,
-  buildPrBody,
-  buildStatusReport,
-  parseCommand,
-} from './orchestrator.utility.js';
+import { buildStatusReport, parseCommand } from './orchestrator.utility.js';
 
 describe('parseCommand', () => {
   it('parses approve (case-insensitive, any line)', () => {
@@ -27,39 +22,6 @@ describe('parseCommand', () => {
     expect(parseCommand('I think you should use a different approach', '/hermes').kind).toBe(
       'none',
     );
-  });
-});
-
-describe('acceptanceCriteria', () => {
-  it('extracts the acceptance-criteria section', () => {
-    const plan = '## Summary\nx\n## Acceptance criteria\n- [ ] a\n- [ ] b\n## Risks\ny';
-    expect(acceptanceCriteria(plan)).toBe('- [ ] a\n- [ ] b');
-  });
-});
-
-describe('buildPrBody', () => {
-  it('links the issue and reports confidence', () => {
-    const body = buildPrBody({
-      issueNumber: 7,
-      agentSummary: 'do x',
-      confidence: 90,
-      threshold: 85,
-      meetsThreshold: true,
-    });
-    expect(body).toContain('Closes #7');
-    expect(body).toContain('90/100');
-  });
-
-  it('lists unresolved issues when below threshold', () => {
-    const body = buildPrBody({
-      issueNumber: 7,
-      agentSummary: 'p',
-      confidence: 60,
-      threshold: 85,
-      meetsThreshold: false,
-      unresolvedIssues: '1. [high] boom',
-    });
-    expect(body).toContain('boom');
   });
 });
 

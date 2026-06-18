@@ -1,4 +1,4 @@
-export const AGENT_PHASES = ['PLAN', 'IMPLEMENT', 'REVIEW', 'REVISE', 'PR_BODY'] as const;
+export const AGENT_PHASES = ['PLAN', 'IMPLEMENT', 'REVIEW', 'REVISE', 'SUMMARY', 'VERIFY'] as const;
 export type AgentPhase = (typeof AGENT_PHASES)[number];
 
 export type AgentRunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT';
@@ -64,44 +64,4 @@ export interface RawSpawnResult {
   stderr: string;
   durationMs: number;
   timedOut: boolean;
-}
-
-// ── Prompt context (string-based to keep agent decoupled from other modules) ──
-export interface PlanPromptContext {
-  repoFullName: string;
-  issueNumber: number;
-  issueTitle: string;
-  issueBody: string;
-  priorPlan?: string;
-  feedback?: string[];
-  attachments?: string;
-}
-
-export interface ImplementPromptContext {
-  jobId: string;
-  repoFullName: string;
-  issueTitle: string;
-  issueBody: string;
-  plan: string;
-  attempt: number;
-  /** Pre-formatted extra guidance: prior review issues or PR-review feedback. */
-  guidance?: string;
-  attachments?: string;
-}
-
-export interface RevisePromptContext {
-  jobId: string;
-  plan: string;
-  latestIssuesText?: string;
-  priorIssuesText?: string;
-  humanFeedback?: string;
-}
-
-export interface PrBodyPromptContext {
-  repoFullName: string;
-  issueNumber: number;
-  issueTitle: string;
-  issueBody: string;
-  baseBranch: string;
-  branchName: string;
 }

@@ -1,11 +1,50 @@
-import { formatIssues, meetsThreshold, parseReview } from './review.utility.js';
+import {
+  failedDimensions,
+  formatIssues,
+  meetsThreshold,
+  outOfPlanChanges,
+  parseReview,
+  reviewResultFromRecord,
+} from './review.utility.js';
+import { type ReviewResult } from './review.model.js';
+
+const PASS_DIMS = { correctness: true, tests: true, planCoverage: true, security: true };
+
+function result(overrides: Partial<ReviewResult> = {}): ReviewResult {
+  return {
+    confidence: 90,
+    verdict: 'PASS',
+    dimensions: { ...PASS_DIMS },
+    issues: [],
+    verifyOk: null,
+    ...overrides,
+  };
+}
 
 describe('parseReview', () => {
-  it('parses a fenced json verdict', () => {
-    const out = 'Here is my review:\n```json\n{"confidence":92,"verdict":"PASS","issues":[]}\n```';
+  it('parses a fenced json verdict with rubric dimensions', () => {
+    const out =
+      'Here is my review:\n```json\n{"confidence":92,"verdict":"PASS","dimensions":{"correctness":true,"tests":true,"planCoverage":true,"security":true},"issues":[]}\n```';
     const r = parseReview(out);
     expect(r?.confidence).toBe(92);
     expect(r?.verdict).toBe('PASS');
+    expect(r?.dimensions.tests).toBe(true);
+    expect(r?.verifyOk).toBeNull();
+  });
+
+  it('accepts stringy "pass"/"fail" dimension values and snake_case keys', () => {
+    const r = parseReview(
+      '{"confidence":50,"dimensions":{"correctness":"pass","tests":"fail","plan_coverage":"yes","security":true},"issues":[]}',
+    );
+    expect(r?.dimensions.tests).toBe(false);
+    expect(r?.dimensions.planCoverage).toBe(true);
+  });
+
+  it('derives FAIL when a dimension fails even with no explicit verdict', () => {
+    const r = parseReview(
+      '{"confidence":80,"dimensions":{"correctness":false,"tests":true,"planCoverage":true,"security":true},"issues":[]}',
+    );
+    expect(r?.verdict).toBe('FAIL');
   });
 
   it('derives FAIL when a blocking issue is present and no verdict is given', () => {
@@ -15,31 +54,79 @@ describe('parseReview', () => {
     expect(r?.verdict).toBe('FAIL');
   });
 
+  it('defaults dimensions to all-pass when the model omits them', () => {
+    const r = parseReview('{"confidence":88,"verdict":"PASS","issues":[]}');
+    expect(r?.dimensions).toEqual(PASS_DIMS);
+  });
+
   it('returns null when no JSON can be recovered', () => {
     expect(parseReview('no structured output here')).toBeNull();
   });
 });
 
 describe('meetsThreshold', () => {
-  it('passes when verdict PASS, above threshold, no blocking issues', () => {
-    expect(meetsThreshold({ confidence: 90, verdict: 'PASS', issues: [] }, 85)).toBe(true);
+  it('passes when verdict PASS, all dimensions hold, no blocking issues, verify not red', () => {
+    expect(meetsThreshold(result())).toBe(true);
+    expect(meetsThreshold(result({ verifyOk: true }))).toBe(true);
   });
 
-  it('fails below threshold', () => {
-    expect(meetsThreshold({ confidence: 80, verdict: 'PASS', issues: [] }, 85)).toBe(false);
+  it('ignores confidence — a low-confidence clean review still passes', () => {
+    expect(meetsThreshold(result({ confidence: 10 }))).toBe(true);
   });
 
-  it('fails when a high/critical issue exists even at high confidence', () => {
+  it('fails when the verify command is red, regardless of the verdict', () => {
+    expect(meetsThreshold(result({ verifyOk: false }))).toBe(false);
+  });
+
+  it('fails when any rubric dimension fails', () => {
+    expect(meetsThreshold(result({ dimensions: { ...PASS_DIMS, tests: false } }))).toBe(false);
+  });
+
+  it('fails when a high/critical issue exists', () => {
     expect(
-      meetsThreshold(
-        {
-          confidence: 99,
-          verdict: 'PASS',
-          issues: [{ severity: 'critical', title: 'x', detail: 'y' }],
-        },
-        85,
-      ),
+      meetsThreshold(result({ issues: [{ severity: 'critical', title: 'x', detail: 'y' }] })),
     ).toBe(false);
+  });
+
+  it('fails when the verdict is FAIL', () => {
+    expect(meetsThreshold(result({ verdict: 'FAIL' }))).toBe(false);
+  });
+});
+
+describe('failedDimensions', () => {
+  it('lists the human labels of failing dimensions', () => {
+    expect(failedDimensions({ ...PASS_DIMS, tests: false, planCoverage: false })).toEqual([
+      'tests',
+      'plan coverage',
+    ]);
+  });
+});
+
+describe('reviewResultFromRecord', () => {
+  it('rebuilds a result from persisted row fields', () => {
+    const r = reviewResultFromRecord({
+      confidence: 70,
+      verdict: 'PASS',
+      dimensions: JSON.stringify({ ...PASS_DIMS, security: false }),
+      verifyOk: true,
+      issues: JSON.stringify([{ severity: 'low', title: 'nit', detail: 'd' }]),
+    });
+    expect(r.verifyOk).toBe(true);
+    expect(r.dimensions.security).toBe(false);
+    expect(r.issues).toHaveLength(1);
+    expect(meetsThreshold(r)).toBe(false); // security dimension failed
+  });
+
+  it('falls back to all-pass dimensions when the stored JSON is missing', () => {
+    const r = reviewResultFromRecord({
+      confidence: 90,
+      verdict: 'PASS',
+      dimensions: null,
+      verifyOk: null,
+      issues: '[]',
+    });
+    expect(r.dimensions).toEqual(PASS_DIMS);
+    expect(meetsThreshold(r)).toBe(true);
   });
 });
 
@@ -50,5 +137,21 @@ describe('formatIssues', () => {
     ]);
     expect(text).toContain('[high] leak');
     expect(text).toContain('a.ts');
+  });
+});
+
+describe('outOfPlanChanges', () => {
+  it('flags changed files the plan never declared', () => {
+    const planPaths = ['src/foo.ts', 'src/bar/baz.ts'];
+    const changed = ['src/foo.ts', 'src/unexpected.ts'];
+    expect(outOfPlanChanges(changed, planPaths)).toEqual(['src/unexpected.ts']);
+  });
+
+  it('matches on basename so a bare filename in the plan still covers it', () => {
+    expect(outOfPlanChanges(['pkg/sub/foo.ts'], ['foo.ts'])).toEqual([]);
+  });
+
+  it('returns nothing when the plan declared no paths (cannot judge scope)', () => {
+    expect(outOfPlanChanges(['a.ts', 'b.ts'], [])).toEqual([]);
   });
 });

@@ -23,28 +23,25 @@ export class ReviewService {
   }): Promise<void> {
     const { jobId, cycle, passNumber, result } = opts;
 
+    const fields = {
+      confidence: result.confidence,
+      verdict: result.verdict,
+      dimensions: JSON.stringify(result.dimensions),
+      verifyOk: result.verifyOk,
+      issues: JSON.stringify(result.issues),
+    };
+
     await this.prisma.reviewPass.upsert({
       where: { jobId_cycle_passNumber: { jobId, cycle, passNumber } },
-      create: {
-        jobId,
-        cycle,
-        passNumber,
-        confidence: result.confidence,
-        verdict: result.verdict,
-        issues: JSON.stringify(result.issues),
-      },
-      update: {
-        confidence: result.confidence,
-        verdict: result.verdict,
-        issues: JSON.stringify(result.issues),
-      },
+      create: { jobId, cycle, passNumber, ...fields },
+      update: fields,
     });
 
     await this.prisma.job.update({ where: { id: jobId }, data: { confidence: result.confidence } });
   }
 
   meetsThreshold(result: ReviewResult): boolean {
-    return meetsThreshold(result, this.config.get('REVIEW_CONFIDENCE_THRESHOLD'));
+    return meetsThreshold(result);
   }
 
   get threshold(): number {
@@ -63,17 +60,31 @@ export class ReviewService {
 
     return rows.map((r) => {
       let issues: ReviewPassDto['issues'] = [];
+
       try {
         issues = JSON.parse(r.issues) as ReviewPassDto['issues'];
       } catch {
         // malformed stored JSON — return empty array
       }
+
+      let dimensions: ReviewPassDto['dimensions'] = null;
+
+      try {
+        dimensions = r.dimensions
+          ? (JSON.parse(r.dimensions) as ReviewPassDto['dimensions'])
+          : null;
+      } catch {
+        // malformed stored JSON — leave null
+      }
+
       return {
         id: r.id,
         cycle: r.cycle,
         passNumber: r.passNumber,
         confidence: r.confidence,
         verdict: r.verdict as ReviewPassDto['verdict'],
+        dimensions,
+        verifyOk: r.verifyOk,
         issues,
         createdAt: r.createdAt.toISOString(),
       };

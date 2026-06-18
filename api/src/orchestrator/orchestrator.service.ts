@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import { type Job, type QueueTask, type RepoInstallation } from '@prisma/client';
@@ -10,17 +11,32 @@ import { type JobState, TERMINAL_STATES } from '../job/job.model.js';
 import { QueueService } from '../queue/queue.service.js';
 import { type TaskKind } from '../queue/queue.model.js';
 import { HermesAgentService } from '../agent/agent.service.js';
+import { buildPlanPrompt } from '../planning/planning.prompts.js';
 import {
-  buildImplementPrompt,
-  buildPlanPrompt,
-  buildPrBodyPrompt,
-  buildRevisePrompt,
-} from '../agent/agent.prompts.js';
+  missingPlanSections,
+  planFilePaths,
+  renderPlanComment,
+} from '../planning/planning.utility.js';
+import { buildImplementPrompt } from '../implement/implement.prompts.js';
+import { implementCommitMessage } from '../implement/implement.utility.js';
+import { buildRevisePrompt } from '../revise/revise.prompts.js';
+import { reviseCommitMessage } from '../revise/revise.utility.js';
+import { buildVerifyPrompt } from '../verify/verify.prompts.js';
+import { parseVerifyCommand } from '../verify/verify.utility.js';
+import { buildSummaryPrompt } from '../summary/summary.prompts.js';
+import { buildPrBody } from '../summary/summary.utility.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
 import { type ReviewIssue, type ReviewResult } from '../review/review.model.js';
-import { formatIssues, formatIssuesMarkdown, parseReview } from '../review/review.utility.js';
+import {
+  failedDimensions,
+  formatIssues,
+  formatIssuesMarkdown,
+  outOfPlanChanges,
+  parseReview,
+  reviewResultFromRecord,
+} from '../review/review.utility.js';
 import { GithubService } from '../github/github.service.js';
 import { APPROVAL_PERMISSIONS, type RepoRef, type ReviewFeedback } from '../github/github.model.js';
 import { extractAttachmentUrls } from '../github/github.utility.js';
@@ -31,13 +47,9 @@ import {
   type PrReviewEvent,
 } from './orchestrator.model.js';
 import {
-  buildPrBody,
   buildStatusReport,
   formatDownloadedAttachments,
-  implementCommitMessage,
-  missingPlanSections,
   parseCommand,
-  reviseCommitMessage,
 } from './orchestrator.utility.js';
 
 /**
@@ -85,21 +97,26 @@ export class OrchestratorService {
 
     if (existing) {
       const state = existing.state as JobState;
+
       if (!TERMINAL_STATES.has(state) || state === 'DONE') {
         this.logger.debug(
           `Job already exists for ${repoFullName}#${evt.issueNumber} in state ${state}; ignoring label`,
         );
+
         return;
       }
+
       // FAILED or CANCELLED: restart from scratch.
       await this.jobs.update(existing.id, { error: null });
       await this.jobs.transition(existing.id, 'PLANNING', { reason: 're-labeled', actor: 'HUMAN' });
       await this.queue.enqueue({ jobId: existing.id, kind: 'PLAN' });
+
       await this.safeComment(
         ref,
         evt.issueNumber,
         `Hermes is restarting this issue and will draft a fresh implementation plan.`,
       );
+
       return;
     }
 
@@ -162,13 +179,21 @@ export class OrchestratorService {
         this.prisma.reviewPass.findFirst({
           where: { jobId: job.id, cycle: job.reviewCycle },
           orderBy: { passNumber: 'desc' },
-          select: { issues: true },
+          select: { issues: true, verifyOk: true, dimensions: true },
         }),
       ]);
 
-      const lastIssues: ReviewIssue[] = lastReviewPass
-        ? (JSON.parse(lastReviewPass.issues) as ReviewIssue[])
-        : [];
+      const lastResult = lastReviewPass
+        ? reviewResultFromRecord({
+            confidence: job.confidence ?? 0,
+            verdict: 'FAIL',
+            dimensions: lastReviewPass.dimensions,
+            verifyOk: lastReviewPass.verifyOk,
+            issues: lastReviewPass.issues,
+          })
+        : null;
+
+      const lastIssues: ReviewIssue[] = lastResult?.issues ?? [];
 
       await this.safeComment(
         ref,
@@ -185,6 +210,8 @@ export class OrchestratorService {
           commandPrefix: this.config.get('COMMAND_PREFIX'),
           lastReviewIssues: lastIssues.length > 0 ? formatIssuesMarkdown(lastIssues) : undefined,
           lastReviewIssueCount: lastIssues.length > 0 ? lastIssues.length : undefined,
+          verifyOk: lastResult?.verifyOk ?? null,
+          failedChecks: lastResult ? failedDimensions(lastResult.dimensions) : [],
         }),
       );
 
@@ -590,7 +617,22 @@ export class OrchestratorService {
 
     const nextRevision = (lastRevision?.revision ?? 0) + 1;
     const planContent = res.stdout.trim();
-    const commentBody = this.renderPlanComment(planContent);
+
+    // Plan grounding: flag paths the plan references that don't exist in the repo.
+    // Only surface when the plan also touches real files (a pure greenfield plan
+    // legitimately references files that don't exist yet), so the warning points
+    // at likely-hallucinated edit targets rather than expected new files.
+    const referencedPaths = planFilePaths(planContent);
+    const missingPaths = referencedPaths.filter((p) => !existsSync(join(ws.dir, p)));
+    const someExist = referencedPaths.some((p) => existsSync(join(ws.dir, p)));
+    const groundingWarnings = someExist ? missingPaths : [];
+
+    const commentBody = renderPlanComment(
+      planContent,
+      this.config.get('COMMAND_PREFIX'),
+      groundingWarnings,
+    );
+
     const commentId = await this.github.createIssueComment(ref, job.issueNumber, commentBody);
 
     await this.prisma.planRevision.create({
@@ -667,6 +709,10 @@ export class OrchestratorService {
     const attachments = formatDownloadedAttachments(downloaded);
 
     const maxIters = this.config.get('MAX_IMPLEMENTATION_ITERATIONS');
+    // `undefined` = not yet discovered. Discovery is deferred until after the first
+    // implement attempt (below) so the IMPLEMENT stage always begins — and resumes
+    // after a restart — in IMPLEMENT rather than in the VERIFY discovery step.
+    let verifyCommand: string | null | undefined;
     let committedSomething = false;
 
     for (let attempt = 1; attempt <= maxIters; attempt++) {
@@ -709,7 +755,12 @@ export class OrchestratorService {
 
       await this.jobs.incrementAttempts(jobId);
 
-      const verify = await this.workspace.runVerify(ws.dir);
+      // Discover the verify command once code exists to test, and only once per job.
+      if (verifyCommand === undefined) {
+        verifyCommand = await this.verifyCommandFor(job, ws.dir);
+      }
+
+      const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
 
       if (!verify || verify.ok) {
         break;
@@ -906,6 +957,17 @@ export class OrchestratorService {
 
     const changedFiles = await this.workspace.branchChangedFiles(ws.dir, base);
 
+    // Ground-truth signal: run the repo's discovered verify command against the
+    // committed branch and feed the result to the reviewer. Because review runs after
+    // both IMPLEMENT and REVISE, this also makes revisions verify-gated. null = no
+    // command available; a failure forces FAIL regardless of the model's verdict.
+    const verifyCommand = await this.verifyCommandFor(job, ws.dir);
+    const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
+    const verifyOk = verify ? verify.ok : null;
+
+    // Scope check: files changed on the branch the approved plan never declared.
+    const outOfPlanFiles = outOfPlanChanges(changedFiles, planFilePaths(plan));
+
     const reviewPrompt = buildReviewPrompt({
       repoFullName: job.repoFullName,
       issueTitle: job.issueTitle,
@@ -918,6 +980,8 @@ export class OrchestratorService {
       priorIssues,
       hasBrowser,
       parseRetry: priorUnparseable > 0,
+      verify: verify ?? undefined,
+      outOfPlanFiles,
     });
 
     await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
@@ -937,17 +1001,26 @@ export class OrchestratorService {
 
     const parsed = parseReview(res.stdout);
 
-    const result: ReviewResult = parsed ?? {
-      confidence: 0,
-      verdict: 'FAIL',
-      issues: [
-        {
-          severity: 'high',
-          title: 'Unparseable review output',
-          detail: res.stdout.slice(0, 800),
-        },
-      ],
-    };
+    const result: ReviewResult = parsed
+      ? { ...parsed, verifyOk }
+      : {
+          confidence: 0,
+          verdict: 'FAIL',
+          dimensions: {
+            correctness: false,
+            tests: false,
+            planCoverage: false,
+            security: false,
+          },
+          issues: [
+            {
+              severity: 'high',
+              title: 'Unparseable review output',
+              detail: res.stdout.slice(0, 800),
+            },
+          ],
+          verifyOk,
+        };
 
     await this.review.persist({ jobId, cycle, passNumber: pass, result });
 
@@ -1025,19 +1098,18 @@ export class OrchestratorService {
       orderBy: { passNumber: 'desc' },
     });
 
-    const meets =
-      !!lastReview &&
-      lastReview.verdict === 'PASS' &&
-      lastReview.confidence >= this.review.threshold;
+    const lastResult = lastReview ? reviewResultFromRecord(lastReview) : null;
+    const meets = lastResult ? this.review.meetsThreshold(lastResult) : false;
+    const failedChecks = lastResult ? failedDimensions(lastResult.dimensions) : [];
 
     const unresolved = lastReview ? formatIssues(JSON.parse(lastReview.issues)) : undefined;
 
     if (!job.prNumber) {
       const prBodyRes = await this.agent.run({
         jobId,
-        phase: 'PR_BODY',
+        phase: 'SUMMARY',
         cwd: this.workspace.dir(jobId),
-        prompt: buildPrBodyPrompt({
+        prompt: buildSummaryPrompt({
           repoFullName: job.repoFullName,
           issueNumber: job.issueNumber,
           issueTitle: job.issueTitle,
@@ -1056,8 +1128,9 @@ export class OrchestratorService {
         issueNumber: job.issueNumber,
         agentSummary,
         confidence: lastReview?.confidence ?? null,
-        threshold: this.review.threshold,
         meetsThreshold: meets,
+        verifyOk: lastResult?.verifyOk ?? null,
+        failedDimensions: failedChecks,
         unresolvedIssues: unresolved,
       });
 
@@ -1147,6 +1220,44 @@ export class OrchestratorService {
     });
   }
 
+  /**
+   * Resolves the repo's verification command. A dedicated agent step discovers it (the
+   * agent is good at finding the right command for any toolchain); the orchestrator
+   * EXECUTES it (see workspace.runVerify) so the pass/fail result is ground truth, not
+   * self-reported. Returns null when there is no command.
+   *
+   * A previously discovered, NON-EMPTY command is stable, so it is cached and reused
+   * across cycles. A null (never discovered) or empty (no checks found yet) value
+   * re-triggers discovery — so a greenfield project that adds a test runner mid-job is
+   * picked up on a later cycle rather than running ungated forever.
+   */
+  private async verifyCommandFor(job: Job, dir: string): Promise<string | null> {
+    if (job.verifyCommand && job.verifyCommand.trim() !== '') {
+      return job.verifyCommand;
+    }
+
+    const res = await this.agent.run({
+      jobId: job.id,
+      phase: 'VERIFY',
+      cwd: dir,
+      prompt: buildVerifyPrompt({ repoFullName: job.repoFullName }),
+      timeoutMs: 10 * 60 * 1000,
+    });
+
+    if (res.status !== 'SUCCEEDED') {
+      // Don't persist — leave it unset so a later cycle can retry discovery.
+      this.logger.warn(`[job ${job.id}] verify discovery ${res.status}; running without a gate`);
+      return null;
+    }
+
+    const command = parseVerifyCommand(res.stdout);
+
+    await this.jobs.update(job.id, { verifyCommand: command });
+    this.logger.log(`[job ${job.id}] discovered verify command: ${command || '(none)'}`);
+
+    return command === '' ? null : command;
+  }
+
   private async approvedPlan(jobId: string): Promise<string> {
     const approved = await this.prisma.planRevision.findFirst({
       where: { jobId, status: 'APPROVED' },
@@ -1182,19 +1293,6 @@ export class OrchestratorService {
           `${i + 1}. @${f.author}${f.path ? ` on ${f.path}${f.line ? `:${f.line}` : ''}` : ''}: ${f.body}`,
       )
       .join('\n');
-  }
-
-  private renderPlanComment(plan: string): string {
-    const prefix = this.config.get('COMMAND_PREFIX');
-
-    return [
-      `### Hermes implementation plan`,
-      ``,
-      plan,
-      ``,
-      `---`,
-      `Reply with **\`${prefix} approve\`** to start implementation, or leave a comment with corrections to iterate. (\`${prefix} cancel\` to stop, \`${prefix} status\` to check progress.)`,
-    ].join('\n');
   }
 
   private async safeComment(ref: RepoRef, issueOrPr: number, body: string): Promise<void> {

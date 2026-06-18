@@ -21,8 +21,8 @@ model RepoInstallation {
   id             String   @id @default(cuid())
   installationId BigInt   @unique
   accountLogin   String
-  accountType    String // "User" | "Organization"
-  triggerLabel   String? // overrides the global TRIGGER_LABEL when set
+  accountType    String   // "User" | "Organization"
+  triggerLabel   String?  // overrides the global TRIGGER_LABEL when set
   suspended      Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -44,7 +44,8 @@ model Job {
   branchName     String?
   prNumber       Int?
   headSha        String?
-  confidence     Int? // latest review confidence (0-100)
+  confidence     Int?             // latest review confidence (0-100)
+  verifyCommand  String?          // agent-discovered tests/build command; null/"" = none found yet (re-discovered until a real command appears)
   reviewCycle    Int              @default(0) // incremented each time handleImplement completes
   attempts       Int              @default(0)
   error          String?
@@ -69,8 +70,8 @@ model JobStateTransition {
   id        String   @id @default(cuid())
   job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId     String
-  fromState String? // JobState union
-  toState   String // JobState union
+  fromState String?  // JobState union
+  toState   String   // JobState union
   reason    String?
   actor     String   @default("SYSTEM") // Actor union
   createdAt DateTime @default(now())
@@ -124,14 +125,14 @@ model AgentRun {
   id         String   @id @default(cuid())
   job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId      String
-  phase      String // AgentPhase union
+  phase      String   // AgentPhase union
   command    String
   cwd        String
   model      String?
   status     String   @default("RUNNING") // AgentRunStatus union
   exitCode   Int?
-  stdout     String? // truncated
-  stderr     String? // truncated
+  stdout     String?  // truncated
+  stderr     String?  // truncated
   durationMs Int?
   createdAt  DateTime @default(now())
 
@@ -144,9 +145,11 @@ model ReviewPass {
   jobId      String
   cycle      Int      @default(1) // which implementation round (matches Job.reviewCycle)
   passNumber Int      // pass within this cycle
-  confidence Int
-  verdict    String // ReviewVerdict union
-  issues     String // serialized JSON: [{ severity, title, detail, file? }]
+  confidence Int      // advisory only — the gate is the rubric + verify, not this number
+  verdict    String   // ReviewVerdict union
+  dimensions String?  // serialized JSON rubric: { correctness, tests, planCoverage, security }
+  verifyOk   Boolean? // orchestrator-run VERIFY_COMMAND result; null when no command is configured
+  issues     String   // serialized JSON: [{ severity, title, detail, file? }]
   createdAt  DateTime @default(now())
 
   @@unique([jobId, cycle, passNumber])
@@ -159,7 +162,7 @@ model PullRequestRef {
   jobId     String   @unique
   prNumber  Int
   url       String
-  state     String // "open" | "closed" | "merged"
+  state     String   // "open" | "closed" | "merged"
   isDraft   Boolean  @default(true)
   headSha   String?
   createdAt DateTime @default(now())
@@ -172,7 +175,7 @@ model WebhookEvent {
   deliveryId  String    @unique
   event       String
   action      String?
-  payload     String // serialized JSON
+  payload     String    // serialized JSON
   processedAt DateTime?
   createdAt   DateTime  @default(now())
 
@@ -185,7 +188,7 @@ model QueueTask {
   id          String    @id @default(cuid())
   job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId       String
-  kind        String // TaskKind union
+  kind        String    // TaskKind union
   status      String    @default("PENDING") // TaskStatus union
   priority    Int       @default(0)
   runAt       DateTime  @default(now())
