@@ -54,10 +54,15 @@ Use the returned summary to open only the relevant 20-40 line windows with \`sea
   );
 
   parts.push(
+    `**Track your work with a todo list:** before fixing anything, add one todo item for every issue, failing test, and feedback point listed above. The todo list survives context compaction — after a compaction, re-read it (and the issues above, which are always present) to re-orient instead of re-exploring the codebase. Mark an item done only once its fix is on disk and static analysis passes, and do not end your session while any item is still open.`,
+  );
+
+  parts.push(
     `**For each fix, follow these steps in order:**
 1. Edit the file using a file-write tool.
 2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
-3. Run static analysis and fix any errors.`,
+3. Run static analysis and fix any errors.
+4. Mark the item done in your todo list.`,
   );
 
   parts.push(AUTONOMY_NOTICE);
