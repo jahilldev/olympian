@@ -10,7 +10,7 @@ import { STDOUT_CAP, type RawSpawnResult, type SpawnSpec } from './agent.model.j
 const HERMES_CONTAINER_HOME = '/root/.hermes';
 const CONTAINER_WORKDIR = '/workspace';
 
-export interface SpawnSpecParams {
+export interface AgentSpecParams {
   sandboxMode: 'none' | 'default';
   hermesBin: string;
   dockerImage: string;
@@ -28,7 +28,7 @@ export interface SpawnSpecParams {
 }
 
 /** Hermes flags shared by every invocation: headless, autonomous, tagged as a tool. */
-function hermesArgs(p: SpawnSpecParams): string[] {
+function hermesArgs(p: AgentSpecParams): string[] {
   const args = ['-z', p.prompt, '--yolo', '--accept-hooks'];
 
   if (p.model) {
@@ -56,7 +56,7 @@ function hermesArgs(p: SpawnSpecParams): string[] {
  * with the worktree mounted and — when HERMES_HOME is set — individual memory
  * paths bind-mounted so MEMORY.md, USER.md, and skills survive across invocations.
  */
-export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
+export function buildAgentSpec(p: AgentSpecParams): SpawnSpec {
   if (p.sandboxMode === 'default') {
     // Dev-server ports are published only when browser automation is enabled (Camofox),
     // i.e. for REVIEW phase containers. Publishing them on every container causes port
@@ -123,7 +123,7 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       `HERMES_LANGFUSE_BASE_URL=http://host.docker.internal:${langfusePort}/langfuse`,
     );
 
-    const containerName = `olympian-${randomUUID()}`;
+    const containerName = `olympian-agent-${randomUUID()}`;
 
     args.push('--name', containerName);
     // Label lets us find this container by job ID for targeted cancellation.
@@ -149,6 +149,56 @@ export function buildSpawnSpec(p: SpawnSpecParams): SpawnSpec {
       ...(p.hermesHome ? { HERMES_HOME: p.hermesHome } : {}),
     },
   };
+}
+
+export interface VerifySpecParams {
+  sandboxMode: 'none' | 'default';
+  dockerImage: string;
+  /** Absolute host path of the job worktree, mounted as the container working dir. */
+  dir: string;
+  /** Absolute host path of a persistent npm cache, mounted so repeat clean installs are fast. */
+  cacheDir?: string;
+  /** The shell command to run (tests/build). */
+  command: string;
+  /** Attached as `olympian.job=<jobId>` so a cancel can kill an in-flight verify. */
+  jobId?: string;
+}
+
+/**
+ * Builds the spec to run a verify command (tests/build) as the ground-truth gate.
+ *
+ * In `default` mode it runs inside the SAME image the agent uses, with the worktree
+ * mounted — so the gate's toolchain, platform, and clean-install behaviour match where
+ * the agent did its work. This is deliberate: the agent's own (incrementally-built)
+ * node_modules can pass while a clean `npm ci` in a different environment fails, so the
+ * gate must reproduce a clean install in the agent's image, not on the host. In `none`
+ * mode it runs as a host subprocess.
+ */
+export function buildVerifySpec(p: VerifySpecParams): SpawnSpec {
+  if (p.sandboxMode !== 'default') {
+    return { command: 'sh', args: ['-c', p.command], env: process.env };
+  }
+
+  const containerName = `olympian-verify-${randomUUID()}`;
+
+  const args = [
+    'run',
+    '--rm',
+    '-v',
+    `${p.dir}:${CONTAINER_WORKDIR}`,
+    '-w',
+    CONTAINER_WORKDIR,
+    ...(p.cacheDir ? ['-v', `${p.cacheDir}:/root/.npm`] : []),
+    '--name',
+    containerName,
+    ...(p.jobId ? ['--label', `olympian.job=${p.jobId}`] : []),
+    p.dockerImage,
+    'sh',
+    '-c',
+    p.command,
+  ];
+
+  return { command: 'docker', args, env: process.env, containerName };
 }
 
 /** Touches MEMORY.md and USER.md in hermesHome so Docker can bind-mount them. */

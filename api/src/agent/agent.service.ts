@@ -12,7 +12,7 @@ import {
   type AgentRunOutputDto,
 } from './agent.model.js';
 import {
-  buildSpawnSpec,
+  buildAgentSpec,
   spawnProcess,
   prepareHermesMemoryPaths,
   generateHermesConfig,
@@ -129,7 +129,7 @@ export class HermesAgentService implements OnModuleInit {
       prepareHermesMemoryPaths(hermesHome);
     }
 
-    const spec = buildSpawnSpec({
+    const spec = buildAgentSpec({
       sandboxMode,
       hermesBin: this.config.get('HERMES_BIN'),
       dockerImage: this.config.get('DOCKER_AGENT_IMAGE'),

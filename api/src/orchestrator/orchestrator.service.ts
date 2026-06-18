@@ -809,7 +809,16 @@ export class OrchestratorService {
     await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
 
     const startedAt = Date.now();
-    const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
+    let verify = await this.workspace.runVerify(jobId, ws.dir, verifyCommand);
+
+    // A failed verify is retried once before routing to a (multi-minute) REVISE — one
+    // extra run is cheap insurance against a transient install/network flake causing a
+    // false failure on otherwise-passing code.
+    if (verify && !verify.ok) {
+      this.logger.warn(`[job ${jobId}] verify failed; retrying once to rule out a transient flake`);
+      verify = await this.workspace.runVerify(jobId, ws.dir, verifyCommand);
+    }
+
     const durationMs = Date.now() - startedAt;
     const result = verify ?? { ok: true, output: '' };
 
