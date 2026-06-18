@@ -31,7 +31,6 @@ export default function VerifyRunRow({ run, jobId }: Props) {
             </span>
             <span class="text-xs text-zinc-600">attempt {run.attempt}</span>
           </div>
-          <code class="block text-xs text-zinc-500 font-mono break-all mt-0.5">{run.command}</code>
           <p class="text-xs text-zinc-600 mt-0.5 font-mono">{formatDuration(run.durationMs)}</p>
         </div>
 
