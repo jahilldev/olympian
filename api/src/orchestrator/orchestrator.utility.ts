@@ -58,6 +58,49 @@ export function acceptanceCriteria(plan: string): string | undefined {
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * Extracts the file paths the plan declares in its "Files to change" section.
+ * Looks for backticked tokens that look like paths (contain a slash or a file
+ * extension). Used for plan-grounding and scope checks. Returns unique paths.
+ */
+export function planFilePaths(plan: string): string[] {
+  const match = plan.match(/##\s*Files to change\s*\n([\s\S]*?)(?:\n##\s|\s*$)/i);
+  const section = match ? match[1] : '';
+  const paths = new Set<string>();
+
+  for (const m of section.matchAll(/`([^`\n]+)`/g)) {
+    const token = m[1].trim().replace(/[)\].,;:]+$/, '');
+
+    if (token.includes('/') || /\.[a-z0-9]+$/i.test(token)) {
+      paths.add(token);
+    }
+  }
+
+  return [...paths];
+}
+
+/** True when a changed file is covered by one of the plan's declared paths. */
+function pathCoveredByPlan(changed: string, planPaths: string[]): boolean {
+  const changedBase = changed.split('/').pop();
+
+  return planPaths.some((p) => {
+    if (changed === p || changed.endsWith(`/${p}`) || p.endsWith(`/${changed}`)) {
+      return true;
+    }
+    // Match on basename too so a plan that lists a bare filename still covers it.
+    return !!changedBase && p.split('/').pop() === changedBase;
+  });
+}
+
+/** Files changed on the branch that the plan never declared — candidate scope creep. */
+export function outOfPlanChanges(changedFiles: string[], planPaths: string[]): string[] {
+  if (planPaths.length === 0) {
+    return [];
+  }
+
+  return changedFiles.filter((f) => !pathCoveredByPlan(f, planPaths));
+}
+
 export function missingPlanSections(content: string): string[] {
   const lower = content.toLowerCase();
 
@@ -83,19 +126,34 @@ export interface PrBodyInput {
   issueNumber: number;
   agentSummary: string;
   confidence: number | null;
-  threshold: number;
   meetsThreshold: boolean;
+  verifyOk: boolean | null;
+  failedDimensions: string[];
   unresolvedIssues?: string;
+}
+
+function verifyLabel(verifyOk: boolean | null): string {
+  if (verifyOk === null) {
+    return 'not run';
+  }
+  return verifyOk ? 'passing' : 'failing';
 }
 
 export function buildPrBody(input: PrBodyInput): string {
   const lines = [input.agentSummary.trim(), '', `Closes #${input.issueNumber}`, '', '---'];
 
   if (input.meetsThreshold) {
-    lines.push(`🤖 Automated self-review: confidence ${input.confidence}/100 — all checks passed.`);
-  } else {
     lines.push(
-      `🤖 Automated self-review: confidence ${input.confidence ?? 'n/a'}/100 (threshold ${input.threshold}) — opened below threshold for human attention.`,
+      `🤖 Automated review passed — all rubric checks green (tests: ${verifyLabel(input.verifyOk)}; advisory confidence ${input.confidence ?? 'n/a'}/100).`,
+    );
+  } else {
+    const failed =
+      input.failedDimensions.length > 0
+        ? ` failing checks: ${input.failedDimensions.join(', ')};`
+        : '';
+
+    lines.push(
+      `🤖 Automated review did NOT pass —${failed} tests: ${verifyLabel(input.verifyOk)} (advisory confidence ${input.confidence ?? 'n/a'}/100). Opened as a draft for human attention.`,
     );
 
     if (input.unresolvedIssues) {
@@ -131,6 +189,10 @@ export interface StatusContext {
   commandPrefix: string;
   lastReviewIssues?: string;
   lastReviewIssueCount?: number;
+  /** Last verify result: true=green, false=red, null=no command discovered. */
+  verifyOk?: boolean | null;
+  /** Rubric dimensions the last review marked as failing. */
+  failedChecks?: string[];
 }
 
 export function buildStatusReport(ctx: StatusContext): string {
@@ -146,10 +208,20 @@ export function buildStatusReport(ctx: StatusContext): string {
   if (ctx.reviewPassCount > 0 || ctx.state === 'SELF_REVIEWING' || ctx.state === 'REVISING') {
     const passLine = `- **Review passes completed:** ${ctx.reviewPassCount}`;
     lines.push(
-      ctx.confidence != null ? `${passLine} — last confidence: ${ctx.confidence}/100` : passLine,
+      ctx.confidence != null
+        ? `${passLine} — last confidence: ${ctx.confidence}/100 (advisory)`
+        : passLine,
     );
   } else if (ctx.confidence != null) {
-    lines.push(`- **Last review confidence:** ${ctx.confidence}/100`);
+    lines.push(`- **Last review confidence:** ${ctx.confidence}/100 (advisory)`);
+  }
+
+  if (ctx.verifyOk != null) {
+    lines.push(`- **Tests/build:** ${ctx.verifyOk ? '✅ passing' : '❌ failing'}`);
+  }
+
+  if (ctx.failedChecks && ctx.failedChecks.length > 0) {
+    lines.push(`- **Failing review checks:** ${ctx.failedChecks.join(', ')}`);
   }
 
   if (ctx.prNumber) {

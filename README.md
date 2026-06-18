@@ -8,7 +8,7 @@ human only ever approving the plan and the final PR. No human writes code.
 ```
 issue labeled ──▶ PLAN ──▶ (human approves plan) ──▶ IMPLEMENT ──▶ SELF-REVIEW ⇄ REVISE
                     ▲             │                                        │
-                    └─ feedback ──┘                          (confidence ≥ threshold)
+                    └─ feedback ──┘                          (rubric + verify pass)
                                                                           │
                                                                           ▼
                               (human approves PR) ◀── AWAIT PR REVIEW ◀── OPEN DRAFT PR
@@ -24,11 +24,14 @@ issue labeled ──▶ PLAN ──▶ (human approves plan) ──▶ IMPLEMENT
    plan as an issue comment.
 3. **Plan approval loop.** A maintainer replies `/hermes approve` to proceed, or leaves a
    comment with corrections — each comment re-plans until approved (capped by `MAX_PLAN_REVISIONS`).
-4. **Implement.** Hermes writes the code on a branch (`hermes/issue-<n>`). An optional
-   `VERIFY_COMMAND` (tests/build) gates the work, iterating up to `MAX_IMPLEMENTATION_ITERATIONS`.
-5. **Self-review.** Hermes reviews its own diff and returns a JSON verdict
-   `{confidence, verdict, issues[]}`. Below `REVIEW_CONFIDENCE_THRESHOLD` it revises and
-   re-reviews, up to `MAX_REVIEW_PASSES`.
+4. **Implement.** Hermes writes the code on a branch (`hermes/issue-<n>`). The repo's
+   verify command (tests/build) — **discovered per-repo by the agent and executed by the
+   orchestrator** — gates the work, iterating up to `MAX_IMPLEMENTATION_ITERATIONS`.
+5. **Self-review.** Hermes reviews its own diff and returns a rubric verdict
+   `{confidence, verdict, dimensions{correctness,tests,planCoverage,security}, issues[]}`.
+   The PR gate is the **rubric** (all dimensions pass, no high/critical issues) plus a
+   **green verify run** — confidence is advisory only. Otherwise it revises and re-reviews,
+   up to `MAX_REVIEW_PASSES`.
 6. **Draft PR.** The branch is pushed and a **draft** PR is opened, linking the issue.
 7. **PR approval loop.** Approve the PR review → the job is `DONE`. Request changes → the
    implementation loop runs again and pushes an update.
@@ -232,10 +235,9 @@ defaults live in [`api/.env.example`](api/.env.example). Key knobs:
 | Variable                                                                        | Purpose                                                                                   |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `TRIGGER_LABEL`                                                                 | Label that starts a job (default `hermes`).                                               |
-| `REVIEW_CONFIDENCE_THRESHOLD`                                                   | Min self-review confidence to open a PR (default 85).                                     |
+| `REVIEW_CONFIDENCE_THRESHOLD`                                                   | Advisory self-review confidence shown in status/PR body (default 85); not the gate.       |
 | `MAX_PLAN_REVISIONS` / `MAX_IMPLEMENTATION_ITERATIONS` / `MAX_REVIEW_PASSES`    | Loop caps.                                                                                |
 | `WORKER_CONCURRENCY`                                                            | Parallel jobs (default 2).                                                                |
-| `VERIFY_COMMAND`                                                                | Optional tests/build command used as an acceptance gate.                                  |
 | `SANDBOX_MODE`                                                                  | `default` (Docker container per run) or `none` (system Hermes binary, no container).      |
 | `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL`                           | Hermes invocation.                                                                        |
 | `HERMES_CONTEXT_LENGTH` / `HERMES_COMPRESS_THRESHOLD` / `HERMES_MODEL_BASE_URL` | Injected into Hermes `config.yaml` at startup; omit to let Hermes use its own defaults.   |

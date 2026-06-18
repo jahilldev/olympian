@@ -15,12 +15,20 @@ import {
   buildPlanPrompt,
   buildPrBodyPrompt,
   buildRevisePrompt,
+  buildVerifyDiscoveryPrompt,
 } from '../agent/agent.prompts.js';
+import { extractJsonBlock } from '../agent/agent.utility.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
 import { type ReviewIssue, type ReviewResult } from '../review/review.model.js';
-import { formatIssues, formatIssuesMarkdown, parseReview } from '../review/review.utility.js';
+import {
+  failedDimensions,
+  formatIssues,
+  formatIssuesMarkdown,
+  parseReview,
+  reviewResultFromRecord,
+} from '../review/review.utility.js';
 import { GithubService } from '../github/github.service.js';
 import { APPROVAL_PERMISSIONS, type RepoRef, type ReviewFeedback } from '../github/github.model.js';
 import { extractAttachmentUrls } from '../github/github.utility.js';
@@ -36,9 +44,12 @@ import {
   formatDownloadedAttachments,
   implementCommitMessage,
   missingPlanSections,
+  outOfPlanChanges,
   parseCommand,
+  planFilePaths,
   reviseCommitMessage,
 } from './orchestrator.utility.js';
+import { existsSync } from 'node:fs';
 
 /**
  * The dark-factory brain. Two surfaces:
@@ -85,21 +96,26 @@ export class OrchestratorService {
 
     if (existing) {
       const state = existing.state as JobState;
+
       if (!TERMINAL_STATES.has(state) || state === 'DONE') {
         this.logger.debug(
           `Job already exists for ${repoFullName}#${evt.issueNumber} in state ${state}; ignoring label`,
         );
+
         return;
       }
+
       // FAILED or CANCELLED: restart from scratch.
       await this.jobs.update(existing.id, { error: null });
       await this.jobs.transition(existing.id, 'PLANNING', { reason: 're-labeled', actor: 'HUMAN' });
       await this.queue.enqueue({ jobId: existing.id, kind: 'PLAN' });
+
       await this.safeComment(
         ref,
         evt.issueNumber,
         `Hermes is restarting this issue and will draft a fresh implementation plan.`,
       );
+
       return;
     }
 
@@ -162,13 +178,21 @@ export class OrchestratorService {
         this.prisma.reviewPass.findFirst({
           where: { jobId: job.id, cycle: job.reviewCycle },
           orderBy: { passNumber: 'desc' },
-          select: { issues: true },
+          select: { issues: true, verifyOk: true, dimensions: true },
         }),
       ]);
 
-      const lastIssues: ReviewIssue[] = lastReviewPass
-        ? (JSON.parse(lastReviewPass.issues) as ReviewIssue[])
-        : [];
+      const lastResult = lastReviewPass
+        ? reviewResultFromRecord({
+            confidence: job.confidence ?? 0,
+            verdict: 'FAIL',
+            dimensions: lastReviewPass.dimensions,
+            verifyOk: lastReviewPass.verifyOk,
+            issues: lastReviewPass.issues,
+          })
+        : null;
+
+      const lastIssues: ReviewIssue[] = lastResult?.issues ?? [];
 
       await this.safeComment(
         ref,
@@ -185,6 +209,8 @@ export class OrchestratorService {
           commandPrefix: this.config.get('COMMAND_PREFIX'),
           lastReviewIssues: lastIssues.length > 0 ? formatIssuesMarkdown(lastIssues) : undefined,
           lastReviewIssueCount: lastIssues.length > 0 ? lastIssues.length : undefined,
+          verifyOk: lastResult?.verifyOk ?? null,
+          failedChecks: lastResult ? failedDimensions(lastResult.dimensions) : [],
         }),
       );
 
@@ -590,7 +616,17 @@ export class OrchestratorService {
 
     const nextRevision = (lastRevision?.revision ?? 0) + 1;
     const planContent = res.stdout.trim();
-    const commentBody = this.renderPlanComment(planContent);
+
+    // Plan grounding: flag paths the plan references that don't exist in the repo.
+    // Only surface when the plan also touches real files (a pure greenfield plan
+    // legitimately references files that don't exist yet), so the warning points
+    // at likely-hallucinated edit targets rather than expected new files.
+    const referencedPaths = planFilePaths(planContent);
+    const missingPaths = referencedPaths.filter((p) => !existsSync(join(ws.dir, p)));
+    const someExist = referencedPaths.some((p) => existsSync(join(ws.dir, p)));
+    const groundingWarnings = someExist ? missingPaths : [];
+
+    const commentBody = this.renderPlanComment(planContent, groundingWarnings);
     const commentId = await this.github.createIssueComment(ref, job.issueNumber, commentBody);
 
     await this.prisma.planRevision.create({
@@ -667,6 +703,7 @@ export class OrchestratorService {
     const attachments = formatDownloadedAttachments(downloaded);
 
     const maxIters = this.config.get('MAX_IMPLEMENTATION_ITERATIONS');
+    const verifyCommand = await this.verifyCommandFor(job, ws.dir);
     let committedSomething = false;
 
     for (let attempt = 1; attempt <= maxIters; attempt++) {
@@ -709,7 +746,7 @@ export class OrchestratorService {
 
       await this.jobs.incrementAttempts(jobId);
 
-      const verify = await this.workspace.runVerify(ws.dir);
+      const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
 
       if (!verify || verify.ok) {
         break;
@@ -906,6 +943,17 @@ export class OrchestratorService {
 
     const changedFiles = await this.workspace.branchChangedFiles(ws.dir, base);
 
+    // Ground-truth signal: run the repo's discovered verify command against the
+    // committed branch and feed the result to the reviewer. Because review runs after
+    // both IMPLEMENT and REVISE, this also makes revisions verify-gated. null = no
+    // command available; a failure forces FAIL regardless of the model's verdict.
+    const verifyCommand = await this.verifyCommandFor(job, ws.dir);
+    const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
+    const verifyOk = verify ? verify.ok : null;
+
+    // Scope check: files changed on the branch the approved plan never declared.
+    const outOfPlanFiles = outOfPlanChanges(changedFiles, planFilePaths(plan));
+
     const reviewPrompt = buildReviewPrompt({
       repoFullName: job.repoFullName,
       issueTitle: job.issueTitle,
@@ -918,6 +966,8 @@ export class OrchestratorService {
       priorIssues,
       hasBrowser,
       parseRetry: priorUnparseable > 0,
+      verify: verify ?? undefined,
+      outOfPlanFiles,
     });
 
     await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
@@ -937,17 +987,26 @@ export class OrchestratorService {
 
     const parsed = parseReview(res.stdout);
 
-    const result: ReviewResult = parsed ?? {
-      confidence: 0,
-      verdict: 'FAIL',
-      issues: [
-        {
-          severity: 'high',
-          title: 'Unparseable review output',
-          detail: res.stdout.slice(0, 800),
-        },
-      ],
-    };
+    const result: ReviewResult = parsed
+      ? { ...parsed, verifyOk }
+      : {
+          confidence: 0,
+          verdict: 'FAIL',
+          dimensions: {
+            correctness: false,
+            tests: false,
+            planCoverage: false,
+            security: false,
+          },
+          issues: [
+            {
+              severity: 'high',
+              title: 'Unparseable review output',
+              detail: res.stdout.slice(0, 800),
+            },
+          ],
+          verifyOk,
+        };
 
     await this.review.persist({ jobId, cycle, passNumber: pass, result });
 
@@ -1025,17 +1084,16 @@ export class OrchestratorService {
       orderBy: { passNumber: 'desc' },
     });
 
-    const meets =
-      !!lastReview &&
-      lastReview.verdict === 'PASS' &&
-      lastReview.confidence >= this.review.threshold;
+    const lastResult = lastReview ? reviewResultFromRecord(lastReview) : null;
+    const meets = lastResult ? this.review.meetsThreshold(lastResult) : false;
+    const failedChecks = lastResult ? failedDimensions(lastResult.dimensions) : [];
 
     const unresolved = lastReview ? formatIssues(JSON.parse(lastReview.issues)) : undefined;
 
     if (!job.prNumber) {
       const prBodyRes = await this.agent.run({
         jobId,
-        phase: 'PR_BODY',
+        phase: 'SUMMARY',
         cwd: this.workspace.dir(jobId),
         prompt: buildPrBodyPrompt({
           repoFullName: job.repoFullName,
@@ -1056,8 +1114,9 @@ export class OrchestratorService {
         issueNumber: job.issueNumber,
         agentSummary,
         confidence: lastReview?.confidence ?? null,
-        threshold: this.review.threshold,
         meetsThreshold: meets,
+        verifyOk: lastResult?.verifyOk ?? null,
+        failedDimensions: failedChecks,
         unresolvedIssues: unresolved,
       });
 
@@ -1147,6 +1206,41 @@ export class OrchestratorService {
     });
   }
 
+  /**
+   * Resolves the repo's verification command. Discovered once per job by a dedicated
+   * agent step (the agent is good at finding the right command for any toolchain) and
+   * persisted, then reused across cycles. The orchestrator EXECUTES it (see
+   * workspace.runVerify) so the pass/fail result is ground truth, not self-reported.
+   * Returns null when there is no command (no checks in the repo, or discovery failed).
+   */
+  private async verifyCommandFor(job: Job, dir: string): Promise<string | null> {
+    if (job.verifyCommand !== null) {
+      return job.verifyCommand.trim() === '' ? null : job.verifyCommand;
+    }
+
+    const res = await this.agent.run({
+      jobId: job.id,
+      phase: 'VERIFY',
+      cwd: dir,
+      prompt: buildVerifyDiscoveryPrompt({ repoFullName: job.repoFullName }),
+      timeoutMs: 10 * 60 * 1000,
+    });
+
+    if (res.status !== 'SUCCEEDED') {
+      // Don't persist — leave it unset so a later cycle can retry discovery.
+      this.logger.warn(`[job ${job.id}] verify discovery ${res.status}; running without a gate`);
+      return null;
+    }
+
+    const parsed = extractJsonBlock(res.stdout) as { command?: unknown } | null;
+    const command = parsed && typeof parsed.command === 'string' ? parsed.command.trim() : '';
+
+    await this.jobs.update(job.id, { verifyCommand: command });
+    this.logger.log(`[job ${job.id}] discovered verify command: ${command || '(none)'}`);
+
+    return command === '' ? null : command;
+  }
+
   private async approvedPlan(jobId: string): Promise<string> {
     const approved = await this.prisma.planRevision.findFirst({
       where: { jobId, status: 'APPROVED' },
@@ -1184,17 +1278,24 @@ export class OrchestratorService {
       .join('\n');
   }
 
-  private renderPlanComment(plan: string): string {
+  private renderPlanComment(plan: string, groundingWarnings: string[] = []): string {
     const prefix = this.config.get('COMMAND_PREFIX');
 
-    return [
-      `### Hermes implementation plan`,
-      ``,
-      plan,
-      ``,
-      `---`,
+    const lines = [`### Hermes implementation plan`, ``, plan, ``, `---`];
+
+    if (groundingWarnings.length > 0) {
+      lines.push(
+        `> ⚠️ **Plan grounding:** these referenced paths were not found in the repo — confirm they're intended as new files rather than hallucinated edit targets:`,
+        ...groundingWarnings.map((p) => `> - \`${p}\``),
+        ``,
+      );
+    }
+
+    lines.push(
       `Reply with **\`${prefix} approve\`** to start implementation, or leave a comment with corrections to iterate. (\`${prefix} cancel\` to stop, \`${prefix} status\` to check progress.)`,
-    ].join('\n');
+    );
+
+    return lines.join('\n');
   }
 
   private async safeComment(ref: RepoRef, issueOrPr: number, body: string): Promise<void> {

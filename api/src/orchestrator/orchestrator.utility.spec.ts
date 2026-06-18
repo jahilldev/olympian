@@ -2,7 +2,9 @@ import {
   acceptanceCriteria,
   buildPrBody,
   buildStatusReport,
+  outOfPlanChanges,
   parseCommand,
+  planFilePaths,
 } from './orchestrator.utility.js';
 
 describe('parseCommand', () => {
@@ -38,28 +40,81 @@ describe('acceptanceCriteria', () => {
 });
 
 describe('buildPrBody', () => {
-  it('links the issue and reports confidence', () => {
+  it('links the issue and reports a passing review with verify state', () => {
     const body = buildPrBody({
       issueNumber: 7,
       agentSummary: 'do x',
       confidence: 90,
-      threshold: 85,
       meetsThreshold: true,
+      verifyOk: true,
+      failedDimensions: [],
     });
     expect(body).toContain('Closes #7');
-    expect(body).toContain('90/100');
+    expect(body).toContain('passed');
+    expect(body).toContain('tests: passing');
   });
 
-  it('lists unresolved issues when below threshold', () => {
+  it('lists unresolved issues and failing checks when the review did not pass', () => {
     const body = buildPrBody({
       issueNumber: 7,
       agentSummary: 'p',
       confidence: 60,
-      threshold: 85,
       meetsThreshold: false,
+      verifyOk: false,
+      failedDimensions: ['tests', 'correctness'],
       unresolvedIssues: '1. [high] boom',
     });
     expect(body).toContain('boom');
+    expect(body).toContain('did NOT pass');
+    expect(body).toContain('tests: failing');
+    expect(body).toContain('tests, correctness');
+  });
+
+  it('reports tests as not run when no verify command exists', () => {
+    const body = buildPrBody({
+      issueNumber: 7,
+      agentSummary: 'p',
+      confidence: 90,
+      meetsThreshold: true,
+      verifyOk: null,
+      failedDimensions: [],
+    });
+    expect(body).toContain('tests: not run');
+  });
+});
+
+describe('planFilePaths', () => {
+  it('extracts backticked paths from the Files to change section only', () => {
+    const plan = [
+      '## Approach',
+      'We touch `not/counted.ts` here in prose.',
+      '## Files to change',
+      '- `src/foo.ts` — add the thing',
+      '- `src/bar/baz.ts` — wire it up',
+      '- `README` — not a path-like token without slash or ext, skipped',
+      '## Risks',
+      'none',
+    ].join('\n');
+    const paths = planFilePaths(plan);
+    expect(paths).toContain('src/foo.ts');
+    expect(paths).toContain('src/bar/baz.ts');
+    expect(paths).not.toContain('not/counted.ts');
+  });
+});
+
+describe('outOfPlanChanges', () => {
+  it('flags changed files the plan never declared', () => {
+    const planPaths = ['src/foo.ts', 'src/bar/baz.ts'];
+    const changed = ['src/foo.ts', 'src/unexpected.ts'];
+    expect(outOfPlanChanges(changed, planPaths)).toEqual(['src/unexpected.ts']);
+  });
+
+  it('matches on basename so a bare filename in the plan still covers it', () => {
+    expect(outOfPlanChanges(['pkg/sub/foo.ts'], ['foo.ts'])).toEqual([]);
+  });
+
+  it('returns nothing when the plan declared no paths (cannot judge scope)', () => {
+    expect(outOfPlanChanges(['a.ts', 'b.ts'], [])).toEqual([]);
   });
 });
 

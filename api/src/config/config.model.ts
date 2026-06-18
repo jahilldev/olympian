@@ -59,7 +59,6 @@ export const envSchema = z.object({
   // sandbox
   SANDBOX_MODE: z.enum(['none', 'default']).default('default'),
   DOCKER_AGENT_IMAGE: z.string().default('hermes-agent:latest'),
-  VERIFY_COMMAND: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
