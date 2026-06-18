@@ -1,3 +1,4 @@
+import { AUTONOMY_NOTICE } from '../agent/agent.prompts.js';
 import { type ReviewPromptContext } from './review.model.js';
 
 export function buildReviewPrompt(ctx: ReviewPromptContext): string {
@@ -59,6 +60,8 @@ Steps (do them exactly once in this order, then move on):
 If the server fails to start, skip the browser step and note it in your summary — your code-level verdict still stands.`,
     );
   }
+
+  parts.push(AUTONOMY_NOTICE);
 
   parts.push(
     `Files changed on this branch:\n${ctx.changedFiles.map((f) => `- ${f}`).join('\n') || '(none detected)'}`,

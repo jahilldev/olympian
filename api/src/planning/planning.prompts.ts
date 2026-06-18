@@ -1,3 +1,4 @@
+import { AUTONOMY_NOTICE } from '../agent/agent.prompts.js';
 import { type PlanPromptContext } from './planning.model.js';
 
 const PLAN_OUTPUT_CONTRACT = `Your response MUST be the complete, detailed implementation plan — not a statement of intent and not a preamble. Use your tools to fully explore the codebase first, then output the full plan in a single response.
@@ -49,6 +50,7 @@ export function buildPlanPrompt(ctx: PlanPromptContext): string {
     parts.push(ctx.attachments);
   }
 
+  parts.push(AUTONOMY_NOTICE);
   parts.push(PLAN_OUTPUT_CONTRACT);
 
   return parts.join('\n\n');

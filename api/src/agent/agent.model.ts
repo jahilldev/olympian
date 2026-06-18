@@ -39,6 +39,12 @@ export interface AgentRunOptions {
   model?: string;
   /** Override the provider for this specific invocation. */
   provider?: string;
+  /**
+   * Post-hoc check on stdout for a cleanly-exited run. Return a reason string to mark
+   * the run FAILED despite exit 0 (e.g. a premature/cut-off turn), or null if it looks
+   * complete. Lets the recorded status and metric reflect the true outcome.
+   */
+  validate?: (stdout: string) => string | null;
 }
 
 export interface AgentRunResult {

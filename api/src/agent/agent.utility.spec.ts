@@ -1,4 +1,18 @@
-import { buildSpawnSpec, extractJsonBlock } from './agent.utility.js';
+import { buildSpawnSpec, extractJsonBlock, incompleteOutputReason } from './agent.utility.js';
+
+describe('incompleteOutputReason', () => {
+  it('flags output below the minimum length', () => {
+    expect(incompleteOutputReason('Should I continue?', 200)).toMatch(/too short/);
+  });
+
+  it('passes output that meets the minimum length', () => {
+    expect(incompleteOutputReason('x'.repeat(250), 200)).toBeNull();
+  });
+
+  it('ignores surrounding whitespace when measuring', () => {
+    expect(incompleteOutputReason(`   ${'y'.repeat(50)}   `, 200)).toMatch(/50 chars/);
+  });
+});
 
 describe('extractJsonBlock', () => {
   it('extracts a fenced json block', () => {

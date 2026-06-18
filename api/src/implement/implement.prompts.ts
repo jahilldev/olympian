@@ -1,4 +1,4 @@
-import { STATIC_ANALYSIS_INSTRUCTIONS } from '../agent/agent.prompts.js';
+import { AUTONOMY_NOTICE, STATIC_ANALYSIS_INSTRUCTIONS } from '../agent/agent.prompts.js';
 import { type ImplementPromptContext } from './implement.model.js';
 
 const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working directory using your tools.
@@ -53,6 +53,7 @@ Use the returned summary to confirm file paths and current state before writing 
     parts.push(ctx.attachments);
   }
 
+  parts.push(AUTONOMY_NOTICE);
   parts.push(IMPLEMENT_OUTPUT_CONTRACT);
 
   return parts.join('\n\n');

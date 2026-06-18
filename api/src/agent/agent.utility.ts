@@ -313,6 +313,22 @@ export function spawnProcess(
 }
 
 /**
+ * A finished turn whose output is below `minLength` did not complete its work —
+ * a premature exit, a tool-call failure, or context exhaustion. Returns a reason
+ * string in that case, or null when the output meets the bar. Used to mark such a
+ * run FAILED even though the process exited cleanly.
+ */
+export function incompleteOutputReason(stdout: string, minLength: number): string | null {
+  const length = stdout.trim().length;
+
+  if (length >= minLength) {
+    return null;
+  }
+
+  return `output too short (${length} chars; expected ≥ ${minLength}) — premature exit, tool-call failure, or context exhaustion`;
+}
+
+/**
  * Extracts a JSON object from agent stdout. Prefers a ```json fenced block; falls
  * back to the outermost {...}. Returns null when nothing parseable is found.
  */

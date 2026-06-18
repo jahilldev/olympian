@@ -11,6 +11,7 @@ import { type JobState, TERMINAL_STATES } from '../job/job.model.js';
 import { QueueService } from '../queue/queue.service.js';
 import { type TaskKind } from '../queue/queue.model.js';
 import { HermesAgentService } from '../agent/agent.service.js';
+import { incompleteOutputReason } from '../agent/agent.utility.js';
 import { buildPlanPrompt } from '../planning/planning.prompts.js';
 import {
   missingPlanSections,
@@ -609,15 +610,25 @@ export class OrchestratorService {
       attachments: formatDownloadedAttachments(downloaded),
     });
 
-    const res = await this.agent.run({ jobId, phase: 'PLAN', cwd: ws.dir, prompt });
-    const missing = missingPlanSections(res.stdout);
+    const res = await this.agent.run({
+      jobId,
+      phase: 'PLAN',
+      cwd: ws.dir,
+      prompt,
+      // A plan is incomplete if it's too short or missing required sections — either
+      // marks the run FAILED rather than recording a phantom success.
+      validate: (stdout) => {
+        const tooShort = incompleteOutputReason(stdout, 500);
+        if (tooShort) {
+          return tooShort;
+        }
+        const missing = missingPlanSections(stdout);
+        return missing.length > 0 ? `missing required sections: ${missing.join(', ')}` : null;
+      },
+    });
 
-    if (res.status !== 'SUCCEEDED' || res.stdout.trim().length < 500 || missing.length > 0) {
-      const reason =
-        missing.length > 0
-          ? `missing required sections: ${missing.join(', ')}`
-          : 'output too short or agent failed';
-      throw new Error(`planning failed (${res.status}); ${reason}: ${res.stderr.slice(0, 200)}`);
+    if (res.status !== 'SUCCEEDED') {
+      throw new Error(`planning failed (${res.status}); ${res.stderr.slice(0, 300)}`);
     }
 
     const nextRevision = (lastRevision?.revision ?? 0) + 1;
@@ -728,16 +739,16 @@ export class OrchestratorService {
 
     await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
 
-    const res = await this.agent.run({ jobId, phase: 'IMPLEMENT', cwd: ws.dir, prompt });
+    const res = await this.agent.run({
+      jobId,
+      phase: 'IMPLEMENT',
+      cwd: ws.dir,
+      prompt,
+      validate: (stdout) => incompleteOutputReason(stdout, 200),
+    });
 
     if (res.status !== 'SUCCEEDED') {
       throw new Error(`implementation agent ${res.status}; ${res.stderr.slice(0, 300)}`);
-    }
-
-    if (res.stdout.trim().length < 200) {
-      throw new Error(
-        `implementation agent exited without meaningful output (${res.stdout.trim().length} chars) — likely a tool-call failure or context exhaustion`,
-      );
     }
 
     const sha = await this.workspace.commitAll(
@@ -935,19 +946,14 @@ export class OrchestratorService {
         priorIssuesText: priorIssues.length > 0 ? formatIssues(priorIssues) : undefined,
         humanFeedback,
       }),
+      validate: (stdout) => incompleteOutputReason(stdout, 200),
     });
 
-    if (rev.status === 'SUCCEEDED') {
-      if (rev.stdout.trim().length < 200) {
-        throw new Error(
-          `revise agent exited without meaningful output (${rev.stdout.trim().length} chars) — likely a tool-call failure or out-of-band message`,
-        );
-      }
-
-      await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
-    } else {
+    if (rev.status !== 'SUCCEEDED') {
       throw new Error(`revise agent ${rev.status}; ${rev.stderr.slice(0, 300)}`);
     }
+
+    await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
 
     await this.jobs.transition(jobId, 'VERIFYING', {
       reason: 'revision complete',

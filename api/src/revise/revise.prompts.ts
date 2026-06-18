@@ -1,4 +1,4 @@
-import { STATIC_ANALYSIS_INSTRUCTIONS } from '../agent/agent.prompts.js';
+import { AUTONOMY_NOTICE, STATIC_ANALYSIS_INSTRUCTIONS } from '../agent/agent.prompts.js';
 import { type RevisePromptContext } from './revise.model.js';
 
 export function buildRevisePrompt(ctx: RevisePromptContext): string {
@@ -42,6 +42,8 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
 2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
 3. Run static analysis and fix any errors.`,
   );
+
+  parts.push(AUTONOMY_NOTICE);
 
   parts.push(
     `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done. The session is not complete until every fix is applied and static analysis passes.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
