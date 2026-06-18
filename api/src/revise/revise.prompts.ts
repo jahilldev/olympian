@@ -41,6 +41,19 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
+    `**Locate the code first (keep your context small)** — before reading source into your own context, run a read-only exploration subagent to find exactly where each issue lives:
+\`\`\`
+delegate_task(
+  goal="Locate the files and specific line ranges relevant to the issues and failing tests/build to fix",
+  context="<one-paragraph summary of the issues and any verify failure above>",
+  toolsets=["file"],
+  max_iterations=10
+)
+\`\`\`
+Use the returned summary to open only the relevant 20–40 line windows with \`search_files\` — do not read whole files into your context.`,
+  );
+
+  parts.push(
     `**For each fix, follow these steps in order:**
 1. Edit the file using a file-write tool.
 2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
