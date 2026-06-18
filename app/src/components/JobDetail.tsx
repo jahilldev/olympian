@@ -274,7 +274,7 @@ export default function JobDetail() {
                     item.kind === 'agent' ? (
                       <AgentRunRow key={`a-${item.run.id}`} run={item.run} jobId={id} />
                     ) : (
-                      <VerifyRunRow key={`v-${item.run.id}`} run={item.run} />
+                      <VerifyRunRow key={`v-${item.run.id}`} run={item.run} jobId={id} />
                     ),
                   )}
               </div>

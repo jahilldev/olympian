@@ -1,8 +1,9 @@
-import { useState } from 'preact/hooks';
 import type { VerifyRunDto } from '@olympian/api/verify/verify.model.js';
+import { navigate } from '../utils/navigate.ts';
 
 interface Props {
   run: VerifyRunDto;
+  jobId: string;
 }
 
 function formatDuration(ms: number): string {
@@ -13,8 +14,7 @@ function formatDuration(ms: number): string {
   return `${m}m ${s % 60}s`;
 }
 
-export default function VerifyRunRow({ run }: Props) {
-  const [open, setOpen] = useState(false);
+export default function VerifyRunRow({ run, jobId }: Props) {
   const hasOutput = run.output.trim().length > 0;
 
   return (
@@ -23,36 +23,31 @@ export default function VerifyRunRow({ run }: Props) {
         run.ok ? 'border-teal-900 bg-teal-950/20' : 'border-red-900 bg-red-950/20'
       }`}
     >
-      <div class="flex items-center gap-2.5">
-        <span
-          class={`font-mono text-xs px-2.5 py-1 rounded shrink-0 ${
-            run.ok ? 'bg-teal-900/60 text-teal-300' : 'bg-red-900/60 text-red-300'
-          }`}
-        >
+      <div class="flex items-center gap-3">
+        <span class="font-mono text-xs px-2.5 py-1 rounded shrink-0 bg-teal-900/60 text-teal-300">
           VERIFY
         </span>
-        <span class={`text-xs font-medium ${run.ok ? 'text-teal-400' : 'text-red-400'}`}>
-          {run.ok ? '✓ passed' : '✗ failed'}
-        </span>
-        <span class="text-xs text-zinc-600">attempt {run.attempt}</span>
-        <span class="ml-auto text-xs text-zinc-600 shrink-0">{formatDuration(run.durationMs)}</span>
+
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class={`text-xs font-medium ${run.ok ? 'text-teal-400' : 'text-red-400'}`}>
+              {run.ok ? 'Passed' : 'Failed'}
+            </span>
+            <span class="text-xs text-zinc-600">attempt {run.attempt}</span>
+          </div>
+          <code class="block text-xs text-zinc-500 font-mono break-all mt-0.5">{run.command}</code>
+          <p class="text-xs text-zinc-600 mt-0.5 font-mono">{formatDuration(run.durationMs)}</p>
+        </div>
+
+        {hasOutput && (
+          <button
+            class="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+            onClick={() => navigate(`/jobs/${jobId}/verifications/${run.id}`)}
+          >
+            View →
+          </button>
+        )}
       </div>
-
-      <code class="block mt-2 text-xs text-zinc-400 font-mono break-all">{run.command}</code>
-
-      {hasOutput && (
-        <button
-          class="mt-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-          onClick={() => setOpen((o) => !o)}
-        >
-          {open ? '▾ hide output' : '▸ show output'}
-        </button>
-      )}
-      {open && hasOutput && (
-        <pre class="mt-2 text-xs text-zinc-400 font-mono whitespace-pre-wrap overflow-x-auto max-h-80 overflow-y-auto bg-zinc-950 rounded p-2 border border-zinc-800">
-          {run.output}
-        </pre>
-      )}
     </div>
   );
 }

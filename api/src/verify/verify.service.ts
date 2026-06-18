@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { VERIFY_OUTPUT_CAP, type RecordVerifyInput, type VerifyRunDto } from './verify.model.js';
+import { toDto } from './verify.utility.js';
 
 /**
  * Persists VERIFY-stage executions (the orchestrator-run tests/build command) so the
@@ -36,15 +37,12 @@ export class VerifyService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return rows.map((r) => ({
-      id: r.id,
-      cycle: r.cycle,
-      attempt: r.attempt,
-      command: r.command,
-      ok: r.ok,
-      output: r.output,
-      durationMs: r.durationMs,
-      createdAt: r.createdAt.toISOString(),
-    }));
+    return rows.map(toDto);
+  }
+
+  async get(id: string): Promise<VerifyRunDto | null> {
+    const row = await this.prisma.verifyRun.findUnique({ where: { id } });
+
+    return row ? toDto(row) : null;
   }
 }

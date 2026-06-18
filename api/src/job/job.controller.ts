@@ -41,6 +41,21 @@ export class JobController {
     return this.verifications.listForJob(id);
   }
 
+  @Get(':id/verifications/:vid')
+  @Header('Cache-Control', 'no-store')
+  async getVerification(
+    @Param('id') _id: string,
+    @Param('vid') vid: string,
+  ): Promise<VerifyRunDto> {
+    const run = await this.verifications.get(vid);
+
+    if (!run) {
+      throw new NotFoundException(`Verification ${vid} not found`);
+    }
+
+    return run;
+  }
+
   @Get(':id/runs')
   @Header('Cache-Control', 'no-store')
   listRuns(@Param('id') id: string): Promise<AgentRunDto[]> {
