@@ -1,3 +1,5 @@
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import { type Job, type QueueTask, type RepoInstallation } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -679,6 +681,8 @@ export class OrchestratorService {
         attachments,
       });
 
+      await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
+
       const res = await this.agent.run({
         jobId,
         phase: 'IMPLEMENT',
@@ -788,6 +792,8 @@ export class OrchestratorService {
 
     const revisionNumber =
       (await this.prisma.agentRun.count({ where: { jobId, phase: 'REVISE' } })) + 1;
+
+    await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
 
     const rev = await this.agent.run({
       jobId,
@@ -913,6 +919,8 @@ export class OrchestratorService {
       hasBrowser,
       parseRetry: priorUnparseable > 0,
     });
+
+    await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
 
     const res = await this.agent.run({
       jobId,

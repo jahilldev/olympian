@@ -117,7 +117,7 @@ delegate_task(
   max_iterations=10
 )
 \`\`\`
-Use the returned summary to confirm file paths and current state before writing anything. Once you understand exactly what needs to be done, call \`checkpoint(action="init", tasks=[...], force=True)\` with your definitive task list. \`force=True\` is required here because a prior attempt may have left completed tasks in the file.`,
+Use the returned summary to confirm file paths and current state before writing anything. Once you understand exactly what needs to be done, call \`checkpoint(action="init", tasks=[...])\` with your definitive task list.`,
   );
 
   if (ctx.attachments) {
@@ -159,7 +159,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `**Your first tool call must be** \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...], force=True)\` with a numbered entry for every specific fix you must make. \`force=True\` is required — a prior revision pass may have left completed tasks in the file.
+    `**Your first tool call must be** \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make.
 
 **For each fix, follow these steps in order — skipping any step means the fix is not done:**
 1. Edit the file using a file-write tool.
