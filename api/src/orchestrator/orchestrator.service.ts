@@ -757,7 +757,9 @@ export class OrchestratorService {
     );
 
     if (sha === null) {
-      throw new Error('agent produced no changes');
+      // A clean exit that edited nothing is not a success, however long its output.
+      await this.agent.markRunFailed(res.runId, 'implementation produced no file changes');
+      throw new Error('implementation produced no file changes');
     }
 
     await this.jobs.incrementAttempts(jobId);
@@ -962,7 +964,14 @@ export class OrchestratorService {
       throw new Error(`revise agent ${rev.status}; ${rev.stderr.slice(0, 300)}`);
     }
 
-    await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
+    const sha = await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
+
+    if (sha === null) {
+      // A revise that edits nothing didn't address the issues — it just narrated. Mark
+      // the run FAILED (not a phantom success) and let the task retry give a real fix.
+      await this.agent.markRunFailed(rev.runId, 'revision produced no file changes');
+      throw new Error('revision produced no file changes — issues were not addressed');
+    }
 
     await this.jobs.transition(jobId, 'VERIFYING', {
       reason: 'revision complete',

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/config.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
 import {
+  STDOUT_CAP,
   type AgentRunDto,
   type AgentRunOptions,
   type AgentRunResult,
@@ -222,6 +223,32 @@ export class HermesAgentService implements OnModuleInit {
       stderr,
       durationMs: raw.durationMs,
     };
+  }
+
+  /**
+   * Downgrades an already-recorded run to FAILED when a post-hoc check proves it didn't
+   * really succeed — e.g. a clean-exiting turn that produced no file changes (rubbish /
+   * narration instead of edits). The recorded status is the source of truth shown in the
+   * UI; the success metric was already counted, so a rare downgrade leaves a small,
+   * acceptable skew rather than silently mislabelling the run.
+   */
+  async markRunFailed(runId: string, reason: string): Promise<void> {
+    const run = await this.prisma.agentRun.findUnique({
+      where: { id: runId },
+      select: { status: true, stderr: true },
+    });
+
+    if (!run || run.status === 'FAILED') {
+      return;
+    }
+
+    await this.prisma.agentRun.update({
+      where: { id: runId },
+      data: {
+        status: 'FAILED',
+        stderr: `${run.stderr ?? ''}\n[failed] ${reason}`.slice(0, STDOUT_CAP),
+      },
+    });
   }
 
   async listForJob(jobId: string): Promise<AgentRunDto[]> {
