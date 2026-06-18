@@ -73,7 +73,7 @@ export default function VerifyOutput() {
           class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-sm"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
-          ←
+          ← Back
         </button>
         <span class="font-mono text-xs px-2.5 py-1 rounded shrink-0 bg-teal-900/60 text-teal-300">
           VERIFY
@@ -97,7 +97,9 @@ export default function VerifyOutput() {
           </div>
 
           <div>
-            <h2 class="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-2">Output</h2>
+            <h2 class="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-2">
+              Output
+            </h2>
             {output.length > 0 ? (
               <pre class="text-xs text-zinc-300 font-mono whitespace-pre-wrap break-words bg-zinc-950 rounded p-3 border border-zinc-800">
                 {output}

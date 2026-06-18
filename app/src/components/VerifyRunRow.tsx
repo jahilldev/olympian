@@ -18,11 +18,7 @@ export default function VerifyRunRow({ run, jobId }: Props) {
   const hasOutput = run.output.trim().length > 0;
 
   return (
-    <div
-      class={`rounded-lg border p-3 ${
-        run.ok ? 'border-teal-900 bg-teal-950/20' : 'border-red-900 bg-red-950/20'
-      }`}
-    >
+    <div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
       <div class="flex items-center gap-3">
         <span class="font-mono text-xs px-2.5 py-1 rounded shrink-0 bg-teal-900/60 text-teal-300">
           VERIFY

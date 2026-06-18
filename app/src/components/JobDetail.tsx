@@ -173,7 +173,7 @@ export default function JobDetail() {
           class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-sm"
           onClick={() => navigate('/')}
         >
-          ←
+          ← Back
         </button>
         <span class="text-zinc-700 text-sm">/</span>
         <span class="text-xs text-zinc-500 font-mono truncate min-w-0">
@@ -267,7 +267,11 @@ export default function JobDetail() {
               <div class="space-y-2">
                 {[
                   ...runs.map((r) => ({ kind: 'agent' as const, at: r.createdAt, run: r })),
-                  ...verifications.map((v) => ({ kind: 'verify' as const, at: v.createdAt, run: v })),
+                  ...verifications.map((v) => ({
+                    kind: 'verify' as const,
+                    at: v.createdAt,
+                    run: v,
+                  })),
                 ]
                   .sort((a, b) => (a.at < b.at ? 1 : -1))
                   .map((item) =>
