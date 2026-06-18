@@ -74,14 +74,10 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 
 **Efficient file reading**: before reading any file in full, use \`search_files\` to locate the specific function, class, or symbol you need. Read only the relevant 20–40 line window around each match. Full file reads are expensive — reserve them for understanding overall file structure only.
 
-**For each task in your checkpoint list**:
+**For each task**:
 1. Write the file.
 2. Run static analysis and fix all errors before continuing.
-3. Call \`checkpoint(action="done", index=N, notes="brief description of what was done or any caveats")\`. **Do not start the next task until this call succeeds.** This is a hard gate, not optional bookkeeping — it is the only signal that a task is complete.
-
-If a task becomes irrelevant or was already handled, call \`checkpoint(action="skip", index=N, notes="reason")\` rather than leaving it as \`[ ]\`.
-
-If context is ever compacted and you lose your task list, call \`checkpoint(action="read")\` — the response includes both the file content and a structured \`summary\` with \`pending\`, \`completed\`, and \`skipped\` index lists so you can see exactly where you are.
+3. Mark the task done in your todo list.
 
 **Before ending your session**, verify every file required by the plan actually exists on disk with non-trivial content. List the files you created and cross-check them against the plan. If any are missing or empty, create them before finishing. Do not stop after partial implementation — the session is not done until every deliverable from the plan is on disk.
 
@@ -117,7 +113,7 @@ delegate_task(
   max_iterations=10
 )
 \`\`\`
-Use the returned summary to confirm file paths and current state before writing anything. Once you understand exactly what needs to be done, call \`checkpoint(action="init", tasks=[...])\` with your definitive task list.`,
+Use the returned summary to confirm file paths and current state before writing anything.`,
   );
 
   if (ctx.attachments) {
@@ -131,7 +127,7 @@ Use the returned summary to confirm file paths and current state before writing 
 
 export function buildRevisePrompt(ctx: RevisePromptContext): string {
   const parts: string[] = [
-    `You are Hermes, an autonomous engineer. You MUST make actual file edits to fix the issues listed below. Do NOT use text replies as a substitute for making changes — if you think an issue is already fixed, verify it by reading the file and confirm with a checkpoint done call. Narrating between tool calls is fine; stopping without editing files is not.`,
+    `You are Hermes, an autonomous engineer. You MUST make actual file edits to fix the issues listed below. Do NOT use text replies as a substitute for making changes — if you think an issue is already fixed, verify it by reading the file. Narrating between tool calls is fine; stopping without editing files is not.`,
     `You are already inside the repository — do NOT clone, fetch, or browse GitHub; do NOT use git commands. Read and write files directly. Address ONLY the specific issues listed below — do not expand scope, re-audit the codebase, or fix things not explicitly listed.`,
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
@@ -159,21 +155,14 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   }
 
   parts.push(
-    `**Your first tool call must be** \`checkpoint(action="init", tasks=["Fix 1: <description>", "Fix 2: <description>", ...])\` with a numbered entry for every specific fix you must make.
-
-**For each fix, follow these steps in order — skipping any step means the fix is not done:**
+    `**For each fix, follow these steps in order:**
 1. Edit the file using a file-write tool.
 2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
-3. Run static analysis and fix any errors.
-4. Call \`checkpoint(action="done", index=N, notes="what was changed and why")\` — **do not move to the next fix until this call succeeds**.
-
-If a fix is superseded or no longer applicable, call \`checkpoint(action="skip", index=N, notes="reason")\` — never leave a fix as \`[ ]\`.
-
-If context is compacted, call \`checkpoint(action="read")\` — the response includes a structured \`summary\` with \`pending\`, \`completed\`, and \`skipped\` index lists.`,
+3. Run static analysis and fix any errors.`,
   );
 
   parts.push(
-    `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done. The session is not complete until every fix is applied, marked done in the checkpoint, and static analysis passes.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
+    `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done. The session is not complete until every fix is applied and static analysis passes.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
   );
 
   return parts.join('\n\n');

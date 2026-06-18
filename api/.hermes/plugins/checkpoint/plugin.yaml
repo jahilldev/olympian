@@ -1,5 +1,0 @@
-name: checkpoint
-version: 1.0.0
-description: Persistent cross-context compaction task checkpoint log for the current job workspace
-provides_tools:
-  - checkpoint
