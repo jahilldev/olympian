@@ -3,6 +3,8 @@ import { HermesAgentService } from '../agent/agent.service.js';
 import { type AgentRunDto, type AgentRunOutputDto } from '../agent/agent.model.js';
 import { ReviewService } from '../review/review.service.js';
 import { type ReviewPassDto } from '../review/review.model.js';
+import { VerifyService } from '../verify/verify.service.js';
+import { type VerifyRunDto } from '../verify/verify.model.js';
 import { type JobDetailDto, type JobSummaryDto } from './job.model.js';
 import { JobService } from './job.service.js';
 
@@ -11,6 +13,7 @@ export class JobController {
   constructor(
     private readonly jobs: JobService,
     private readonly reviews: ReviewService,
+    private readonly verifications: VerifyService,
     private readonly agent: HermesAgentService,
   ) {}
 
@@ -30,6 +33,27 @@ export class JobController {
   @Header('Cache-Control', 'no-store')
   listReviews(@Param('id') id: string): Promise<ReviewPassDto[]> {
     return this.reviews.listForJob(id);
+  }
+
+  @Get(':id/verifications')
+  @Header('Cache-Control', 'no-store')
+  listVerifications(@Param('id') id: string): Promise<VerifyRunDto[]> {
+    return this.verifications.listForJob(id);
+  }
+
+  @Get(':id/verifications/:vid')
+  @Header('Cache-Control', 'no-store')
+  async getVerification(
+    @Param('id') _id: string,
+    @Param('vid') vid: string,
+  ): Promise<VerifyRunDto> {
+    const run = await this.verifications.get(vid);
+
+    if (!run) {
+      throw new NotFoundException(`Verification ${vid} not found`);
+    }
+
+    return run;
   }
 
   @Get(':id/runs')

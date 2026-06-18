@@ -1,3 +1,4 @@
+import { AUTONOMY_NOTICE } from '../agent/agent.prompts.js';
 import { type ReviewPromptContext } from './review.model.js';
 
 export function buildReviewPrompt(ctx: ReviewPromptContext): string {
@@ -27,19 +28,11 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
     );
   }
 
-  // Ground truth: the orchestrator ran the project's verify command (tests/build).
-  // The model cannot override this — a red verify forces a FAIL.
-  if (ctx.verify) {
-    if (ctx.verify.ok) {
-      parts.push(
-        `--- VERIFY COMMAND (ground truth) ---\nThe project's verification command (tests/build) was run by the orchestrator and PASSED. You may still fail the change for other reasons, but the build/tests are green.\n--- END VERIFY ---`,
-      );
-    } else {
-      parts.push(
-        `--- VERIFY COMMAND (ground truth — the change CANNOT pass) ---\nThe project's verification command (tests/build) was run by the orchestrator and FAILED. This is authoritative: a change with a failing verify command must NOT pass. You MUST set "verdict" to "FAIL", set "dimensions.tests" to false, and add the failure as a high-severity issue describing the root cause to fix. Output below (truncated):\n\n${ctx.verify.output.slice(0, 4000)}\n--- END VERIFY ---`,
-      );
-    }
-  }
+  // The repo's tests/build already ran and passed in the dedicated VERIFY stage
+  // before this review (a failure would have routed to REVISE, not here).
+  parts.push(
+    `The project's automated checks (tests/build) have already passed in a separate verify stage. Focus this review on correctness, security, and whether the plan's acceptance criteria are fully met.`,
+  );
 
   if (ctx.outOfPlanFiles && ctx.outOfPlanFiles.length > 0) {
     parts.push(
@@ -67,6 +60,8 @@ Steps (do them exactly once in this order, then move on):
 If the server fails to start, skip the browser step and note it in your summary — your code-level verdict still stands.`,
     );
   }
+
+  parts.push(AUTONOMY_NOTICE);
 
   parts.push(
     `Files changed on this branch:\n${ctx.changedFiles.map((f) => `- ${f}`).join('\n') || '(none detected)'}`,

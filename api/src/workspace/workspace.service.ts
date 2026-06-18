@@ -1,10 +1,10 @@
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, rm, appendFile, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { AppConfigService } from '../config/config.service.js';
+import { buildVerifySpec, spawnProcess } from '../agent/agent.utility.js';
 import { GithubService } from '../github/github.service.js';
 import { type AttachmentRef } from '../github/github.model.js';
 import {
@@ -173,13 +173,16 @@ export class WorkspaceService {
   }
 
   /**
-   * Runs an agent-discovered verification command (tests/build) in the worktree as a
-   * ground-truth acceptance gate. The command itself is discovered per-repo by the
-   * orchestrator (the agent picks it; the orchestrator executes it so the result is
-   * non-spoofable). Returns null when no command is available (the caller treats that
-   * as "no gate").
+   * Runs an agent-discovered verification command (tests/build) as the ground-truth
+   * acceptance gate. In sandboxed mode it runs inside the SAME image the agent uses, with
+   * the worktree mounted, so the gate reproduces a CLEAN install in the agent's
+   * environment — eliminating the host/container divergence that lets an agent's dirty
+   * node_modules pass while a clean install fails. A shared npm cache keeps repeat clean
+   * installs fast. Returns null when no command is available (the caller treats that as
+   * "no gate").
    */
   async runVerify(
+    jobId: string,
     dir: string,
     command: string | null,
   ): Promise<{ ok: boolean; output: string } | null> {
@@ -187,42 +190,40 @@ export class WorkspaceService {
       return null;
     }
 
-    this.logger.log(`[verify] running in ${dir}: ${command}`);
+    const VERIFY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes — clean install + tests/build
+    const sandboxMode = this.config.get('SANDBOX_MODE');
 
-    const VERIFY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes — install + tests/build
+    let cacheDir: string | undefined;
+    if (sandboxMode === 'default') {
+      cacheDir = resolve(this.config.get('WORKSPACE_ROOT'), '.npm-cache');
+      await mkdir(cacheDir, { recursive: true });
+    }
 
-    return new Promise((resolve) => {
-      let output = '';
-
-      const child = spawn('sh', ['-c', command], { cwd: dir, env: process.env });
-
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        resolve({
-          ok: false,
-          output: `${output}\n[verify timed out after ${VERIFY_TIMEOUT_MS / 1000}s]`,
-        });
-      }, VERIFY_TIMEOUT_MS);
-
-      const onData = (d: Buffer) => {
-        if (output.length < 50_000) {
-          output += d.toString();
-        }
-      };
-
-      child.stdout.on('data', onData);
-      child.stderr.on('data', onData);
-
-      child.on('error', (e) => {
-        clearTimeout(timer);
-        resolve({ ok: false, output: `${output}\n[spawn error] ${e.message}` });
-      });
-
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        resolve({ ok: code === 0, output });
-      });
+    const spec = buildVerifySpec({
+      sandboxMode,
+      dockerImage: this.config.get('DOCKER_AGENT_IMAGE'),
+      dir,
+      cacheDir,
+      command,
+      jobId,
     });
+
+    this.logger.log(`[verify] (${sandboxMode}) job ${jobId}: ${command}`);
+
+    const raw = await spawnProcess(spec, { cwd: dir, timeoutMs: VERIFY_TIMEOUT_MS });
+    const output = [raw.stdout, raw.stderr]
+      .filter((s) => s && s.trim().length > 0)
+      .join('\n')
+      .trim();
+
+    if (raw.timedOut) {
+      return {
+        ok: false,
+        output: `${output}\n[verify timed out after ${VERIFY_TIMEOUT_MS / 1000}s]`,
+      };
+    }
+
+    return { ok: raw.exitCode === 0, output };
   }
 
   async cleanup(jobId: string): Promise<void> {

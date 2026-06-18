@@ -12,7 +12,7 @@ import {
   type AgentRunOutputDto,
 } from './agent.model.js';
 import {
-  buildSpawnSpec,
+  buildAgentSpec,
   spawnProcess,
   prepareHermesMemoryPaths,
   generateHermesConfig,
@@ -129,7 +129,7 @@ export class HermesAgentService implements OnModuleInit {
       prepareHermesMemoryPaths(hermesHome);
     }
 
-    const spec = buildSpawnSpec({
+    const spec = buildAgentSpec({
       sandboxMode,
       hermesBin: this.config.get('HERMES_BIN'),
       dockerImage: this.config.get('DOCKER_AGENT_IMAGE'),
@@ -181,11 +181,18 @@ export class HermesAgentService implements OnModuleInit {
       timeoutMs: opts.timeoutMs ?? this.config.get('HERMES_TIMEOUT_MS'),
     });
 
+    // A clean exit (code 0) is only a real success if the output also passes the
+    // caller's validation — a turn that exits 0 but cut off early is a failed run.
+    const validationError =
+      raw.exitCode === 0 && !raw.timedOut && opts.validate ? opts.validate(raw.stdout) : null;
+
     const status: AgentRunStatus = raw.timedOut
       ? 'TIMED_OUT'
-      : raw.exitCode === 0
+      : raw.exitCode === 0 && !validationError
         ? 'SUCCEEDED'
         : 'FAILED';
+
+    const stderr = validationError ? `${raw.stderr}\n[incomplete] ${validationError}` : raw.stderr;
 
     await this.prisma.agentRun.update({
       where: { id: run.id },
@@ -193,7 +200,7 @@ export class HermesAgentService implements OnModuleInit {
         status,
         exitCode: raw.exitCode,
         stdout: raw.stdout,
-        stderr: raw.stderr,
+        stderr,
         durationMs: raw.durationMs,
       },
     });
@@ -202,7 +209,9 @@ export class HermesAgentService implements OnModuleInit {
     this.metrics.recordAgentRun(opts.phase, status, raw.durationMs);
 
     this.logger.log(
-      `[job ${opts.jobId}] agent ${opts.phase} ${status} in ${raw.durationMs}ms (exit ${raw.exitCode})`,
+      `[job ${opts.jobId}] agent ${opts.phase} ${status} in ${raw.durationMs}ms (exit ${raw.exitCode})${
+        validationError ? ` — ${validationError}` : ''
+      }`,
     );
 
     return {
@@ -210,7 +219,7 @@ export class HermesAgentService implements OnModuleInit {
       status,
       exitCode: raw.exitCode,
       stdout: raw.stdout,
-      stderr: raw.stderr,
+      stderr,
       durationMs: raw.durationMs,
     };
   }

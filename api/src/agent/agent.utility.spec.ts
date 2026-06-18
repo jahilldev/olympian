@@ -1,4 +1,58 @@
-import { buildSpawnSpec, extractJsonBlock } from './agent.utility.js';
+import {
+  buildAgentSpec,
+  buildVerifySpec,
+  extractJsonBlock,
+  incompleteOutputReason,
+} from './agent.utility.js';
+
+describe('buildVerifySpec', () => {
+  it('runs the command in the agent image with the worktree, cache and job label (default mode)', () => {
+    const spec = buildVerifySpec({
+      sandboxMode: 'default',
+      dockerImage: 'hermes-agent:latest',
+      dir: '/abs/work/job1',
+      cacheDir: '/abs/work/.npm-cache',
+      command: 'npm ci && npm run build',
+      jobId: 'job1',
+    });
+    expect(spec.command).toBe('docker');
+    const joined = spec.args.join(' ');
+    expect(joined).toContain('-v /abs/work/job1:/workspace');
+    expect(joined).toContain('-v /abs/work/.npm-cache:/root/.npm');
+    expect(joined).toContain('--label olympian.job=job1');
+    // command runs via sh -c, after the image, not the hermes binary
+    expect(spec.args.slice(-3)).toEqual(['sh', '-c', 'npm ci && npm run build']);
+    expect(spec.args).toContain('hermes-agent:latest');
+    expect(spec.args).not.toContain('hermes');
+    expect(spec.containerName).toMatch(/^olympian-verify-/);
+  });
+
+  it('runs as a host subprocess in none mode', () => {
+    const spec = buildVerifySpec({
+      sandboxMode: 'none',
+      dockerImage: 'hermes-agent:latest',
+      dir: '/abs/work/job1',
+      command: 'pytest -q',
+    });
+    expect(spec.command).toBe('sh');
+    expect(spec.args).toEqual(['-c', 'pytest -q']);
+    expect(spec.containerName).toBeUndefined();
+  });
+});
+
+describe('incompleteOutputReason', () => {
+  it('flags output below the minimum length', () => {
+    expect(incompleteOutputReason('Should I continue?', 200)).toMatch(/too short/);
+  });
+
+  it('passes output that meets the minimum length', () => {
+    expect(incompleteOutputReason('x'.repeat(250), 200)).toBeNull();
+  });
+
+  it('ignores surrounding whitespace when measuring', () => {
+    expect(incompleteOutputReason(`   ${'y'.repeat(50)}   `, 200)).toMatch(/50 chars/);
+  });
+});
 
 describe('extractJsonBlock', () => {
   it('extracts a fenced json block', () => {
@@ -40,9 +94,9 @@ describe('extractJsonBlock', () => {
   });
 });
 
-describe('buildSpawnSpec', () => {
+describe('buildAgentSpec', () => {
   it('builds a local hermes invocation with the headless flags', () => {
-    const spec = buildSpawnSpec({
+    const spec = buildAgentSpec({
       sandboxMode: 'none',
       hermesBin: 'hermes',
       dockerImage: 'img',
@@ -56,7 +110,7 @@ describe('buildSpawnSpec', () => {
   });
 
   it('mounts the workspace and hermes memory paths into the container', () => {
-    const spec = buildSpawnSpec({
+    const spec = buildAgentSpec({
       sandboxMode: 'default',
       hermesBin: 'hermes',
       dockerImage: 'img',
@@ -85,7 +139,7 @@ describe('buildSpawnSpec', () => {
   });
 
   it('passes model/provider through when set', () => {
-    const spec = buildSpawnSpec({
+    const spec = buildAgentSpec({
       sandboxMode: 'none',
       hermesBin: 'hermes',
       dockerImage: 'img',

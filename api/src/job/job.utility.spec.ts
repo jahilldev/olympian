@@ -5,7 +5,8 @@ describe('canTransition', () => {
     expect(canTransition('TRIAGED', 'PLANNING')).toBe(true);
     expect(canTransition('PLANNING', 'AWAITING_PLAN_APPROVAL')).toBe(true);
     expect(canTransition('AWAITING_PLAN_APPROVAL', 'IMPLEMENTING')).toBe(true);
-    expect(canTransition('IMPLEMENTING', 'SELF_REVIEWING')).toBe(true);
+    expect(canTransition('IMPLEMENTING', 'VERIFYING')).toBe(true);
+    expect(canTransition('VERIFYING', 'SELF_REVIEWING')).toBe(true);
     expect(canTransition('SELF_REVIEWING', 'OPENING_PR')).toBe(true);
     expect(canTransition('OPENING_PR', 'AWAITING_PR_APPROVAL')).toBe(true);
     expect(canTransition('AWAITING_PR_APPROVAL', 'DONE')).toBe(true);
@@ -13,8 +14,9 @@ describe('canTransition', () => {
 
   it('allows the iteration loops', () => {
     expect(canTransition('AWAITING_PLAN_APPROVAL', 'PLANNING')).toBe(true);
+    expect(canTransition('VERIFYING', 'REVISING')).toBe(true);
     expect(canTransition('SELF_REVIEWING', 'REVISING')).toBe(true);
-    expect(canTransition('REVISING', 'SELF_REVIEWING')).toBe(true);
+    expect(canTransition('REVISING', 'VERIFYING')).toBe(true);
     expect(canTransition('AWAITING_PR_APPROVAL', 'IMPLEMENTING')).toBe(true);
   });
 

@@ -54,8 +54,6 @@ export interface ReviewPromptContext {
   hasBrowser?: boolean;
   /** Set when retrying after an unparseable response to prompt for JSON-only output. */
   parseRetry?: boolean;
-  /** Ground-truth result of the orchestrator-run VERIFY_COMMAND, surfaced to the reviewer. */
-  verify?: { ok: boolean; output: string };
   /** Files changed on the branch that the approved plan never mentioned (possible scope creep). */
   outOfPlanFiles?: string[];
 }
