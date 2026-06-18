@@ -50,7 +50,7 @@ delegate_task(
   max_iterations=10
 )
 \`\`\`
-Use the returned summary to open only the relevant 20–40 line windows with \`search_files\` — do not read whole files into your context.`,
+Use the returned summary to open only the relevant 20-40 line windows with \`search_files\` — do not read whole files into your context.`,
   );
 
   parts.push(

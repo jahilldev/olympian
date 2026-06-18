@@ -9,7 +9,7 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 
 **After any context compaction**: the compaction summary describes only the sub-task that was in progress at the time — it does NOT represent the complete scope. The APPROVED PLAN above is always present in your context and is the single source of truth for what must be delivered. Always re-read the plan's file list and acceptance criteria after a compaction and continue working until ALL of them are satisfied.
 
-**Efficient file reading**: before reading any file in full, use \`search_files\` to locate the specific function, class, or symbol you need. Read only the relevant 20–40 line window around each match. Full file reads are expensive — reserve them for understanding overall file structure only.
+**Efficient file reading**: before reading any file in full, use \`search_files\` to locate the specific function, class, or symbol you need. Read only the relevant 20-40 line window around each match. Full file reads are expensive — reserve them for understanding overall file structure only.
 
 **For each task**:
 1. Write the file.
