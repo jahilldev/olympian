@@ -70,12 +70,13 @@ export default function VerifyOutput() {
     <div class="flex flex-col h-full overflow-hidden">
       <header class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950">
         <button
-          class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-sm"
+          class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-xs"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
           ← Back
         </button>
-        <span class="font-mono text-xs px-2.5 py-1 rounded shrink-0 bg-teal-900/60 text-teal-300">
+        <span class="text-zinc-700 text-sm">/</span>
+        <span class="font-mono text-xs px-2 py-0.5 rounded shrink-0 bg-teal-900/60 text-teal-300">
           VERIFY
         </span>
         <span class={`text-xs font-medium ${run.ok ? 'text-teal-400' : 'text-red-400'}`}>

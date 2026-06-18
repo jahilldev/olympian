@@ -170,7 +170,7 @@ export default function JobDetail() {
       {/* Compact sticky header */}
       <header class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950">
         <button
-          class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-sm"
+          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
           onClick={() => navigate('/')}
         >
           ← Back

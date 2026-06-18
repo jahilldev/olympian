@@ -900,14 +900,14 @@ function StaticOutput({
 
   return (
     <div class="flex flex-col h-full overflow-hidden">
-      <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+      <header class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950">
         <button
-          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
+          class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-xs"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
           ← Back
         </button>
-        <span class="text-zinc-700">/</span>
+        <span class="text-zinc-700 text-sm">/</span>
         {meta && (
           <>
             <span class="text-xs font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
@@ -1075,14 +1075,14 @@ function StreamingOutput({
 
   return (
     <div class="flex flex-col h-full overflow-hidden">
-      <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+      <header class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950">
         <button
-          class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
+          class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-xs"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
           ← Back
         </button>
-        <span class="text-zinc-700">/</span>
+        <span class="text-zinc-700 text-sm">/</span>
         {meta && (
           <>
             <span class="text-xs font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
