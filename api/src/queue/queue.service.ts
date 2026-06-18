@@ -218,10 +218,24 @@ export class QueueService {
       this.logger.warn(`Reclaimed ${count} orphaned task(s) from previous process`);
     }
 
-    await this.prisma.agentRun.updateMany({
+    // Close out agent runs the previous process left mid-flight. Their normal
+    // completion path (which records durationMs) never ran, so stamp an approximate
+    // duration from createdAt — otherwise the tile shows no duration at all.
+    const orphanedRuns = await this.prisma.agentRun.findMany({
       where: { status: 'RUNNING' },
-      data: { status: 'FAILED' },
+      select: { id: true, createdAt: true },
     });
+
+    const now = Date.now();
+
+    await Promise.all(
+      orphanedRuns.map((r) =>
+        this.prisma.agentRun.update({
+          where: { id: r.id },
+          data: { status: 'FAILED', durationMs: now - r.createdAt.getTime() },
+        }),
+      ),
+    );
   }
 
   countPending(kind?: TaskKind): Promise<number> {

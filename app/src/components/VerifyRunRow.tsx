@@ -24,14 +24,13 @@ export default function VerifyRunRow({ run, jobId }: Props) {
           VERIFY
         </span>
 
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            <span class={`text-xs font-medium ${run.ok ? 'text-teal-400' : 'text-red-400'}`}>
-              {run.ok ? 'Passed' : 'Failed'}
-            </span>
-            <span class="text-xs text-zinc-600">attempt {run.attempt}</span>
-          </div>
-          <p class="text-xs text-zinc-600 mt-0.5 font-mono">{formatDuration(run.durationMs)}</p>
+        <div class="flex-1 min-w-0 leading-tight">
+          <span class={`text-xs font-medium ${run.ok ? 'text-teal-400' : 'text-red-400'}`}>
+            {run.ok ? 'Passed' : 'Failed'}
+          </span>
+          <p class="text-xs text-zinc-600 mt-0 font-mono truncate">
+            attempt {run.attempt} · {formatDuration(run.durationMs)}
+          </p>
         </div>
 
         {hasOutput && (

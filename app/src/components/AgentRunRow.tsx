@@ -31,6 +31,7 @@ function formatDuration(ms: number | null): string {
 export default function AgentRunRow({ run, jobId }: Props) {
   const isRunning = run.status === 'RUNNING';
   const canView = run.hasOutput || isRunning;
+  const duration = run.durationMs !== null ? formatDuration(run.durationMs) : null;
 
   return (
     <div
@@ -44,27 +45,27 @@ export default function AgentRunRow({ run, jobId }: Props) {
           {run.phase}
         </span>
 
-        {/* Status + model */}
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            {isRunning ? (
-              <span class="flex items-center gap-1.5 text-xs text-green-400 font-medium">
-                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                Running
-              </span>
-            ) : run.status === 'SUCCEEDED' ? (
-              <span class="text-xs text-zinc-400">Completed</span>
-            ) : run.status === 'FAILED' ? (
-              <span class="text-xs text-red-400">
-                Failed{run.exitCode !== null ? ` (exit ${run.exitCode})` : ''}
-              </span>
-            ) : (
-              <span class="text-xs text-zinc-600">{run.status}</span>
-            )}
-            {run.model && <span class="text-xs text-zinc-600 font-mono truncate">{run.model}</span>}
-          </div>
-          {run.durationMs !== null && (
-            <p class="text-xs text-zinc-600 mt-0.5 font-mono">{formatDuration(run.durationMs)}</p>
+        {/* Status, with model + duration on a meta line beneath */}
+        <div class="flex-1 min-w-0 leading-tight">
+          {isRunning ? (
+            <span class="flex items-center gap-1.5 text-xs text-green-400 font-medium">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              Running
+            </span>
+          ) : run.status === 'SUCCEEDED' ? (
+            <span class="text-xs text-zinc-400">Completed</span>
+          ) : run.status === 'FAILED' ? (
+            <span class="text-xs text-red-400">
+              Failed{run.exitCode !== null ? ` (exit ${run.exitCode})` : ''}
+            </span>
+          ) : (
+            <span class="text-xs text-zinc-600">{run.status}</span>
+          )}
+          {(run.model || duration) && (
+            <div class="flex items-center gap-1.5 text-xs text-zinc-600 mt-0 font-mono min-w-0">
+              {run.model && <span class="truncate min-w-0">{run.model}</span>}
+              {duration && <span class="shrink-0">{run.model ? `· ${duration}` : duration}</span>}
+            </div>
           )}
         </div>
 
