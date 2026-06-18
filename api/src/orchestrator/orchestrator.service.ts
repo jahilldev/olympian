@@ -709,7 +709,10 @@ export class OrchestratorService {
     const attachments = formatDownloadedAttachments(downloaded);
 
     const maxIters = this.config.get('MAX_IMPLEMENTATION_ITERATIONS');
-    const verifyCommand = await this.verifyCommandFor(job, ws.dir);
+    // `undefined` = not yet discovered. Discovery is deferred until after the first
+    // implement attempt (below) so the IMPLEMENT stage always begins — and resumes
+    // after a restart — in IMPLEMENT rather than in the VERIFY discovery step.
+    let verifyCommand: string | null | undefined;
     let committedSomething = false;
 
     for (let attempt = 1; attempt <= maxIters; attempt++) {
@@ -751,6 +754,11 @@ export class OrchestratorService {
       committedSomething ||= sha !== null;
 
       await this.jobs.incrementAttempts(jobId);
+
+      // Discover the verify command once code exists to test, and only once per job.
+      if (verifyCommand === undefined) {
+        verifyCommand = await this.verifyCommandFor(job, ws.dir);
+      }
 
       const verify = await this.workspace.runVerify(ws.dir, verifyCommand);
 
