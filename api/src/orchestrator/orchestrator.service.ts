@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import { type Job, type QueueTask, type RepoInstallation } from '@prisma/client';
@@ -10,14 +11,20 @@ import { type JobState, TERMINAL_STATES } from '../job/job.model.js';
 import { QueueService } from '../queue/queue.service.js';
 import { type TaskKind } from '../queue/queue.model.js';
 import { HermesAgentService } from '../agent/agent.service.js';
+import { buildPlanPrompt } from '../planning/planning.prompts.js';
 import {
-  buildImplementPrompt,
-  buildPlanPrompt,
-  buildPrBodyPrompt,
-  buildRevisePrompt,
-  buildVerifyDiscoveryPrompt,
-} from '../agent/agent.prompts.js';
-import { extractJsonBlock } from '../agent/agent.utility.js';
+  missingPlanSections,
+  planFilePaths,
+  renderPlanComment,
+} from '../planning/planning.utility.js';
+import { buildImplementPrompt } from '../implement/implement.prompts.js';
+import { implementCommitMessage } from '../implement/implement.utility.js';
+import { buildRevisePrompt } from '../revise/revise.prompts.js';
+import { reviseCommitMessage } from '../revise/revise.utility.js';
+import { buildVerifyPrompt } from '../verify/verify.prompts.js';
+import { parseVerifyCommand } from '../verify/verify.utility.js';
+import { buildSummaryPrompt } from '../summary/summary.prompts.js';
+import { buildPrBody } from '../summary/summary.utility.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
@@ -26,6 +33,7 @@ import {
   failedDimensions,
   formatIssues,
   formatIssuesMarkdown,
+  outOfPlanChanges,
   parseReview,
   reviewResultFromRecord,
 } from '../review/review.utility.js';
@@ -39,17 +47,10 @@ import {
   type PrReviewEvent,
 } from './orchestrator.model.js';
 import {
-  buildPrBody,
   buildStatusReport,
   formatDownloadedAttachments,
-  implementCommitMessage,
-  missingPlanSections,
-  outOfPlanChanges,
   parseCommand,
-  planFilePaths,
-  reviseCommitMessage,
 } from './orchestrator.utility.js';
-import { existsSync } from 'node:fs';
 
 /**
  * The dark-factory brain. Two surfaces:
@@ -626,7 +627,12 @@ export class OrchestratorService {
     const someExist = referencedPaths.some((p) => existsSync(join(ws.dir, p)));
     const groundingWarnings = someExist ? missingPaths : [];
 
-    const commentBody = this.renderPlanComment(planContent, groundingWarnings);
+    const commentBody = renderPlanComment(
+      planContent,
+      this.config.get('COMMAND_PREFIX'),
+      groundingWarnings,
+    );
+
     const commentId = await this.github.createIssueComment(ref, job.issueNumber, commentBody);
 
     await this.prisma.planRevision.create({
@@ -1095,7 +1101,7 @@ export class OrchestratorService {
         jobId,
         phase: 'SUMMARY',
         cwd: this.workspace.dir(jobId),
-        prompt: buildPrBodyPrompt({
+        prompt: buildSummaryPrompt({
           repoFullName: job.repoFullName,
           issueNumber: job.issueNumber,
           issueTitle: job.issueTitle,
@@ -1222,7 +1228,7 @@ export class OrchestratorService {
       jobId: job.id,
       phase: 'VERIFY',
       cwd: dir,
-      prompt: buildVerifyDiscoveryPrompt({ repoFullName: job.repoFullName }),
+      prompt: buildVerifyPrompt({ repoFullName: job.repoFullName }),
       timeoutMs: 10 * 60 * 1000,
     });
 
@@ -1232,8 +1238,7 @@ export class OrchestratorService {
       return null;
     }
 
-    const parsed = extractJsonBlock(res.stdout) as { command?: unknown } | null;
-    const command = parsed && typeof parsed.command === 'string' ? parsed.command.trim() : '';
+    const command = parseVerifyCommand(res.stdout);
 
     await this.jobs.update(job.id, { verifyCommand: command });
     this.logger.log(`[job ${job.id}] discovered verify command: ${command || '(none)'}`);
@@ -1276,26 +1281,6 @@ export class OrchestratorService {
           `${i + 1}. @${f.author}${f.path ? ` on ${f.path}${f.line ? `:${f.line}` : ''}` : ''}: ${f.body}`,
       )
       .join('\n');
-  }
-
-  private renderPlanComment(plan: string, groundingWarnings: string[] = []): string {
-    const prefix = this.config.get('COMMAND_PREFIX');
-
-    const lines = [`### Hermes implementation plan`, ``, plan, ``, `---`];
-
-    if (groundingWarnings.length > 0) {
-      lines.push(
-        `> ⚠️ **Plan grounding:** these referenced paths were not found in the repo — confirm they're intended as new files rather than hallucinated edit targets:`,
-        ...groundingWarnings.map((p) => `> - \`${p}\``),
-        ``,
-      );
-    }
-
-    lines.push(
-      `Reply with **\`${prefix} approve\`** to start implementation, or leave a comment with corrections to iterate. (\`${prefix} cancel\` to stop, \`${prefix} status\` to check progress.)`,
-    );
-
-    return lines.join('\n');
   }
 
   private async safeComment(ref: RepoRef, issueOrPr: number, body: string): Promise<void> {

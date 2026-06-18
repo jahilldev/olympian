@@ -2,6 +2,7 @@ import {
   failedDimensions,
   formatIssues,
   meetsThreshold,
+  outOfPlanChanges,
   parseReview,
   reviewResultFromRecord,
 } from './review.utility.js';
@@ -136,5 +137,21 @@ describe('formatIssues', () => {
     ]);
     expect(text).toContain('[high] leak');
     expect(text).toContain('a.ts');
+  });
+});
+
+describe('outOfPlanChanges', () => {
+  it('flags changed files the plan never declared', () => {
+    const planPaths = ['src/foo.ts', 'src/bar/baz.ts'];
+    const changed = ['src/foo.ts', 'src/unexpected.ts'];
+    expect(outOfPlanChanges(changed, planPaths)).toEqual(['src/unexpected.ts']);
+  });
+
+  it('matches on basename so a bare filename in the plan still covers it', () => {
+    expect(outOfPlanChanges(['pkg/sub/foo.ts'], ['foo.ts'])).toEqual([]);
+  });
+
+  it('returns nothing when the plan declared no paths (cannot judge scope)', () => {
+    expect(outOfPlanChanges(['a.ts', 'b.ts'], [])).toEqual([]);
   });
 });

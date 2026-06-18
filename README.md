@@ -49,9 +49,11 @@ each Hermes prompt is rebuilt deterministically from the database.
 - **GitHub App** — webhooks, scoped installation tokens, comments, draft PRs, reviews.
 - **Hermes Agent CLI** — invoked headless: `hermes -z --yolo --source tool --max-turns N`.
 
-Module layout (one service per module): `config`, `prisma`, `metrics`, `health`,
-`github`, `webhook`, `job`, `queue`, `worker`, `agent`, `workspace`,
-`review`, `orchestrator`.
+Module layout: `config`, `prisma`, `metrics`, `health`, `github`, `webhook`, `job`,
+`queue`, `worker`, `agent` (shared CLI runner + prompt fragments), `workspace`,
+`orchestrator`, and one module per agent work phase — `planning`, `implement`,
+`revise`, `review`, `verify`, `summary` — each owning that phase's prompts, models,
+and utilities.
 
 ## Monorepo layout
 
@@ -262,11 +264,6 @@ Agent workspaces and the Hermes memory state (`MEMORY.md`, `USER.md`, `skills/`)
 bind-mounted from `./workspaces/` and `./hermes-state/` at the **same absolute path**
 inside the service container, so sibling agent containers spawned via the Docker socket
 can reference those directories using the same host path the service wrote to.
-
-> **Langfuse observability** — the env var forwarding and URL rewriting are in place, but
-> the `POST /api/public/otel/v1/traces` ingestion endpoint has not yet been implemented.
-> Traces sent by the agent plugin are currently dropped. Enable Langfuse only after the
-> trace ingestion module is added.
 
 ## Operations
 

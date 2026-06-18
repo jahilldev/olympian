@@ -180,6 +180,28 @@ export function formatDimensions(dims: ReviewDimensions): string {
   return REVIEW_DIMENSIONS.map((d) => `${DIMENSION_LABELS[d]} ${dims[d] ? '✓' : '✗'}`).join(' · ');
 }
 
+/** True when a changed file is covered by one of the plan's declared paths. */
+function pathCoveredByPlan(changed: string, planPaths: string[]): boolean {
+  const changedBase = changed.split('/').pop();
+
+  return planPaths.some((p) => {
+    if (changed === p || changed.endsWith(`/${p}`) || p.endsWith(`/${changed}`)) {
+      return true;
+    }
+    // Match on basename too so a plan that lists a bare filename still covers it.
+    return !!changedBase && p.split('/').pop() === changedBase;
+  });
+}
+
+/** Files changed on the branch that the plan never declared — candidate scope creep. */
+export function outOfPlanChanges(changedFiles: string[], planPaths: string[]): string[] {
+  if (planPaths.length === 0) {
+    return [];
+  }
+
+  return changedFiles.filter((f) => !pathCoveredByPlan(f, planPaths));
+}
+
 /** Human/agent-readable rendering of issues for a revise prompt or a PR comment. */
 export function formatIssues(issues: ReviewIssue[]): string {
   if (issues.length === 0) {
