@@ -221,6 +221,10 @@ export interface HermesConfigOptions {
   baseUrl?: string;
   model?: string;
   provider?: string;
+  /** Overrides the model used for background auxiliary tasks (compression, vision, web-extract). */
+  auxiliaryModel?: string;
+  /** Overrides the provider for those auxiliary tasks. */
+  auxiliaryProvider?: string;
   sandboxMode: 'none' | 'default';
 }
 
@@ -244,7 +248,16 @@ export async function generateHermesConfig(
     return;
   }
 
-  const { contextLength, compressionThreshold, baseUrl, model, provider, sandboxMode } = opts;
+  const {
+    contextLength,
+    compressionThreshold,
+    baseUrl,
+    model,
+    provider,
+    auxiliaryModel,
+    auxiliaryProvider,
+    sandboxMode,
+  } = opts;
 
   const effectiveBaseUrl =
     sandboxMode === 'default' && baseUrl
@@ -272,6 +285,28 @@ export async function generateHermesConfig(
     config.compression = {
       ...(config.compression as Record<string, unknown>),
       threshold: compressionThreshold,
+    };
+  }
+
+  // Point the background auxiliary models (compression, vision, web-extract) at a
+  // dedicated, typically smaller/faster model+provider so they don't compete with
+  // the main agent model. Applied to every known auxiliary task.
+  if (auxiliaryModel !== undefined || auxiliaryProvider !== undefined) {
+    const existing = (config.auxiliary as Record<string, unknown> | undefined) ?? {};
+    const override = {
+      ...(auxiliaryProvider !== undefined && { provider: auxiliaryProvider }),
+      ...(auxiliaryModel !== undefined && { model: auxiliaryModel }),
+    };
+    const merge = (task: string) => ({
+      ...((existing[task] as Record<string, unknown> | undefined) ?? {}),
+      ...override,
+    });
+
+    config.auxiliary = {
+      ...existing,
+      vision: merge('vision'),
+      web_extract: merge('web_extract'),
+      compression: merge('compression'),
     };
   }
 

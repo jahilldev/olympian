@@ -243,6 +243,7 @@ defaults live in [`api/.env.example`](api/.env.example). Key knobs:
 | `HERMES_BIN` / `HERMES_HOME` / `HERMES_PRIMARY_MODEL`                           | Hermes invocation.                                                                        |
 | `HERMES_CONTEXT_LENGTH` / `HERMES_COMPRESS_THRESHOLD` / `HERMES_MODEL_BASE_URL` | Injected into Hermes `config.yaml` at startup; omit to let Hermes use its own defaults.   |
 | `HERMES_REVIEW_MODEL` / `HERMES_REVIEW_PROVIDER`                                | Optional independent model for the self-review cycle.                                     |
+| `HERMES_AUXILIARY_MODEL` / `HERMES_AUXILIARY_PROVIDER`                          | Optional model/provider for Hermes' background auxiliary tasks (compression, vision, web-extract); point at a smaller/faster model to speed up secondary work. |
 | `HERMES_TESTING_MODEL` / `HERMES_TESTING_PROVIDER`                              | Optional lighter-weight model for the testing step. Falls back to `HERMES_PRIMARY_MODEL`. |
 
 ## Docker

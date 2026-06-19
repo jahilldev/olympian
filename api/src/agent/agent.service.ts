@@ -50,6 +50,8 @@ export class HermesAgentService implements OnModuleInit {
       baseUrl: this.config.get('HERMES_MODEL_BASE_URL'),
       model: this.config.get('HERMES_PRIMARY_MODEL') || undefined,
       provider: this.config.get('HERMES_PRIMARY_PROVIDER') || undefined,
+      auxiliaryModel: this.config.get('HERMES_AUXILIARY_MODEL') || undefined,
+      auxiliaryProvider: this.config.get('HERMES_AUXILIARY_PROVIDER') || undefined,
       sandboxMode: this.config.get('SANDBOX_MODE'),
     });
   }

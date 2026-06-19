@@ -1,7 +1,12 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import {
   buildAgentSpec,
   buildVerifySpec,
   extractJsonBlock,
+  generateHermesConfig,
   incompleteOutputReason,
 } from './agent.utility.js';
 
@@ -151,5 +156,44 @@ describe('buildAgentSpec', () => {
     expect(spec.args).toEqual(
       expect.arrayContaining(['--model', 'anthropic/claude-sonnet-4.6', '--provider', 'anthropic']),
     );
+  });
+});
+
+describe('generateHermesConfig auxiliary model', () => {
+  async function generateAuxiliary(
+    opts: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const dir = await mkdtemp(join(tmpdir(), 'olympian-aux-'));
+    try {
+      await generateHermesConfig(dir, { sandboxMode: 'none', ...opts });
+      const config = parseYaml(await readFile(join(dir, 'config.yaml'), 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      return (config.auxiliary as Record<string, unknown>) ?? { __absent: true };
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('applies the auxiliary model and provider to every auxiliary task', async () => {
+    const auxiliary = await generateAuxiliary({
+      auxiliaryModel: 'qwen3.6:8b',
+      auxiliaryProvider: 'custom',
+    });
+    const expected = { provider: 'custom', model: 'qwen3.6:8b' };
+    expect(auxiliary.vision).toEqual(expected);
+    expect(auxiliary.web_extract).toEqual(expected);
+    expect(auxiliary.compression).toEqual(expected);
+  });
+
+  it('applies each override independently', async () => {
+    const auxiliary = await generateAuxiliary({ auxiliaryModel: 'qwen3.6:8b' });
+    expect(auxiliary.compression).toEqual({ model: 'qwen3.6:8b' });
+  });
+
+  it('omits the auxiliary section entirely when neither override is set', async () => {
+    const auxiliary = await generateAuxiliary({});
+    expect(auxiliary).toEqual({ __absent: true });
   });
 });

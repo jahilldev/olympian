@@ -29,6 +29,8 @@ export const envSchema = z.object({
   HERMES_PRIMARY_PROVIDER: z.string().optional(),
   HERMES_REVIEW_MODEL: z.string().optional(),
   HERMES_REVIEW_PROVIDER: z.string().optional(),
+  HERMES_AUXILIARY_MODEL: z.string().optional(),
+  HERMES_AUXILIARY_PROVIDER: z.string().optional(),
   HERMES_TIMEOUT_MS: intFromString(7_200_000),
   HERMES_CONTEXT_LENGTH: z.coerce.number().int().optional(),
   HERMES_COMPRESS_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
