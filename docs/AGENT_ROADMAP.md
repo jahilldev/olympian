@@ -1,84 +1,213 @@
-# Agent Loop Roadmap
+# Olympian Roadmap
 
-Techniques identified for improving agent reliability, context efficiency, and task completion. Ordered roughly by value-to-effort ratio.
-
----
-
-## Near-term (prompt or config changes only)
-
-### Speculative plan pre-expansion
-
-Before writing any file, the agent produces the exact function signatures, types, and imports it intends to write for each plan item — a ~500 token expansion that dramatically reduces mid-implementation drift.
-
-**Implementation**: add to `buildImplementPrompt` after exploration delegation — instruct the agent to write a `.olympian/signatures.md` sketch before any real files.
+Where the service is, and how to take it to the next level. This replaces the
+pre‑VERIFY‑stage roadmap entirely — most of that work is now shipped.
 
 ---
 
-### Cross-session learning via Hermes skills
+## Where we are today
 
-After a successful job, the orchestrator triggers a skill-creation step: the agent summarises what it learned about the target repo's patterns (testing conventions, module structure, naming) into a Hermes skill file. This skill is loaded at the start of subsequent jobs against the same repo, reducing exploration time and context usage for repeat tasks.
+Olympian is a working dark factory. A labelled GitHub issue flows through a
+deterministic, DB‑backed state machine, and a human only approves the plan and the
+final PR.
 
-**Implementation**: new `POST /api/agent/skill` orchestrator step after `DONE`; skill written to `HERMES_HOME/skills/<repoFullName>/`.
+```
+issue ─▶ PLAN ─▶ (approve) ─▶ IMPLEMENT ─▶ VERIFY ─▶ SELF‑REVIEW ─▶ OPEN DRAFT PR ─▶ (approve) ─▶ DONE
+                                  ▲           │            │
+                                  └── REVISE ◀┴────────────┘   (verify OR review fails)
+```
 
----
+The quality and reliability foundations are solid:
 
-## Medium-term (schema or code changes required)
+- **Ground‑truth VERIFY stage.** The repo's tests/build are discovered per‑repo by the
+  agent, then **executed by the orchestrator inside the agent's own container image** from
+  a clean install — non‑spoofable, and immune to the host/container divergence that
+  produced false failures. Failures route to REVISE; a single retry absorbs transient
+  flakes.
+- **Rubric‑based review** with an **independent reviewer model** (currently Qwen3.6:27b
+  reviewing Qwen3.6:35b's work). The gate is the rubric (correctness / tests /
+  plan‑coverage / security) plus no high‑critical issues — confidence is advisory, not the
+  gate.
+- **Unified failure loop.** Every post‑implement failure (verify or review) funnels through
+  REVISE → VERIFY → REVIEW, with per‑cycle caps that fall back to a human‑reviewed draft PR.
+- **Honest run accounting.** Premature/garbage exits are caught (length guard + no‑op‑commit
+  detection) and recorded as FAILED, not phantom successes. Review feedback persists
+  per‑cycle, so a wasted cycle never loses context.
+- **Context discipline.** IMPLEMENT and REVISE delegate file exploration to read‑only
+  subagents and drive todo lists (which survive Hermes compaction); REVIEW reads targeted
+  windows. Plans are grounded (hallucinated paths flagged) and scope‑checked (out‑of‑plan
+  edits surfaced to the reviewer).
+- **Clean module architecture.** One module per work phase (`planning`, `implement`,
+  `revise`, `verify`, `review`, `summary`) over shared infra (`agent`, `workspace`,
+  `orchestrator`, `queue`, `worker`, `job`, `github`, `webhook`, `langfuse`, `metrics`).
 
-### Acceptance criteria as runnable test stubs
-
-The plan schema gains a `## Test Stubs` section. Before any implementation, the agent writes failing test stubs matching each acceptance criterion. It implements until all stubs pass. This replaces self-reported progress with a ground-truth executable signal.
-
-**Implementation**: update `PLAN_REQUIRED_SECTIONS` and `PLAN_OUTPUT_CONTRACT`; add a test-stub writing step to `handleImplement` before the main agent loop; use `VERIFY_COMMAND` to run stubs.
-
----
-
-### FastContext integration (separate exploration model)
-
-[Microsoft FastContext](https://github.com/microsoft/fastcontext) (June 2026) is a lightweight read-only exploration subagent trained specifically for repository navigation. It accepts a natural-language query and returns compact `<final_answer>` file:line citations.
-
-Results: up to **+5.5 score improvement** and **60.3% fewer main-agent tokens** on SWE-bench.
-
-**Requirements**:
-
-- A second Ollama model for exploration (4B–7B — `qwen2.5-coder:7b` or a served FastContext weight from `microsoft/swe-fastcontext` on HuggingFace)
-- `fastcontext` CLI installed in `Dockerfile.agent`
-- Orchestrator runs `fastcontext --query "..." --citation` before `handleImplement`, passes output as `ctx.attachments`
-- Separate `FASTCONTEXT_BASE_URL` / `FASTCONTEXT_MODEL` env vars
-
-**Where the current `delegate_task` approach falls short**: it uses the same large model and consumes the same per-token cost. FastContext's trained 4B model is ~8× cheaper per token and purpose-built for navigation.
-
----
-
-### Tool output compression middleware
-
-Large `read_file` responses are the biggest single source of context drain. A middleware layer post-processes every tool response over N tokens through a summarizer before it enters the agent's context, replacing raw file content with annotated excerpts.
-
-**Implementation**: Hermes context engine plugin (`plugins/context_engine/`) that intercepts tool results and truncates/summarises them. Alternatively, a NestJS proxy that wraps the Ollama endpoint and applies compression to assistant turns before they are returned.
-
----
-
-## Research / long-term
-
-### Process Reward Models (PRMs)
-
-Instead of a binary PASS/FAIL verdict from the self-reviewer, a PRM scores each intermediate commit: _"is this diff moving toward the goal?"_ This replaces `confidence >= threshold` with a richer, step-level signal and enables early termination of runs that are drifting.
-
-**Status**: requires a fine-tuned model; no off-the-shelf solution for arbitrary codebases yet. Watch the SWE-bench leaderboard for open PRM releases.
+The bottleneck is no longer "does it produce good code on a happy path" — it does. The next
+level is about three things: **knowing** quality systematically, **running unattended**
+without silent failure, and **handling harder, bigger work**.
 
 ---
 
-### Hierarchical orchestration (orchestrator + leaf agents)
+## Guiding principles
 
-For very large issues (50+ files), the plan is decomposed into independent sub-problems. An orchestrator agent (Hermes `role="orchestrator"`) delegates each sub-problem to a leaf agent with a focused sub-plan. Results are merged and integration-tested by the orchestrator.
+These are the invariants that got us here; new work should preserve them.
 
-**Configuration prerequisite**: `delegation.max_spawn_depth: 2` in `config.yaml`.
-
-**Consideration**: at `max_concurrent_children: 3`, a two-level tree can run 9 parallel leaf agents, multiplying token spend significantly. Only worthwhile for genuinely decomposable tasks.
+1. **Ground truth over self‑report.** Gate on executed tests and observed diffs, never on
+   the agent's word. (VERIFY is non‑spoofable; review confidence is advisory.)
+2. **Measure before optimising.** Prompt/model changes should move a tracked number, not a
+   vibe.
+3. **Persist state; rebuild prompts deterministically.** Prisma is the source of truth; a
+   crash mid‑stage loses no decision.
+4. **Keep the two human gates** (plan, final PR) and make everything between them legible.
+5. **Fail loudly and recoverably**, never silently.
 
 ---
 
-### Episodic memory with vector retrieval
+## Pillar A — Measure & systematically improve (the keystone)
 
-For organisations running many jobs, a vector store of past agent trajectories enables semantic retrieval: _"find jobs where we encountered a similar TypeScript error and how it was fixed."_ This surfaces relevant prior experience without manual prompt engineering.
+Output quality is good *anecdotally*. To take it to the next level you have to make it a
+number you can move. Everything in Pillars B and C is easier to justify once this exists.
 
-**When it pays off**: when the same codebase accumulates 50+ jobs. At smaller scale, Hermes's built-in memory tool is sufficient for session-scoped checkpointing.
+### A1. Evaluation harness / regression suite — _effort: L, payoff: very high_
+A curated set of issues (varied difficulty, languages, repo sizes), each with a scored
+expected outcome, run through the **full pipeline headless** and graded:
+- Did it open a PR? Did VERIFY pass? How many cycles to green?
+- **Planted‑bug recall:** seed known defects and measure how many REVIEW catches.
+- Cost: tokens (from the Langfuse traces we already ingest) and wall‑clock per stage.
+
+This converts "it's catching lots of issues" into a tracked pass‑rate + recall + cost. It's
+the prerequisite for trusting any model/prompt change, and the single highest‑leverage item
+on this roadmap. Build it as a script that seeds `Job` rows and drives `OrchestratorService`
+against fixture repos, asserting on the resulting `ReviewPass` / `VerifyRun` / PR records.
+
+### A2. Per‑job cost & latency accounting — _effort: M, payoff: high_
+Surface tokens, wall‑clock, and cycle counts per job and per stage, in the UI and in
+Prometheus. We already receive token usage in the Langfuse OTLP spans (`langfuse.utility`);
+aggregate it per `AgentRun`/`Job`. Without this you can't reason about the 35b/27b split or
+about where time goes.
+
+### A3. Model & prompt experimentation — _effort: M, payoff: high_
+With A1 + A2, formalise what you're already doing by hand: A/B the primary/reviewer models
+and prompt variants and pick by score, not feel. A config‑level switch per experiment plus
+an eval run is enough; no framework needed initially.
+
+### A4. Real‑run outcome telemetry — _effort: M, payoff: medium_
+Track signals only production gives you: review‑catch‑rate per cycle, VERIFY failure
+reasons, and crucially the **human‑PR‑change‑request rate** (what review missed but a human
+caught). That last number is the ground truth for reviewer quality and should feed back into
+the review prompt/model choice.
+
+---
+
+## Pillar B — Run unattended without silent failure
+
+The pipeline is correct, but a few boundaries can still strand a job quietly. These are what
+stand between "works while I watch it" and "runs the factory while I sleep."
+
+### B1. Durable webhook handling — _effort: M, payoff: very high_  ⚠️ biggest reliability gap
+The controller returns `202` then `void this.webhooks.dispatch(...)` — fire‑and‑forget.
+`WebhookEvent.processedAt` is only set on success, but GitHub won't redeliver after a `202`,
+so a crash/restart between the response and completion **loses the event** and strands the
+job (a missed `/hermes approve` or PR approval sits forever). Add a catch‑up reconciler
+(the app already imports `@nestjs/schedule`) that periodically re‑dispatches
+`WebhookEvent` rows with `processedAt IS NULL`, plus a metric on unprocessed age.
+
+### B2. Parked‑job reconciliation — _effort: M, payoff: high_
+Jobs in `AWAITING_PLAN_APPROVAL` / `AWAITING_PR_APPROVAL` depend entirely on a webhook
+arriving. Add a periodic poll of GitHub for new comments/reviews on parked jobs (since
+`updatedAt`) as a backstop to B1, and a "stale job" metric so a stall is visible instead of
+invisible.
+
+### B3. Workspace garbage collection — _effort: S, payoff: medium_
+`workspace.cleanup` is only called on the PR‑approved (`DONE`) path — `FAILED`, `CANCELLED`,
+and re‑labelled jobs leak their clones (and now `node_modules`) indefinitely. Clean up on all
+terminal transitions, add a periodic sweep with a retention cap, and keep the shared
+`.npm-cache` (already added) out of GC.
+
+### B4. Installation‑token hardening — _effort: M, payoff: high (security)_
+The short‑lived installation token is written into `.git/config` inside the bind‑mounted
+workspace, which the `--yolo` agent — driven partly by untrusted issue/comment text — can
+read and exfiltrate. Strip the token from the remote for the duration of agent and verify
+runs (tokenless URL), and re‑inject it only in the orchestrator's `push`. Pairs naturally
+with the now‑containerised verify.
+
+### B5. Service‑level tests for the brain — _effort: M, payoff: high_
+Every `*.service.ts` is currently untested — only pure utilities have specs. The 1200‑line
+`OrchestratorService` (stage routing, caps, the VERIFY↔REVISE↔REVIEW loop) is the
+highest‑regression‑risk code in the repo. Add tests around: stage transitions, the
+per‑cycle caps, no‑op/incomplete handling, and the "review feedback + verify failure both
+reach REVISE" invariant. Also cover `QueueService` (atomic claim, reclaim) and
+`WorkspaceService`.
+
+### B6. Alerting on the metrics we already emit — _effort: S, payoff: medium_
+Prometheus metrics exist but nothing watches them. Add alerts for stuck/parked jobs, rising
+REVISE‑loop or VERIFY‑flake rates, queue depth, and orphaned containers.
+
+### B7. Horizontal scale, when you need it — _effort: L, payoff: situational_
+Single‑process / single‑SQLite is a vertical ceiling. The queue claim is already
+concurrency‑safe (`UPDATE … RETURNING`), so the path is: swap SQLite → Postgres, run N
+worker processes, and add **per‑installation fairness** so one busy repo can't starve the
+others (today claiming is global FIFO by priority). Only worth it past a handful of
+concurrent jobs.
+
+---
+
+## Pillar C — Handle harder and bigger work
+
+Once you can measure (A) and trust it unattended (B), push the capability frontier.
+
+### C1. Test‑stub‑driven implementation (TDD) — _effort: M, payoff: high_
+Have PLAN emit acceptance criteria as **failing test stubs**, commit them first, and let the
+existing VERIFY stage run them — IMPLEMENT/REVISE iterate until green. This replaces
+self‑reported progress with an executable, ground‑truth signal and leans directly on the
+VERIFY machinery we now have. The strongest single quality lever after the eval harness.
+
+### C2. Cross‑job repo memory (Hermes skills) — _effort: M, payoff: high_
+After a successful job, distil what the agent learned about the repo (test command, module
+layout, conventions, gotchas) into a Hermes **skill** written to
+`HERMES_HOME/skills/<repo>/` (already bind‑mounted into every container). Load it at the
+start of future jobs on that repo → faster orientation, fewer cycles, less exploration
+token spend. Also lets a discovered VERIFY command be cached as durable knowledge.
+
+### C3. Large‑issue decomposition — _effort: L, payoff: high (for big issues)_
+For issues spanning many files, have PLAN split into independent sub‑tasks, each
+implemented + verified, then integrated and verified as a whole. Bound by a depth/cost cap
+so a two‑level tree can't blow the token budget. Turns "too big for one context" into
+tractable units.
+
+### C4. Repo retrieval / indexing for exploration — _effort: M, payoff: medium_
+The delegate‑exploration pattern is good but still grep‑based. An embedded index of the repo
+(symbols + semantic) makes file location faster, cheaper, and more accurate — most valuable
+on large repos where grep exploration dominates cost.
+
+### C5. Reviewer ensemble & graceful escalation — _effort: M, payoff: medium_
+- For high‑stakes repos, an optional N‑reviewer majority vote (diverse lenses:
+  correctness / security / tests) instead of a single pass.
+- When a cap is hit, produce a structured **"blocked" report** (what was attempted, the
+  failing verify output, unresolved review issues) instead of a low‑quality draft PR — so
+  the human gets a useful handoff, not noise.
+
+### C6. Richer PR & human‑in‑the‑loop — _effort: M, payoff: medium_
+- PR body with risk callouts + test evidence (what VERIFY ran, what passed).
+- Respond to **inline** PR review comments at the specific line, not just the thread.
+- "Approve plan with edits" in the UI, and surface the rubric/verify decision trail so a
+  human can see *why* it passed.
+
+---
+
+## Suggested sequencing
+
+**Phase 1 — Foundation (measure + stop the bleeding).**
+A1 eval harness · A2 cost/latency · B1 webhook durability · B3 workspace GC.
+> After this you can prove quality moves, and the factory survives a restart.
+
+**Phase 2 — Harden + first capability gains.**
+B2 reconciliation · B4 token hardening · B5 orchestrator tests · C1 test‑stubs · C2 repo
+memory · A3 experimentation.
+> Unattended‑safe, and measurably better per cycle.
+
+**Phase 3 — Scale + frontier.**
+C3 decomposition · C4 retrieval · C5 ensemble/escalation · C6 human‑loop · B6 alerting ·
+B7 Postgres/horizontal scale (only if throughput demands it).
+
+The throughline: **A1 first.** Almost every other item is easier to prioritise, justify, and
+verify once there's a score to move.
