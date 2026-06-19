@@ -215,31 +215,48 @@ export default function JobDetail() {
           <div class="space-y-2">
             <h1 class="text-lg font-semibold text-zinc-100 leading-snug">{job.issueTitle}</h1>
 
-            {/* Active run banner */}
-            {activeRun && (
+            {/* Active-run banner + operator controls — one fixed row, so the buttons
+                stay top-right whether or not a run is in progress (the banner only ever
+                appears to their left). */}
+            {(activeRun || !TERMINAL_STATES.has(job.state) || job.state === 'FAILED') && (
               <div class="flex items-stretch gap-2">
-                <div class="flex-1 min-w-0 rounded-lg border border-green-900 bg-green-950/30 px-3 py-2.5 flex items-center gap-2.5">
-                  <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
-                  <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
-                  {activeRun.model && (
-                    <span class="text-xs text-green-900 truncate hidden sm:block">
-                      {activeRun.model}
-                    </span>
+                {activeRun && (
+                  <div class="flex-1 min-w-0 rounded-lg border border-green-900 bg-green-950/30 px-3 py-2.5 flex items-center gap-2.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+                    <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
+                    {activeRun.model && (
+                      <span class="text-xs text-green-900 truncate hidden sm:block">
+                        {activeRun.model}
+                      </span>
+                    )}
+                    <button
+                      class="ml-auto shrink-0 text-xs font-medium text-green-300 hover:text-green-100 transition-colors"
+                      onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
+                    >
+                      Watch live →
+                    </button>
+                  </div>
+                )}
+                <div class={`flex items-stretch gap-2 ${activeRun ? 'shrink-0' : 'ml-auto'}`}>
+                  {job.state === 'FAILED' && (
+                    <button
+                      disabled={actionPending}
+                      onClick={() => act('retry')}
+                      class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                    >
+                      {actionPending ? 'Working…' : 'Retry'}
+                    </button>
                   )}
-                  <button
-                    class="ml-auto shrink-0 text-xs font-medium text-green-300 hover:text-green-100 transition-colors"
-                    onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
-                  >
-                    Watch live →
-                  </button>
+                  {!TERMINAL_STATES.has(job.state) && (
+                    <button
+                      disabled={actionPending}
+                      onClick={() => act('cancel')}
+                      class="rounded-lg border border-red-900 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-950/40 disabled:opacity-50 transition-colors"
+                    >
+                      {actionPending ? 'Cancelling…' : 'Cancel'}
+                    </button>
+                  )}
                 </div>
-                <button
-                  disabled={actionPending}
-                  onClick={() => act('cancel')}
-                  class="shrink-0 rounded-lg border border-red-900 px-3 text-xs font-medium text-red-300 hover:bg-red-950/40 disabled:opacity-50 transition-colors"
-                >
-                  {actionPending ? 'Cancelling…' : 'Cancel'}
-                </button>
               </div>
             )}
             <div class="flex items-center gap-x-3 text-xs text-zinc-500 min-w-0">
@@ -278,31 +295,6 @@ export default function JobDetail() {
               {job.reviewCycle > 0 && <span class="shrink-0">cycle {job.reviewCycle}</span>}
               <span class="ml-auto shrink-0 whitespace-nowrap">{relativeTime(job.updatedAt)}</span>
             </div>
-
-            {/* Operator controls. Cancel for a running job lives in the active-run bar
-                above; here it covers parked (no active run) states and FAILED → Retry. */}
-            {(job.state === 'FAILED' || (!TERMINAL_STATES.has(job.state) && !activeRun)) && (
-              <div class="flex items-center gap-2 flex-wrap pt-1">
-                {job.state === 'FAILED' && (
-                  <button
-                    disabled={actionPending}
-                    onClick={() => act('retry')}
-                    class="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
-                  >
-                    {actionPending ? 'Working…' : 'Retry'}
-                  </button>
-                )}
-                {!TERMINAL_STATES.has(job.state) && !activeRun && (
-                  <button
-                    disabled={actionPending}
-                    onClick={() => act('cancel')}
-                    class="text-xs font-medium px-3 py-1.5 rounded-lg border border-red-900 text-red-300 hover:bg-red-950/40 disabled:opacity-50 transition-colors"
-                  >
-                    {actionPending ? 'Working…' : 'Cancel'}
-                  </button>
-                )}
-              </div>
-            )}
 
             {actionError && <p class="text-xs text-red-400 pt-1">{actionError}</p>}
           </div>
