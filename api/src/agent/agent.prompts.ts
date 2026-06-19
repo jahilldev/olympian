@@ -12,7 +12,8 @@ export const AUTONOMY_NOTICE = `You are running fully autonomously — there is 
 export const VERIFY_CONTRACT = `**How your work is verified:** after you finish, the orchestrator runs the project's build/tests in a FRESH container from your COMMITTED files only — a clean install (e.g. \`npm ci\`, which installs strictly from the lockfile and ignores anything already in \`node_modules\`). Therefore:
 - Any dependency you add MUST be saved to the manifest AND the lockfile and committed (e.g. \`npm install --save\`/\`--save-dev\`, which updates \`package.json\` and \`package-lock.json\`). Do NOT rely on packages you installed ad-hoc — they will not exist in the clean run.
 - Do NOT delete the lockfile; keep it in sync with the manifest. Keep dependency versions consistent across workspaces.
-- Before finishing, make sure a clean install of your committed manifests would build — don't trust a \`node_modules\` you mutated by hand.`;
+- Before finishing, make sure a clean install of your committed manifests would build — don't trust a \`node_modules\` you mutated by hand.
+- The check covers the WHOLE repo. If it fails in code outside this issue's scope — a pre-existing breakage in another package/workspace, or shared config — make the minimal fix needed to get a green result. That is expected and in-scope, not scope creep. Note what you changed outside the issue's area, and why, in your summary so the reviewer has context.`;
 
 export const STATIC_ANALYSIS_INSTRUCTIONS = `**After making changes, run the project's static analysis tooling to catch errors before committing:**
 - **TypeScript / Node.js**: check \`package.json\` scripts for \`typecheck\`, \`lint\`, \`build\` — run whichever exist (e.g. \`npm run typecheck && npm run lint\`); if no script exists, try \`npx tsc --noEmit\`

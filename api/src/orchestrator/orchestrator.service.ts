@@ -236,64 +236,23 @@ export class OrchestratorService {
     }
 
     if (command.kind === 'cancel') {
-      await this.queue.cancelForJob(job.id);
-
-      this.agent.killContainerForJob(job.id);
-
-      await this.jobs.transition(job.id, 'CANCELLED', {
-        reason: `cancelled by @${evt.author}`,
-        actor: 'HUMAN',
-      });
-
-      await this.safeComment(ref, evt.issueNumber, `Cancelled. Re-label the issue to start over.`);
+      await this.cancelJob(job.id, `@${evt.author}`);
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
 
       return;
     }
 
     if (command.kind === 'retry') {
-      if (job.state !== 'FAILED') {
+      const result = await this.retryJob(job.id, `@${evt.author}`);
+
+      if (!result.retried) {
         await this.safeComment(
           ref,
           evt.issueNumber,
           `Nothing to retry — job is currently in **${job.state}** state.`,
         );
-
-        await this.safeCommentReaction(ref, evt.commentId, 'eyes');
-
-        return;
       }
 
-      const lastTask = await this.prisma.queueTask.findFirst({
-        where: { jobId: job.id },
-        orderBy: { createdAt: 'desc' },
-        select: { kind: true },
-      });
-
-      const retryKind = (lastTask?.kind ?? 'REVIEW') as TaskKind;
-
-      const retryStateMap: Record<TaskKind, JobState> = {
-        PLAN: 'PLANNING',
-        IMPLEMENT: 'IMPLEMENTING',
-        VERIFY: 'VERIFYING',
-        REVIEW: 'SELF_REVIEWING',
-        REVISE: 'REVISING',
-        OPEN_PR: 'OPENING_PR',
-      };
-
-      const targetState = retryStateMap[retryKind];
-
-      await this.jobs.update(job.id, { error: null });
-
-      await this.jobs.transition(job.id, targetState, {
-        reason: `retried by @${evt.author}`,
-        actor: 'HUMAN',
-        force: true,
-      });
-
-      await this.queue.enqueue({ jobId: job.id, kind: retryKind });
-
-      await this.safeComment(ref, evt.issueNumber, `Retrying from the **${retryKind}** phase.`);
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
 
       return;
@@ -554,6 +513,96 @@ export class OrchestratorService {
     } catch {
       // best-effort notification
     }
+  }
+
+  // ── Operator actions (shared by the /hermes commands and the dashboard) ──────
+
+  /**
+   * Cancel an in-flight job: stop outstanding tasks, kill any running container, and
+   * mark it CANCELLED. No-op if the job is already in a terminal state. `by` is a
+   * display string for the audit trail (e.g. `@user` or `the dashboard`).
+   */
+  async cancelJob(jobId: string, by: string): Promise<void> {
+    const job = await this.jobs.findById(jobId);
+
+    if (!job || TERMINAL_STATES.has(job.state as JobState)) {
+      return;
+    }
+
+    await this.queue.cancelForJob(jobId);
+    this.agent.killContainerForJob(jobId);
+    await this.jobs.transition(jobId, 'CANCELLED', {
+      reason: `cancelled by ${by}`,
+      actor: 'HUMAN',
+    });
+
+    try {
+      const { ref } = await this.context(jobId);
+      await this.safeComment(
+        ref,
+        job.prNumber ?? job.issueNumber,
+        `Cancelled. Re-label the issue to start over.`,
+      );
+    } catch {
+      // best-effort notification
+    }
+  }
+
+  /**
+   * Re-run a FAILED job from the phase it died in. Returns `{ retried: false }` (with a
+   * reason) when the job isn't FAILED, so callers can surface that instead of acting.
+   */
+  async retryJob(
+    jobId: string,
+    by: string,
+  ): Promise<{ retried: boolean; kind?: TaskKind; reason?: string }> {
+    const job = await this.jobs.findById(jobId);
+
+    if (!job) {
+      return { retried: false, reason: 'job not found' };
+    }
+
+    if (job.state !== 'FAILED') {
+      return { retried: false, reason: `job is ${job.state}, not FAILED` };
+    }
+
+    const lastTask = await this.prisma.queueTask.findFirst({
+      where: { jobId },
+      orderBy: { createdAt: 'desc' },
+      select: { kind: true },
+    });
+
+    const retryKind = (lastTask?.kind ?? 'REVIEW') as TaskKind;
+
+    const retryStateMap: Record<TaskKind, JobState> = {
+      PLAN: 'PLANNING',
+      IMPLEMENT: 'IMPLEMENTING',
+      VERIFY: 'VERIFYING',
+      REVIEW: 'SELF_REVIEWING',
+      REVISE: 'REVISING',
+      OPEN_PR: 'OPENING_PR',
+    };
+
+    await this.jobs.update(jobId, { error: null });
+    await this.jobs.transition(jobId, retryStateMap[retryKind], {
+      reason: `retried by ${by}`,
+      actor: 'HUMAN',
+      force: true,
+    });
+    await this.queue.enqueue({ jobId, kind: retryKind });
+
+    try {
+      const { ref } = await this.context(jobId);
+      await this.safeComment(
+        ref,
+        job.prNumber ?? job.issueNumber,
+        `Retrying from the **${retryKind}** phase.`,
+      );
+    } catch {
+      // best-effort notification
+    }
+
+    return { retried: true, kind: retryKind };
   }
 
   // ── Stage handlers ─────────────────────────────────────────────────────────
@@ -1102,6 +1151,16 @@ export class OrchestratorService {
     }
 
     const parsed = parseReview(res.stdout);
+
+    // The process exited cleanly, but a review that produced no parseable verdict didn't
+    // actually do its job (premature exit / context exhaustion). Record it as FAILED so
+    // the run isn't a phantom success — the cycle still recovers via the retry below.
+    if (parsed === null) {
+      await this.agent.markRunFailed(
+        res.runId,
+        'review produced no parseable JSON verdict — likely a premature exit or context exhaustion',
+      );
+    }
 
     const result: ReviewResult = parsed
       ? { ...parsed, verifyOk }

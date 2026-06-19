@@ -7,6 +7,7 @@ import { ReviewModule } from '../review/review.module.js';
 import { VerifyModule } from '../verify/verify.module.js';
 import { GithubModule } from '../github/github.module.js';
 import { OrchestratorService } from './orchestrator.service.js';
+import { OrchestratorController } from './orchestrator.controller.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { OrchestratorService } from './orchestrator.service.js';
     VerifyModule,
     GithubModule,
   ],
+  controllers: [OrchestratorController],
   providers: [OrchestratorService],
   exports: [OrchestratorService],
 })

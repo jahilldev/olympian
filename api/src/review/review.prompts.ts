@@ -37,7 +37,7 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
 
   if (ctx.outOfPlanFiles && ctx.outOfPlanFiles.length > 0) {
     parts.push(
-      `--- SCOPE CHECK ---\nThese files were changed on the branch but are NOT mentioned in the approved plan's "Files to change" section. Confirm each change is a justified and necessary part of resolving the issue. Flag any change that looks like unrelated scope creep, an accidental edit, or a regression risk as an issue (set "dimensions.planCoverage" to false if the diff strays materially from the plan):\n${ctx.outOfPlanFiles.map((f) => `- ${f}`).join('\n')}\n--- END SCOPE CHECK ---`,
+      `--- SCOPE CHECK ---\nThese files were changed but aren't in the approved plan's "Files to change". Out-of-plan changes are frequently legitimate: a fix the build/tests required, a shared type/config, or repairing pre-existing breakage in another package/workspace. The VERIFY stage has already PASSED, so any change the green build depends on is in scope by definition — do NOT ask for it to be reverted. Only raise an issue if a change is clearly unrelated to the task, unnecessary for a passing build, AND risky (a genuine regression or accidental edit). A pure "this is beyond the plan" observation is at most "low" severity — NEVER high/critical — and on its own must not set "dimensions.planCoverage" to false. Files:\n${ctx.outOfPlanFiles.map((f) => `- ${f}`).join('\n')}\n--- END SCOPE CHECK ---`,
     );
   }
 
@@ -74,7 +74,7 @@ If the server fails to start, skip the browser step and note it in your summary 
   "dimensions": {
     "correctness": <true|false: the change is logically correct and resolves the issue>,
     "tests": <true|false: automated tests meaningfully encode each acceptance criterion — they exercise the new behaviour and would fail without it — and no existing test was weakened, skipped, or deleted>,
-    "planCoverage": <true|false: every acceptance criterion in the plan is met and the diff stays within the plan's scope>,
+    "planCoverage": <true|false: every acceptance criterion in the plan is met. Necessary supporting changes (build/test fixes, shared config, repairing other packages the verify gate needs) are fine — only set false for missing criteria or material, unjustified, unrelated divergence>,
     "security": <true|false: no injection, secret-leak, auth, or unsafe-input problems introduced>
   },
   "summary": "<one-paragraph assessment>",

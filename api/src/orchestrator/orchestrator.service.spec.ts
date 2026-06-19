@@ -78,6 +78,7 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     },
     agentRun: { findFirst: resolved(null), count: resolved(0) },
     verifyRun: { findFirst: resolved(null) },
+    queueTask: { findFirst: resolved({ kind: 'REVIEW' }) },
     pullRequestRef: {
       findUnique: resolved(null),
       create: resolved(undefined),
@@ -94,9 +95,13 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     incrementAttempts: resolved(1),
   };
 
-  const queue = { enqueue: resolved(undefined) };
+  const queue = { enqueue: resolved(undefined), cancelForJob: resolved(undefined) };
 
-  const agent = { run: resolved(okRun), markRunFailed: resolved(undefined) };
+  const agent = {
+    run: resolved(okRun),
+    markRunFailed: resolved(undefined),
+    killContainerForJob: returns(undefined),
+  };
 
   const workspace = {
     prepare: resolved({ dir: '/tmp/olympian-test-job1', branch: 'b', baseBranch: 'main' }),
@@ -311,5 +316,61 @@ describe('OrchestratorService.handleReview', () => {
 
     expect(transitionedTo(jobs)).toContain('REVISING');
     expect(enqueuedKinds(queue)).toEqual(['REVISE']);
+  });
+
+  it('marks the run FAILED when it produces no parseable verdict, then re-reviews', async () => {
+    const { service, agent, review, queue } = setup({ job: { state: 'SELF_REVIEWING' } });
+    agent.run.mockResolvedValue({ ...okRun, stdout: 'no json verdict here' });
+    review.meetsThreshold.mockReturnValue(false);
+
+    await callPrivate(service, 'handleReview', 'job1');
+
+    expect(agent.markRunFailed).toHaveBeenCalledWith('run1', expect.stringContaining('parseable'));
+    expect(enqueuedKinds(queue)).toEqual(['REVIEW']); // unparseable → retry the review
+  });
+});
+
+describe('OrchestratorService.cancelJob', () => {
+  it('cancels an active job: stops tasks, kills the container, marks CANCELLED', async () => {
+    const { service, queue, agent, jobs } = setup({ job: { state: 'IMPLEMENTING' } });
+
+    await service.cancelJob('job1', '@alice');
+
+    expect(queue.cancelForJob).toHaveBeenCalledWith('job1');
+    expect(agent.killContainerForJob).toHaveBeenCalledWith('job1');
+    expect(transitionedTo(jobs)).toContain('CANCELLED');
+  });
+
+  it('is a no-op for a job already in a terminal state', async () => {
+    const { service, queue, jobs } = setup({ job: { state: 'DONE' } });
+
+    await service.cancelJob('job1', '@alice');
+
+    expect(queue.cancelForJob).not.toHaveBeenCalled();
+    expect(jobs.transition).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrchestratorService.retryJob', () => {
+  it('re-runs a FAILED job from its last phase', async () => {
+    const { service, prisma, queue, jobs } = setup({ job: { state: 'FAILED' } });
+    prisma.queueTask.findFirst.mockResolvedValue({ kind: 'IMPLEMENT' });
+
+    const result = await service.retryJob('job1', '@alice');
+
+    expect(result).toEqual({ retried: true, kind: 'IMPLEMENT' });
+    expect(jobs.update).toHaveBeenCalledWith('job1', { error: null });
+    expect(transitionedTo(jobs)).toContain('IMPLEMENTING');
+    expect(enqueuedKinds(queue)).toEqual(['IMPLEMENT']);
+  });
+
+  it('refuses to retry a job that is not FAILED', async () => {
+    const { service, queue, jobs } = setup({ job: { state: 'IMPLEMENTING' } });
+
+    const result = await service.retryJob('job1', '@alice');
+
+    expect(result.retried).toBe(false);
+    expect(queue.enqueue).not.toHaveBeenCalled();
+    expect(jobs.transition).not.toHaveBeenCalled();
   });
 });

@@ -94,6 +94,30 @@ export default function JobDetail() {
   const [verifications, setVerifications] = useState<VerifyRunDto[]>([]);
   const [notFound, setNotFound] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function act(action: 'cancel' | 'retry') {
+    if (action === 'cancel' && !window.confirm('Cancel this job? This stops the running agent.')) {
+      return;
+    }
+    setActionPending(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/jobs/${id}/${action}`, { method: 'POST' });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        setActionError(body.message ?? `Could not ${action} (${res.status})`);
+        return;
+      }
+      const jr = await fetch(`/api/jobs/${id}`); // reflect the new state immediately
+      if (jr.ok) setJob((await jr.json()) as JobDetailDto);
+    } catch {
+      setActionError(`Could not ${action} — network error`);
+    } finally {
+      setActionPending(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -193,19 +217,28 @@ export default function JobDetail() {
 
             {/* Active run banner */}
             {activeRun && (
-              <div class="rounded-lg border border-green-900 bg-green-950/30 px-3 py-2.5 flex items-center gap-2.5">
-                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
-                <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
-                {activeRun.model && (
-                  <span class="text-xs text-green-900 truncate hidden sm:block">
-                    {activeRun.model}
-                  </span>
-                )}
+              <div class="flex items-stretch gap-2">
+                <div class="flex-1 min-w-0 rounded-lg border border-green-900 bg-green-950/30 px-3 py-2.5 flex items-center gap-2.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+                  <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
+                  {activeRun.model && (
+                    <span class="text-xs text-green-900 truncate hidden sm:block">
+                      {activeRun.model}
+                    </span>
+                  )}
+                  <button
+                    class="ml-auto shrink-0 text-xs font-medium text-green-300 hover:text-green-100 transition-colors"
+                    onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
+                  >
+                    Watch live →
+                  </button>
+                </div>
                 <button
-                  class="ml-auto shrink-0 text-xs font-medium text-green-300 hover:text-green-100 transition-colors"
-                  onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
+                  disabled={actionPending}
+                  onClick={() => act('cancel')}
+                  class="shrink-0 rounded-lg border border-red-900 px-3 text-xs font-medium text-red-300 hover:bg-red-950/40 disabled:opacity-50 transition-colors"
                 >
-                  Watch live →
+                  {actionPending ? 'Cancelling…' : 'Cancel'}
                 </button>
               </div>
             )}
@@ -245,6 +278,33 @@ export default function JobDetail() {
               {job.reviewCycle > 0 && <span class="shrink-0">cycle {job.reviewCycle}</span>}
               <span class="ml-auto shrink-0 whitespace-nowrap">{relativeTime(job.updatedAt)}</span>
             </div>
+
+            {/* Operator controls. Cancel for a running job lives in the active-run bar
+                above; here it covers parked (no active run) states and FAILED → Retry. */}
+            {(job.state === 'FAILED' || (!TERMINAL_STATES.has(job.state) && !activeRun)) && (
+              <div class="flex items-center gap-2 flex-wrap pt-1">
+                {job.state === 'FAILED' && (
+                  <button
+                    disabled={actionPending}
+                    onClick={() => act('retry')}
+                    class="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                  >
+                    {actionPending ? 'Working…' : 'Retry'}
+                  </button>
+                )}
+                {!TERMINAL_STATES.has(job.state) && !activeRun && (
+                  <button
+                    disabled={actionPending}
+                    onClick={() => act('cancel')}
+                    class="text-xs font-medium px-3 py-1.5 rounded-lg border border-red-900 text-red-300 hover:bg-red-950/40 disabled:opacity-50 transition-colors"
+                  >
+                    {actionPending ? 'Working…' : 'Cancel'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {actionError && <p class="text-xs text-red-400 pt-1">{actionError}</p>}
           </div>
 
           {/* Error */}
