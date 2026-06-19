@@ -811,6 +811,7 @@ export class OrchestratorService {
       throw new Error('implementation produced no file changes');
     }
 
+    await this.pushBranch(job, ghId, ws.branch);
     await this.jobs.incrementAttempts(jobId);
     await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
 
@@ -1021,6 +1022,8 @@ export class OrchestratorService {
       await this.agent.markRunFailed(rev.runId, 'revision produced no file changes');
       throw new Error('revision produced no file changes — issues were not addressed');
     }
+
+    await this.pushBranch(job, this.ghIdFromRef(ref), ws.branch);
 
     await this.jobs.transition(jobId, 'VERIFYING', {
       reason: 'revision complete',
@@ -1367,6 +1370,29 @@ export class OrchestratorService {
 
   private ghIdFromRef(ref: RepoRef): number {
     return ref.installationId;
+  }
+
+  /**
+   * Best-effort push of the job branch so a human can inspect in-progress work on GitHub
+   * during the implement/revise loop. A push failure is non-fatal — it's logged and the
+   * stage continues; the branch is pushed for real (and gated) at OPEN_PR.
+   */
+  private async pushBranch(job: Job, installationId: number, branchName: string): Promise<void> {
+    try {
+      const headSha = await this.workspace.push({
+        jobId: job.id,
+        installationId,
+        owner: job.repoOwner,
+        repo: job.repoName,
+        branchName,
+      });
+
+      await this.jobs.update(job.id, { headSha });
+    } catch (e) {
+      this.logger.warn(
+        `[job ${job.id}] intermediate branch push failed (non-fatal): ${(e as Error).message}`,
+      );
+    }
   }
 
   private async upsertInstallation(evt: IssueLabeledEvent): Promise<RepoInstallation> {
