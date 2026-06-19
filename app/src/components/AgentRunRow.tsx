@@ -7,9 +7,9 @@ interface Props {
 }
 
 const PHASE_COLOURS: Record<string, string> = {
-  PLAN: 'bg-violet-900/60 text-violet-300',
+  PLAN: 'bg-blue-900/60 text-blue-300',
   IMPLEMENT: 'bg-sky-900/60 text-sky-300',
-  REVIEW: 'bg-amber-900/60 text-amber-300',
+  REVIEW: 'bg-violet-900/60 text-violet-300',
   REVISE: 'bg-orange-900/60 text-orange-300',
   VERIFY: 'bg-teal-900/60 text-teal-300',
   SUMMARY: 'bg-zinc-800 text-zinc-300',

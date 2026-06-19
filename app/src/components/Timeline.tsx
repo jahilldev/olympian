@@ -26,17 +26,34 @@ export default function Timeline({ transitions }: Props) {
     return <p class="text-xs text-zinc-600 italic">No transitions yet.</p>;
   }
 
+  const items = [...transitions].reverse();
+
   return (
-    <ol class="relative border-l border-zinc-800 space-y-4 pl-4">
-      {[...transitions].reverse().map((t) => (
-        <li key={t.id} class="relative">
-          <span class="absolute -left-[21px] flex items-center justify-center w-3.5 h-3.5 rounded-full bg-zinc-800 border border-zinc-700 mt-0.5" />
-          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+    <ol class="relative ml-1.5 border-l border-zinc-800 space-y-3">
+      {items.map((t, i) => (
+        <li key={t.id} class="relative pl-5">
+          {/* Node on the rail; brighter for the most recent transition */}
+          <span
+            class={`absolute left-0 top-1 -translate-x-1/2 w-2.5 h-2.5 rounded-full ring-4 ring-zinc-950 ${
+              i === 0 ? 'bg-zinc-300' : 'bg-zinc-700'
+            }`}
+          />
+
+          {/* Top line: state + time, always on one row */}
+          <div class="flex items-center justify-between gap-3">
             <StateBadge state={t.toState} />
-            {t.reason && <span class="text-zinc-400">{t.reason}</span>}
-            <span class={`font-mono ${ACTOR_STYLES[t.actor] ?? 'text-zinc-500'}`}>{t.actor}</span>
-            <span class="text-zinc-600 ml-auto">{relativeTime(t.createdAt)}</span>
+            <time class="shrink-0 text-[11px] text-zinc-600 tabular-nums">
+              {relativeTime(t.createdAt)}
+            </time>
           </div>
+
+          {/* Detail line: actor + reason, wraps freely */}
+          <p class="mt-1 text-xs leading-snug break-words">
+            <span class={`font-mono ${ACTOR_STYLES[t.actor] ?? 'text-zinc-500'}`}>
+              {t.actor.toLowerCase()}
+            </span>
+            {t.reason && <span class="text-zinc-400"> — {t.reason}</span>}
+          </p>
         </li>
       ))}
     </ol>
