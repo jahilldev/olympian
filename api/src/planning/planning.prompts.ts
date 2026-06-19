@@ -21,7 +21,7 @@ The full technical design: chosen technologies and why, architecture overview, c
 A bulleted list of every file to create or modify. Each entry: \`path/to/file\` — what changes or what the new file contains.
 
 ## Acceptance criteria
-A Markdown task list (\`- [ ]\` items). Every item must be a specific, verifiable condition a reviewer can check by running the code. When all items are checked, the issue is fully resolved.
+A Markdown task list (\`- [ ]\` items). Implementation is **test-driven**, so phrase every item as a specific, behavioural condition that can be encoded as an automated test (something a test could assert), not a vague goal. When all items pass as automated tests, the issue is fully resolved.
 
 ## Risks & open questions
 A bulleted list of technical risks, unknowns, external dependencies, or decisions deferred to implementation time.`;

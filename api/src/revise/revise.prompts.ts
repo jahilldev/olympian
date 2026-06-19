@@ -62,7 +62,9 @@ Use the returned summary to open only the relevant 20-40 line windows with \`sea
 1. Edit the file using a file-write tool.
 2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
 3. Run static analysis and fix any errors.
-4. Mark the item done in your todo list.`,
+4. Mark the item done in your todo list.
+
+When a test or the verification command fails, fix the root cause in the implementation. NEVER weaken, skip, or delete a test to reach a green result — and add a test if a fix addresses behaviour that wasn't covered.`,
   );
 
   parts.push(AUTONOMY_NOTICE);

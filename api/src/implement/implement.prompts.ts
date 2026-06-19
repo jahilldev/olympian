@@ -19,8 +19,8 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 **Before ending your session**, verify every file required by the plan actually exists on disk with non-trivial content. List the files you created and cross-check them against the plan. If any are missing or empty, create them before finishing. Do not stop after partial implementation — the session is not done until every deliverable from the plan is on disk.
 
 When all files are in place:
-1. Run a final static analysis pass to confirm zero errors remain.
-2. End your reply with a short Markdown summary of what you changed and which acceptance criteria are now met.
+1. Run the acceptance-criteria tests and a final static analysis pass; confirm all tests pass and zero errors remain.
+2. End your reply with a short Markdown summary of what you changed and which acceptance criteria now pass as tests.
 Use \`.olympian/\` as a scratch directory for any temporary files (build logs, notes, debug output) — it is excluded from commits automatically. The orchestrator will commit your file changes — do not run git yourself, and do not start a dev server (the review stage handles runtime testing).
 **Use individual shell/file tool calls — do not attempt batch mode or multi-task arrays.** If a tool call fails, fall back to writing the file directly with a write-file tool or via shell redirection.
 ${STATIC_ANALYSIS_INSTRUCTIONS}`;
@@ -51,6 +51,10 @@ delegate_task(
 )
 \`\`\`
 Use the returned summary to confirm file paths and current state before writing anything.`,
+  );
+
+  parts.push(
+    `**Work test-first.** Once you've located the relevant code, for EACH acceptance criterion in the plan write an automated test that encodes it — using the repo's existing test framework and conventions (mirror neighbouring test files). Run them and confirm they FAIL for the right reason: the behaviour doesn't exist yet. A criterion whose test passes before you've written any implementation isn't testing the right thing — fix the test. Only then write the implementation, iterating until every test passes. Commit the tests alongside the implementation. NEVER weaken, skip, or delete a test to reach a green result — fix the code instead.`,
   );
 
   if (ctx.attachments) {

@@ -32,7 +32,7 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
   // The repo's tests/build already ran and passed in the dedicated VERIFY stage
   // before this review (a failure would have routed to REVISE, not here).
   parts.push(
-    `The project's automated checks (tests/build) have already passed in a separate verify stage. Focus this review on correctness, security, and whether the plan's acceptance criteria are fully met.`,
+    `The project's automated checks (tests/build) have already passed in a separate VERIFY stage — a green result is therefore a given, not evidence of quality, and the implementer wrote its own tests. **Scrutinise the tests themselves:** confirm an automated test exists for each acceptance criterion, that each genuinely exercises the new behaviour (it would fail without the implementation — watch for trivial, tautological, or assertion-free tests), and that no existing test was weakened, skipped, or deleted to reach green. Treat a missing or gamed test as a tests-dimension failure. Then focus on correctness, security, and full plan coverage.`,
   );
 
   if (ctx.outOfPlanFiles && ctx.outOfPlanFiles.length > 0) {
@@ -73,7 +73,7 @@ If the server fails to start, skip the browser step and note it in your summary 
   "verdict": "PASS" | "FAIL",
   "dimensions": {
     "correctness": <true|false: the change is logically correct and resolves the issue>,
-    "tests": <true|false: tests/build pass and the change is adequately covered>,
+    "tests": <true|false: automated tests meaningfully encode each acceptance criterion — they exercise the new behaviour and would fail without it — and no existing test was weakened, skipped, or deleted>,
     "planCoverage": <true|false: every acceptance criterion in the plan is met and the diff stays within the plan's scope>,
     "security": <true|false: no injection, secret-leak, auth, or unsafe-input problems introduced>
   },
