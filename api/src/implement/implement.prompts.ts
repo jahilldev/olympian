@@ -54,7 +54,10 @@ Use the returned summary to confirm file paths and current state before writing 
   );
 
   parts.push(
-    `**Work test-first.** Once you've located the relevant code, for EACH acceptance criterion in the plan write an automated test that encodes it — using the repo's existing test framework and conventions (mirror neighbouring test files). Run them and confirm they FAIL for the right reason: the behaviour doesn't exist yet. A criterion whose test passes before you've written any implementation isn't testing the right thing — fix the test. Only then write the implementation, iterating until every test passes. Commit the tests alongside the implementation. NEVER weaken, skip, or delete a test to reach a green result — fix the code instead.`,
+    `**Work test-first.** For EACH acceptance criterion in the plan, write an automated test that encodes it BEFORE writing the implementation:
+- If the repo already has a test framework, use it and mirror neighbouring test files.
+- If it has NONE, set up the standard lightweight runner for this stack as part of the task (e.g. Vitest for a Vite/TypeScript project, Jest for plain Node, pytest for Python; Go and Rust have built-in test runners) and add a \`test\` script to the manifest so the verification step can run it.
+Run the tests and confirm they FAIL for the right reason — the behaviour doesn't exist yet; a test that passes before you've implemented anything isn't testing the right thing, so fix it. Only then write the implementation, iterating until every test passes. Commit the tests (and any test config) alongside the implementation. NEVER weaken, skip, or delete a test to reach a green result — fix the code instead. Only skip tests entirely if the change genuinely has nothing to assert (e.g. docs or static assets) — and say so in your summary.`,
   );
 
   if (ctx.attachments) {
