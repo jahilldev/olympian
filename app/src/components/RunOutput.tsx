@@ -1148,6 +1148,11 @@ function StreamingOutput({
     return () => controller.abort();
   }, []);
 
+  const compressionCount = useMemo(
+    () => events.reduce((n, ev) => n + (compressionLabel(ev, auxModel) ? 1 : 0), 0),
+    [events, auxModel],
+  );
+
   const contextPct = useMemo(() => {
     for (let i = events.length - 1; i >= 0; i--) {
       const raw = events[i].body['langfuse.observation.usage_details'] as string | undefined;
@@ -1245,18 +1250,29 @@ function StreamingOutput({
             )}
           </>
         )}
-        {contextPct !== null && ctxColour !== null && (
-          <div class="flex items-center gap-1.5 ml-auto">
-            <div class="w-8 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-              <div
-                class={`h-full rounded-full transition-all ${ctxColour.bar}`}
-                style={{ width: `${Math.min(100, contextPct)}%` }}
-              />
+        <div class="flex items-center gap-3 ml-auto">
+          {compressionCount > 0 && (
+            <div
+              class="flex items-center gap-1 text-cyan-400"
+              title={`${compressionCount} context compression${compressionCount > 1 ? 's' : ''} this run`}
+            >
+              <IconCompress />
+              <span class="text-xs font-mono tabular-nums">{compressionCount}</span>
             </div>
-            <span class={`text-xs font-mono tabular-nums ${ctxColour.text}`}>{contextPct}%</span>
-            <span class="text-xs text-zinc-600">ctx</span>
-          </div>
-        )}
+          )}
+          {contextPct !== null && ctxColour !== null && (
+            <div class="flex items-center gap-1.5">
+              <div class="w-8 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                <div
+                  class={`h-full rounded-full transition-all ${ctxColour.bar}`}
+                  style={{ width: `${Math.min(100, contextPct)}%` }}
+                />
+              </div>
+              <span class={`text-xs font-mono tabular-nums ${ctxColour.text}`}>{contextPct}%</span>
+              <span class="text-xs text-zinc-600">ctx</span>
+            </div>
+          )}
+        </div>
       </header>
 
       <div class="relative flex-1 overflow-hidden">
