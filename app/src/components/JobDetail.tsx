@@ -9,6 +9,7 @@ import Timeline from './Timeline.tsx';
 import ReviewPassCard from './ReviewPassCard.tsx';
 import PlanViewer from './PlanViewer.tsx';
 import AgentRunRow from './AgentRunRow.tsx';
+import JudgeCard from './JudgeCard.tsx';
 import VerifyRunRow from './VerifyRunRow.tsx';
 
 const TERMINAL_STATES = new Set(['DONE', 'FAILED', 'CANCELLED']);
@@ -97,14 +98,15 @@ export default function JobDetail() {
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  async function act(action: 'cancel' | 'retry') {
+  async function act(action: 'cancel' | 'retry' | 'approve') {
     if (action === 'cancel' && !window.confirm('Cancel this job? This stops the running agent.')) {
       return;
     }
     setActionPending(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/jobs/${id}/${action}`, { method: 'POST' });
+      const path = action === 'approve' ? 'plan/approve' : action;
+      const res = await fetch(`/api/jobs/${id}/${path}`, { method: 'POST' });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { message?: string };
         setActionError(body.message ?? `Could not ${action} (${res.status})`);
@@ -237,6 +239,17 @@ export default function JobDetail() {
                     </button>
                   </div>
                 )}
+                {/* Approve sits on the left; hidden while a plan is still generating (the
+                    watch-live banner takes that space instead). */}
+                {!activeRun && job.state === 'AWAITING_PLAN_APPROVAL' && (
+                  <button
+                    disabled={actionPending}
+                    onClick={() => act('approve')}
+                    class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                  >
+                    {actionPending ? 'Approving…' : 'Approve plan'}
+                  </button>
+                )}
                 <div class={`flex items-stretch gap-2 ${activeRun ? 'shrink-0' : 'ml-auto'}`}>
                   {job.state === 'FAILED' && (
                     <button
@@ -312,30 +325,42 @@ export default function JobDetail() {
             <Timeline transitions={job.transitions} />
           </section>
 
-          {/* Runs — agent runs and verify executions, interleaved chronologically */}
-          {(runs.length > 0 || verifications.length > 0) && (
-            <section>
-              <SectionHeading>Runs</SectionHeading>
-              <div class="space-y-2">
-                {[
-                  ...runs.map((r) => ({ kind: 'agent' as const, at: r.createdAt, run: r })),
-                  ...verifications.map((v) => ({
-                    kind: 'verify' as const,
-                    at: v.createdAt,
-                    run: v,
-                  })),
-                ]
-                  .sort((a, b) => (a.at < b.at ? 1 : -1))
-                  .map((item) =>
-                    item.kind === 'agent' ? (
-                      <AgentRunRow key={`a-${item.run.id}`} run={item.run} jobId={id} />
-                    ) : (
-                      <VerifyRunRow key={`v-${item.run.id}`} run={item.run} jobId={id} />
-                    ),
-                  )}
-              </div>
-            </section>
-          )}
+          {/* Runs — agent runs and verify executions, interleaved chronologically. Completion-judge
+              runs are collapsed into a single aggregated Judge card so the list stays clean. */}
+          {(runs.length > 0 || verifications.length > 0) &&
+            (() => {
+              const judgeRuns = runs.filter((r) => r.phase === 'JUDGE');
+              const otherRuns = runs.filter((r) => r.phase !== 'JUDGE');
+              const items = [
+                ...otherRuns.map((r) => ({ kind: 'agent' as const, at: r.createdAt, run: r })),
+                ...verifications.map((v) => ({ kind: 'verify' as const, at: v.createdAt, run: v })),
+                ...(judgeRuns.length > 0
+                  ? [{ kind: 'judge' as const, at: judgeRuns[0].createdAt }]
+                  : []),
+              ].sort((a, b) => (a.at < b.at ? 1 : -1));
+
+              return (
+                <section>
+                  <SectionHeading>Runs</SectionHeading>
+                  <div class="space-y-2">
+                    {items.map((item) =>
+                      item.kind === 'agent' ? (
+                        <AgentRunRow key={`a-${item.run.id}`} run={item.run} jobId={id} />
+                      ) : item.kind === 'verify' ? (
+                        <VerifyRunRow key={`v-${item.run.id}`} run={item.run} jobId={id} />
+                      ) : (
+                        <JudgeCard
+                          key="judge"
+                          jobId={id}
+                          count={judgeRuns.length}
+                          anyUnmet={judgeRuns.some((r) => r.judgeMet === false)}
+                        />
+                      ),
+                    )}
+                  </div>
+                </section>
+              );
+            })()}
 
           {/* Reviews */}
           {reviews.length > 0 && (

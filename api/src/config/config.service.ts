@@ -23,17 +23,39 @@ export class AppConfigService {
     return this.get('NODE_ENV') === 'test';
   }
 
+  /**
+   * Resolves the model/provider for the completion judge, falling back through the chain
+   * judge → review → primary (each env var is optional). Returns undefined for a field only
+   * when nothing in the chain is set, letting the agent runner apply its own default.
+   */
+  judgeModel(): { model?: string; provider?: string } {
+    return {
+      model:
+        this.get('HERMES_JUDGE_MODEL') ||
+        this.get('HERMES_REVIEW_MODEL') ||
+        this.get('HERMES_PRIMARY_MODEL') ||
+        undefined,
+      provider:
+        this.get('HERMES_JUDGE_PROVIDER') ||
+        this.get('HERMES_REVIEW_PROVIDER') ||
+        this.get('HERMES_PRIMARY_PROVIDER') ||
+        undefined,
+    };
+  }
+
   /** Resolved GitHub App private key (inline or from file). Throws if missing. */
   get githubPrivateKey(): string {
     const key = resolvePrivateKey(
       this.get('GITHUB_APP_PRIVATE_KEY'),
       this.get('GITHUB_APP_PRIVATE_KEY_PATH'),
     );
+
     if (!key) {
       throw new Error(
         'GitHub App private key not configured: set GITHUB_APP_PRIVATE_KEY or GITHUB_APP_PRIVATE_KEY_PATH.',
       );
     }
+
     return key;
   }
 }

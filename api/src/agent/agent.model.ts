@@ -1,4 +1,12 @@
-export const AGENT_PHASES = ['PLAN', 'IMPLEMENT', 'REVIEW', 'REVISE', 'SUMMARY', 'VERIFY'] as const;
+export const AGENT_PHASES = [
+  'PLAN',
+  'IMPLEMENT',
+  'REVIEW',
+  'REVISE',
+  'SUMMARY',
+  'VERIFY',
+  'JUDGE',
+] as const;
 export type AgentPhase = (typeof AGENT_PHASES)[number];
 
 export type AgentRunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT';
@@ -12,6 +20,8 @@ export interface AgentRunDto {
   durationMs: number | null;
   hasOutput: boolean;
   createdAt: string;
+  /** For JUDGE runs: whether the completion judge found the acceptance criteria met. null otherwise. */
+  judgeMet?: boolean | null;
 }
 
 export interface AgentRunOutputDto {

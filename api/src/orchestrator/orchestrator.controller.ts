@@ -29,4 +29,16 @@ export class OrchestratorController {
 
     return { ok: true, kind: result.kind };
   }
+
+  @Post(':id/plan/approve')
+  @HttpCode(202)
+  async approvePlan(@Param('id') id: string): Promise<{ ok: true }> {
+    const result = await this.orchestrator.approvePlan(id, 'the dashboard');
+
+    if (!result.approved) {
+      throw new ConflictException(result.reason ?? 'plan cannot be approved');
+    }
+
+    return { ok: true };
+  }
 }

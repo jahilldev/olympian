@@ -8,6 +8,7 @@ import type { HermesAgentService } from '../agent/agent.service.js';
 import type { WorkspaceService } from '../workspace/workspace.service.js';
 import type { ReviewService } from '../review/review.service.js';
 import type { VerifyService } from '../verify/verify.service.js';
+import type { JudgeService } from '../judge/judge.service.js';
 import type { GithubService } from '../github/github.service.js';
 
 // `@jest/globals`' typed `jest.fn()` infers `never` returns; these helpers produce
@@ -48,6 +49,7 @@ const CONFIG: Record<string, unknown> = {
   BRANCH_PREFIX: 'hermes/issue-',
   COMMAND_PREFIX: '/hermes',
   MAX_VERIFY_ATTEMPTS: 3,
+  MAX_COMPLETION_RETRIES: 2,
   HERMES_REVIEW_MODEL: '',
   HERMES_REVIEW_PROVIDER: '',
 };
@@ -69,7 +71,7 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
 
   const prisma = {
     job: { findUnique: resolved(job), findFirst: resolved(null), update: resolved(job) },
-    planRevision: { findFirst: resolved({ content: 'the plan' }) },
+    planRevision: { findFirst: resolved({ content: 'the plan' }), updateMany: resolved(undefined) },
     prRevisionFeedback: { findMany: resolved([] as unknown[]) },
     reviewPass: {
       findMany: resolved([] as unknown[]),
@@ -122,6 +124,8 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
 
   const verify = { countForCycle: resolved(0), record: resolved(undefined) };
 
+  const judge = { assess: resolved({ met: true, critique: '' }), listForJob: resolved([]) };
+
   const github = {
     createIssueComment: resolved(1),
     getDefaultBranch: resolved('main'),
@@ -137,10 +141,24 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     workspace as unknown as WorkspaceService,
     review as unknown as ReviewService,
     verify as unknown as VerifyService,
+    judge as unknown as JudgeService,
     github as unknown as GithubService,
   );
 
-  return { service, prisma, config, jobs, queue, agent, workspace, review, verify, github, job };
+  return {
+    service,
+    prisma,
+    config,
+    jobs,
+    queue,
+    agent,
+    workspace,
+    review,
+    verify,
+    judge,
+    github,
+    job,
+  };
 }
 
 const callPrivate = (service: OrchestratorService, method: string, arg: string): Promise<void> =>
@@ -258,6 +276,19 @@ describe('OrchestratorService.handleImplement', () => {
     );
     expect(queue.enqueue).not.toHaveBeenCalled();
   });
+
+  it('re-runs the agent with the judge critique when the pass is judged incomplete', async () => {
+    const { service, agent, judge, queue } = setup({ job: { state: 'IMPLEMENTING' } });
+    judge.assess.mockResolvedValueOnce({ met: false, critique: 'finish the aimLaunchDot cleanup' });
+
+    await callPrivate(service, 'handleImplement', 'job1');
+
+    // Initial pass + one judge-driven continuation, then proceed to VERIFY.
+    expect(agent.run.mock.calls.length).toBe(2);
+    const secondPrompt = (agent.run.mock.calls[1][0] as { prompt: string }).prompt;
+    expect(secondPrompt).toContain('finish the aimLaunchDot cleanup');
+    expect(enqueuedKinds(queue)).toEqual(['VERIFY']);
+  });
 });
 
 describe('OrchestratorService.handleRevise', () => {
@@ -347,6 +378,32 @@ describe('OrchestratorService.cancelJob', () => {
     await service.cancelJob('job1', '@alice');
 
     expect(queue.cancelForJob).not.toHaveBeenCalled();
+    expect(jobs.transition).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrchestratorService.approvePlan', () => {
+  it('approves the plan: marks it APPROVED, moves to IMPLEMENTING, enqueues IMPLEMENT', async () => {
+    const { service, prisma, queue, jobs } = setup({ job: { state: 'AWAITING_PLAN_APPROVAL' } });
+
+    const result = await service.approvePlan('job1', 'the dashboard');
+
+    expect(result).toEqual({ approved: true });
+    expect(prisma.planRevision.updateMany).toHaveBeenCalledWith({
+      where: { jobId: 'job1', status: 'PROPOSED' },
+      data: { status: 'APPROVED' },
+    });
+    expect(transitionedTo(jobs)).toContain('IMPLEMENTING');
+    expect(enqueuedKinds(queue)).toEqual(['IMPLEMENT']);
+  });
+
+  it('refuses to approve when the job is not awaiting plan approval', async () => {
+    const { service, queue, jobs } = setup({ job: { state: 'IMPLEMENTING' } });
+
+    const result = await service.approvePlan('job1', 'the dashboard');
+
+    expect(result.approved).toBe(false);
+    expect(queue.enqueue).not.toHaveBeenCalled();
     expect(jobs.transition).not.toHaveBeenCalled();
   });
 });

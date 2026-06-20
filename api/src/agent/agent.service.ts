@@ -265,6 +265,7 @@ export class HermesAgentService implements OnModuleInit {
         exitCode: true,
         durationMs: true,
         stdout: true,
+        judgeMet: true,
         createdAt: true,
       },
     });
@@ -278,6 +279,7 @@ export class HermesAgentService implements OnModuleInit {
       durationMs: r.durationMs,
       hasOutput: !!(r.stdout && r.stdout.length > 0),
       createdAt: r.createdAt.toISOString(),
+      judgeMet: r.judgeMet,
     }));
   }
 

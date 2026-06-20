@@ -31,6 +31,10 @@ export const envSchema = z.object({
   HERMES_REVIEW_PROVIDER: z.string().optional(),
   HERMES_AUXILIARY_MODEL: z.string().optional(),
   HERMES_AUXILIARY_PROVIDER: z.string().optional(),
+  // Completion judge model — defaults to the review model (a weak aux model makes an
+  // unreliable judge). Provider falls back the same way.
+  HERMES_JUDGE_MODEL: z.string().optional(),
+  HERMES_JUDGE_PROVIDER: z.string().optional(),
   HERMES_TIMEOUT_MS: intFromString(7_200_000),
   HERMES_CONTEXT_LENGTH: z.coerce.number().int().optional(),
   HERMES_COMPRESS_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
@@ -45,6 +49,9 @@ export const envSchema = z.object({
   MAX_PLAN_REVISIONS: intFromString(10),
   // Max VERIFY→REVISE iterations per cycle before opening a draft PR with tests still red.
   MAX_VERIFY_ATTEMPTS: intFromString(3),
+  // Max completion-judge continuations per IMPLEMENT/REVISE pass before proceeding to VERIFY
+  // anyway. 0 disables the judge loop entirely.
+  MAX_COMPLETION_RETRIES: intFromString(2),
   MAX_REVIEW_PASSES: intFromString(5),
   COMMAND_PREFIX: z.string().default('/hermes'),
 

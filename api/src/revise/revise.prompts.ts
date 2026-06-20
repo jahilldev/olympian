@@ -12,6 +12,12 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     `--- PLAN (for context) ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
 
+  if (ctx.incompleteWork) {
+    parts.push(
+      `--- UNFINISHED WORK FROM YOUR PREVIOUS PASS (highest priority — you stopped before completing these) ---\n${ctx.incompleteWork}\n--- END UNFINISHED WORK ---\n\nThe workspace already contains your previous changes — do NOT redo completed work. Continue from where you left off and finish exactly these remaining items.`,
+    );
+  }
+
   if (ctx.verifyFailure) {
     parts.push(
       `--- FAILING TESTS / BUILD (highest priority — the change cannot be accepted while this fails) ---\n${ctx.verifyFailure}\n--- END FAILURE ---\n\nFix the root cause of this failure first.`,

@@ -5,6 +5,8 @@ import { ReviewService } from '../review/review.service.js';
 import { type ReviewPassDto } from '../review/review.model.js';
 import { VerifyService } from '../verify/verify.service.js';
 import { type VerifyRunDto } from '../verify/verify.model.js';
+import { JudgeService } from '../judge/judge.service.js';
+import { type JudgementDto } from '../judge/judge.model.js';
 import { type JobDetailDto, type JobSummaryDto } from './job.model.js';
 import { JobService } from './job.service.js';
 
@@ -14,6 +16,7 @@ export class JobController {
     private readonly jobs: JobService,
     private readonly reviews: ReviewService,
     private readonly verifications: VerifyService,
+    private readonly judge: JudgeService,
     private readonly agent: HermesAgentService,
   ) {}
 
@@ -54,6 +57,12 @@ export class JobController {
     }
 
     return run;
+  }
+
+  @Get(':id/judgements')
+  @Header('Cache-Control', 'no-store')
+  listJudgements(@Param('id') id: string): Promise<JudgementDto[]> {
+    return this.judge.listForJob(id);
   }
 
   @Get(':id/runs')
