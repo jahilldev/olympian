@@ -1040,7 +1040,7 @@ function CompressionMarker({
   const k = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t));
   return (
     <div class="mb-3 flex items-center gap-2 sm:gap-3">
-      <div class="h-px flex-1 bg-cyan-900/40" />
+      <div class="h-px flex-1 bg-zinc-800" />
       <div class="flex shrink-0 items-center gap-2 rounded-xl border border-cyan-900/50 bg-cyan-950/30 px-3 py-1.5 text-cyan-300">
         <IconCompress />
         <span class="text-[11px] font-mono font-semibold uppercase tracking-wide">Compress</span>
@@ -1048,7 +1048,7 @@ function CompressionMarker({
           {k(before)}→{k(after)} tok · {pct(before)}%→{pct(after)}%
         </span>
       </div>
-      <div class="h-px flex-1 bg-cyan-900/40" />
+      <div class="h-px flex-1 bg-zinc-800" />
     </div>
   );
 }
