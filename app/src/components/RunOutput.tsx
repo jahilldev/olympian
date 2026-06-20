@@ -1200,20 +1200,20 @@ function StreamingOutput({
   );
 
   const contextPct = useMemo(() => {
-    for (let i = events.length - 1; i >= 0; i--) {
-      const raw = events[i].body['langfuse.observation.usage_details'] as string | undefined;
-      if (raw) {
-        try {
-          const usage = JSON.parse(raw) as { input?: number };
-          if (typeof usage.input === 'number') {
-            return Math.min(100, Math.round((usage.input / contextLength) * 100));
-          }
-        } catch {
-          // malformed JSON — skip
-        }
-      }
+    // Track the MAIN agent's context only — the first generation's trace. A run's stream
+    // interleaves delegate_task children (separate traces) whose small fresh contexts would
+    // otherwise make the meter lurch down without any compression having happened.
+    let mainTrace: string | null = null;
+    let latestInput: number | null = null;
+    for (const ev of events) {
+      const cur = inputTokens(ev);
+      if (cur === null) continue;
+      const trace = String(ev.body.traceId ?? '');
+      if (mainTrace === null) mainTrace = trace;
+      if (trace === mainTrace) latestInput = cur;
     }
-    return null;
+    if (latestInput === null) return null;
+    return Math.min(100, Math.round((latestInput / contextLength) * 100));
   }, [events, contextLength]);
 
   useEffect(() => {
