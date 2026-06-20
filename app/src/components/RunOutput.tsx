@@ -83,6 +83,22 @@ function IconWrench() {
   );
 }
 
+function IconCompress() {
+  return (
+    <svg
+      class="w-3.5 h-3.5 shrink-0"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="m21 8-4-4M21 8h-4M21 8V4M3 16l4 4M3 16h4M3 16v4M14 10l7-6M10 14l-7 6" />
+    </svg>
+  );
+}
+
 function IconChevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -867,7 +883,133 @@ function GenericSpanCard({ event }: { event: LangfuseEvent }) {
   );
 }
 
-function EventCard({ event }: { event: LangfuseEvent }) {
+// ── Compression / auxiliary detection ──────────────────────────────────────
+
+/**
+ * Detects a background auxiliary-model call (overwhelmingly context compression
+ * during a coding run). Hermes tags the compression call with task="compression"
+ * and runs it on the auxiliary/summary model. We check, in order: an explicit
+ * compression marker in the span name or attributes, then a fall-back match
+ * against the configured auxiliary model. Returns the label to show, or null.
+ */
+function compressionLabel(
+  event: LangfuseEvent,
+  auxModel: string | null,
+): 'compression' | 'auxiliary' | null {
+  if ((event.body['langfuse.observation.type'] as string | undefined) !== 'generation') return null;
+  const body = event.body;
+
+  const name = String(body['langfuse.observation.name'] ?? body.name ?? '').toLowerCase();
+  if (/compress|summari[sz]/.test(name)) return 'compression';
+
+  // task marker — flat attribute or serialised metadata
+  for (const [k, v] of Object.entries(body)) {
+    if (typeof v === 'string' && /task$/i.test(k) && v.toLowerCase() === 'compression')
+      return 'compression';
+  }
+  const meta = body['langfuse.observation.metadata'];
+  if (typeof meta === 'string' && /"task"\s*:\s*"compression"/i.test(meta)) return 'compression';
+
+  // Fall back to model identity: a generation on the auxiliary model is a
+  // background secondary task (compression is by far the most common).
+  const model = body['langfuse.observation.model.name'] as string | undefined;
+  if (auxModel && model && model === auxModel) return 'auxiliary';
+
+  return null;
+}
+
+function CompressionCard({ event, label }: { event: LangfuseEvent; label: string }) {
+  const [outputOpen, setOutputOpen] = useState(true);
+  const [inputOpen, setInputOpen] = useState(false);
+  const body = event.body;
+  const model = body['langfuse.observation.model.name'] as string | undefined;
+  const usageRaw = body['langfuse.observation.usage_details'] as string | undefined;
+  const usage = usageRaw ? (JSON.parse(usageRaw) as Record<string, number>) : null;
+  const inTok = usage?.input ?? null;
+  const outTok = usage?.output ?? null;
+
+  const rawOutput = body['langfuse.observation.output'] as string | undefined;
+  const rawInput = body['langfuse.observation.input'] as string | undefined;
+  const parsedOutput = parseObs(rawOutput);
+  const summary =
+    typeof parsedOutput === 'string'
+      ? parsedOutput
+      : typeof (parsedOutput as Record<string, unknown>)?.content === 'string'
+        ? ((parsedOutput as Record<string, unknown>).content as string)
+        : rawOutput
+          ? String(rawOutput)
+          : '';
+  const { output: cleanSummary } = summary ? splitThinking(summary) : { output: '' };
+
+  return (
+    <div class="rounded-xl border border-cyan-900/50 overflow-hidden text-xs shadow-sm">
+      <div class="flex items-center gap-2 px-3 py-2.5 bg-cyan-950/40 text-cyan-200">
+        <IconCompress />
+        <span class="font-semibold font-mono tracking-wide uppercase">{label}</span>
+        {model && (
+          <span class="text-zinc-500 font-mono font-normal truncate flex-1 min-w-0">{model}</span>
+        )}
+        {inTok != null && outTok != null && (
+          <span class="text-zinc-600 font-mono text-[10px] tabular-nums">
+            {inTok.toLocaleString()}→{outTok.toLocaleString()} tok
+          </span>
+        )}
+        <span class="ml-auto shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
+          {fmtTime(event.timestamp)}
+        </span>
+      </div>
+
+      {rawInput && (
+        <>
+          <SectionToggle
+            open={inputOpen}
+            onToggle={() => setInputOpen((o) => !o)}
+            label="Compressed input"
+            preview={obsPreview(rawInput)}
+            borderClass="border-cyan-900/30"
+          />
+          {inputOpen && (
+            <div class="border-t border-zinc-800/40 px-3 py-3 bg-zinc-950/70 max-h-72 overflow-y-auto">
+              {(() => {
+                const p = parseObs(rawInput);
+                if (isChatMessages(p)) return <ChatMessages messages={p} />;
+                return (
+                  <pre class="text-[11px] text-zinc-400 font-mono whitespace-pre-wrap break-words leading-relaxed">
+                    {typeof p === 'string' ? p : JSON.stringify(p, null, 2)}
+                  </pre>
+                );
+              })()}
+            </div>
+          )}
+        </>
+      )}
+
+      <SectionToggle
+        open={outputOpen}
+        onToggle={() => setOutputOpen((o) => !o)}
+        label="Summary output"
+        preview={cleanSummary.split('\n')[0]?.slice(0, 80)}
+        borderClass="border-cyan-900/30"
+        labelClass="text-cyan-300"
+      />
+      {outputOpen && (
+        <div class="border-t border-zinc-800/40 px-3 py-3 bg-black/15 max-h-80 overflow-y-auto">
+          {cleanSummary ? (
+            <pre class="text-[11px] text-zinc-300 font-mono whitespace-pre-wrap break-words leading-relaxed">
+              {cleanSummary}
+            </pre>
+          ) : (
+            <span class="text-zinc-700 italic text-[11px]">no output captured</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EventCard({ event, auxModel }: { event: LangfuseEvent; auxModel: string | null }) {
+  const compression = compressionLabel(event, auxModel);
+  if (compression) return <CompressionCard event={event} label={compression} />;
   const obsType = event.body['langfuse.observation.type'] as string | undefined;
   if (obsType === 'generation') return <GenerationCard event={event} />;
   if (obsType === 'tool') return <ToolCard event={event} />;
@@ -980,18 +1122,24 @@ function StreamingOutput({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [contextLength, setContextLength] = useState(131072);
   const [compressionThreshold, setCompressionThreshold] = useState(0.5);
+  const [auxModel, setAuxModel] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/config', { signal: controller.signal })
       .then((r) =>
         r.ok
-          ? (r.json() as Promise<{ contextLength?: number; compressionThreshold?: number }>)
+          ? (r.json() as Promise<{
+              contextLength?: number;
+              compressionThreshold?: number;
+              auxiliaryModel?: string | null;
+            }>)
           : Promise.reject(new Error(`${r.status}`)),
       )
-      .then(({ contextLength: cl, compressionThreshold: ct }) => {
+      .then(({ contextLength: cl, compressionThreshold: ct, auxiliaryModel: am }) => {
         if (cl !== undefined) setContextLength(cl);
         if (ct !== undefined) setCompressionThreshold(ct);
+        if (am !== undefined) setAuxModel(am);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -1121,17 +1269,16 @@ function StreamingOutput({
             <p class="text-zinc-700 italic text-xs">Waiting for agent activity…</p>
           )}
           {events.map((ev, i) => {
-            const obsType = ev.body['langfuse.observation.type'] as string | undefined;
-            const prevType =
-              i > 0
-                ? (events[i - 1].body['langfuse.observation.type'] as string | undefined)
-                : undefined;
-            const showDivider =
-              obsType === 'generation' && prevType != null && prevType !== 'generation';
+            // A compression/auxiliary call isn't part of the main-loop turn flow,
+            // so don't let it start a new "turn" divider.
+            const isMainGen = (e: LangfuseEvent) =>
+              (e.body['langfuse.observation.type'] as string | undefined) === 'generation' &&
+              compressionLabel(e, auxModel) === null;
+            const showDivider = isMainGen(ev) && i > 0 && !isMainGen(events[i - 1]);
             return (
               <div key={i}>
                 {showDivider && <hr class="border-zinc-800 my-4" />}
-                <EventCard event={ev} />
+                <EventCard event={ev} auxModel={auxModel} />
               </div>
             );
           })}
