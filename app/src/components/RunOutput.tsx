@@ -1167,9 +1167,9 @@ function StreamingOutput({
   onMetaUpdate: (m: RunMeta) => void;
 }) {
   const [events, setEvents] = useState<LangfuseEvent[]>([]);
-  const [streamStatus, setStreamStatus] = useState<'connecting' | 'live' | 'done' | 'error'>(
-    'connecting',
-  );
+  const [streamStatus, setStreamStatus] = useState<
+    'connecting' | 'live' | 'done' | 'error' | 'following'
+  >('connecting');
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [contextLength, setContextLength] = useState(131072);
@@ -1221,6 +1221,30 @@ function StreamingOutput({
 
   useEffect(() => {
     const es = new EventSource(`/stream/runs/${runId}`);
+    let cancelled = false;
+
+    // When this run ends, the orchestrator may start another almost immediately (a judge
+    // evaluation, then a judge-driven continuation, or the next phase). Poll briefly for a
+    // successor RUNNING run and switch the live view to it, so the stream resumes seamlessly.
+    const followNextRun = async () => {
+      for (let i = 0; i < 30 && !cancelled; i++) {
+        try {
+          const r = await fetch(`/api/jobs/${jobId}/runs`);
+          if (r.ok) {
+            const all = (await r.json()) as { id: string; status: string }[];
+            const next = all.find((x) => x.status === 'RUNNING' && x.id !== runId);
+            if (next && !cancelled) {
+              navigate(`/jobs/${jobId}/runs/${next.id}`);
+              return;
+            }
+          }
+        } catch {
+          // transient — retry
+        }
+        await new Promise((res) => setTimeout(res, 2000));
+      }
+      if (!cancelled) setStreamStatus('done');
+    };
 
     es.onmessage = (e) => {
       const payload = JSON.parse(e.data as string) as StreamPayload;
@@ -1238,8 +1262,9 @@ function StreamingOutput({
           exitCode: payload.exitCode,
           durationMs: payload.durationMs,
         });
-        setStreamStatus('done');
         es.close();
+        setStreamStatus('following');
+        void followNextRun();
       } else if (payload.type === 'error') {
         setStreamStatus('error');
         es.close();
@@ -1252,7 +1277,10 @@ function StreamingOutput({
       }
     };
 
-    return () => es.close();
+    return () => {
+      cancelled = true;
+      es.close();
+    };
   }, [runId]);
 
   useEffect(() => {
@@ -1292,7 +1320,11 @@ function StreamingOutput({
             </span>
             {meta.model && <span class="text-xs text-zinc-500 truncate">{meta.model}</span>}
             <span class="flex items-center gap-1.5">
-              {statusDot(streamStatus === 'connecting' ? 'CONNECTING' : meta.status)}
+              {statusDot(
+                streamStatus === 'connecting' || streamStatus === 'following'
+                  ? 'CONNECTING'
+                  : meta.status,
+              )}
             </span>
             {meta.durationMs !== null && (
               <span class="text-xs text-zinc-500">{formatDuration(meta.durationMs)}</span>
@@ -1355,6 +1387,12 @@ function StreamingOutput({
               </div>
             );
           })}
+          {streamStatus === 'following' && (
+            <p class="flex items-center gap-2 text-cyan-400 text-xs pt-2 border-t border-zinc-900">
+              <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              Run finished — the judge is evaluating; following the next run…
+            </p>
+          )}
           {streamStatus === 'done' && (
             <p class="text-zinc-600 text-xs pt-2 border-t border-zinc-900">Stream ended.</p>
           )}
@@ -1392,6 +1430,9 @@ export default function RunOutput() {
   const [meta, setMeta] = useState<RunMeta | null>(null);
 
   useEffect(() => {
+    // Reset to the loading state when the run id changes (e.g. after seamlessly following a
+    // judge continuation) so we don't briefly render the previous run's terminal view.
+    setMeta(null);
     async function fetchMeta() {
       try {
         const res = await fetch(`/api/jobs/${jobId}/runs`);

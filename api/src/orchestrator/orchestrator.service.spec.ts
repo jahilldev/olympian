@@ -8,6 +8,7 @@ import type { HermesAgentService } from '../agent/agent.service.js';
 import type { WorkspaceService } from '../workspace/workspace.service.js';
 import type { ReviewService } from '../review/review.service.js';
 import type { VerifyService } from '../verify/verify.service.js';
+import type { JudgeService } from '../judge/judge.service.js';
 import type { GithubService } from '../github/github.service.js';
 
 // `@jest/globals`' typed `jest.fn()` infers `never` returns; these helpers produce
@@ -48,6 +49,7 @@ const CONFIG: Record<string, unknown> = {
   BRANCH_PREFIX: 'hermes/issue-',
   COMMAND_PREFIX: '/hermes',
   MAX_VERIFY_ATTEMPTS: 3,
+  MAX_COMPLETION_RETRIES: 2,
   HERMES_REVIEW_MODEL: '',
   HERMES_REVIEW_PROVIDER: '',
 };
@@ -122,6 +124,8 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
 
   const verify = { countForCycle: resolved(0), record: resolved(undefined) };
 
+  const judge = { assess: resolved({ met: true, critique: '' }), listForJob: resolved([]) };
+
   const github = {
     createIssueComment: resolved(1),
     getDefaultBranch: resolved('main'),
@@ -137,10 +141,24 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     workspace as unknown as WorkspaceService,
     review as unknown as ReviewService,
     verify as unknown as VerifyService,
+    judge as unknown as JudgeService,
     github as unknown as GithubService,
   );
 
-  return { service, prisma, config, jobs, queue, agent, workspace, review, verify, github, job };
+  return {
+    service,
+    prisma,
+    config,
+    jobs,
+    queue,
+    agent,
+    workspace,
+    review,
+    verify,
+    judge,
+    github,
+    job,
+  };
 }
 
 const callPrivate = (service: OrchestratorService, method: string, arg: string): Promise<void> =>
@@ -257,6 +275,19 @@ describe('OrchestratorService.handleImplement', () => {
       expect.stringContaining('no file changes'),
     );
     expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('re-runs the agent with the judge critique when the pass is judged incomplete', async () => {
+    const { service, agent, judge, queue } = setup({ job: { state: 'IMPLEMENTING' } });
+    judge.assess.mockResolvedValueOnce({ met: false, critique: 'finish the aimLaunchDot cleanup' });
+
+    await callPrivate(service, 'handleImplement', 'job1');
+
+    // Initial pass + one judge-driven continuation, then proceed to VERIFY.
+    expect(agent.run.mock.calls.length).toBe(2);
+    const secondPrompt = (agent.run.mock.calls[1][0] as { prompt: string }).prompt;
+    expect(secondPrompt).toContain('finish the aimLaunchDot cleanup');
+    expect(enqueuedKinds(queue)).toEqual(['VERIFY']);
   });
 });
 

@@ -6,4 +6,6 @@ export interface RevisePromptContext {
   latestIssuesText?: string;
   priorIssuesText?: string;
   humanFeedback?: string;
+  /** Set on a completion-judge continuation: what the previous pass left unfinished. */
+  incompleteWork?: string;
 }

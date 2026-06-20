@@ -25,6 +25,7 @@ import { reviseCommitMessage } from '../revise/revise.utility.js';
 import { buildVerifyPrompt } from '../verify/verify.prompts.js';
 import { parseVerifyCommand } from '../verify/verify.utility.js';
 import { VerifyService } from '../verify/verify.service.js';
+import { JudgeService } from '../judge/judge.service.js';
 import { buildSummaryPrompt } from '../summary/summary.prompts.js';
 import { buildPrBody } from '../summary/summary.utility.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
@@ -74,6 +75,7 @@ export class OrchestratorService {
     private readonly workspace: WorkspaceService,
     private readonly review: ReviewService,
     private readonly verify: VerifyService,
+    private readonly judge: JudgeService,
     private readonly github: GithubService,
   ) {}
 
@@ -773,45 +775,30 @@ export class OrchestratorService {
     const downloaded = await this.workspace.downloadAttachments(ws.dir, ghId, attachmentRefs);
     const attachments = formatDownloadedAttachments(downloaded);
 
-    // A single implementation pass. Tests/build are NOT run here — that is the
-    // dedicated VERIFY stage, and any failure (verify or review) routes to REVISE.
-    const prompt = buildImplementPrompt({
-      jobId,
-      repoFullName: job.repoFullName,
-      issueTitle: job.issueTitle,
-      issueBody: job.issueBody,
-      plan,
-      attempt: 1,
-      guidance,
-      attachments,
-    });
-
-    await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
-
-    const res = await this.agent.run({
-      jobId,
+    // Implementation pass(es) under the completion-judge loop. Tests/build are NOT run
+    // here — that's the dedicated VERIFY stage; any failure (verify or review) routes to REVISE.
+    await this.runWithCompletionLoop({
+      job,
       phase: 'IMPLEMENT',
-      cwd: ws.dir,
-      prompt,
-      validate: (stdout) => incompleteOutputReason(stdout, 200),
+      installationId: ghId,
+      ws,
+      goal: plan,
+      buildPrompt: (attempt, critique) =>
+        buildImplementPrompt({
+          jobId,
+          repoFullName: job.repoFullName,
+          issueTitle: job.issueTitle,
+          issueBody: job.issueBody,
+          plan,
+          attempt,
+          // On a continuation the judge's critique IS the to-do list; otherwise any PR-feedback guidance.
+          guidance: critique ?? guidance,
+          attachments,
+        }),
+      commitMessage: (attempt) => implementCommitMessage(job.issueNumber, job.issueTitle, attempt),
+      noChangesError: 'implementation produced no file changes',
     });
 
-    if (res.status !== 'SUCCEEDED') {
-      throw new Error(`implementation agent ${res.status}; ${res.stderr.slice(0, 300)}`);
-    }
-
-    const sha = await this.workspace.commitAll(
-      ws.dir,
-      implementCommitMessage(job.issueNumber, job.issueTitle, 1),
-    );
-
-    if (sha === null) {
-      // A clean exit that edited nothing is not a success, however long its output.
-      await this.agent.markRunFailed(res.runId, 'implementation produced no file changes');
-      throw new Error('implementation produced no file changes');
-    }
-
-    await this.pushBranch(job, ghId, ws.branch);
     await this.jobs.incrementAttempts(jobId);
     await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
 
@@ -821,6 +808,95 @@ export class OrchestratorService {
     });
 
     await this.queue.enqueue({ jobId, kind: 'VERIFY' });
+  }
+
+  /**
+   * Runs an IMPLEMENT/REVISE pass under the completion-judge loop — Hermes' `/goal` pattern,
+   * orchestrated here. After each agent run we commit + push (each attempt is an inspectable
+   * checkpoint), then a judge decides whether the goal (acceptance criteria / issues to fix) is
+   * actually met. If not, the agent is re-invoked in the SAME workspace with the judge's critique
+   * as its to-do list — so it resumes targeting the gaps instead of re-orienting — up to
+   * MAX_COMPLETION_RETRIES, after which we proceed to VERIFY regardless (the deterministic gate
+   * still applies). MAX_COMPLETION_RETRIES=0 disables the loop (single pass, no judge).
+   */
+  private async runWithCompletionLoop(p: {
+    job: Job;
+    phase: 'IMPLEMENT' | 'REVISE';
+    installationId: number;
+    ws: { dir: string; branch: string; baseBranch: string };
+    goal: string;
+    buildPrompt: (attempt: number, critique: string | undefined) => string;
+    commitMessage: (attempt: number) => string;
+    noChangesError: string;
+  }): Promise<void> {
+    const maxRetries = this.config.get('MAX_COMPLETION_RETRIES');
+    let critique: string | undefined;
+
+    for (let attempt = 1; ; attempt++) {
+      // A prior attempt's scratch dir must not leak into this one.
+      await rm(join(p.ws.dir, '.olympian'), { force: true, recursive: true });
+
+      const res = await this.agent.run({
+        jobId: p.job.id,
+        phase: p.phase,
+        cwd: p.ws.dir,
+        prompt: p.buildPrompt(attempt, critique),
+        validate: (stdout) => incompleteOutputReason(stdout, 200),
+      });
+
+      if (res.status !== 'SUCCEEDED') {
+        throw new Error(
+          `${p.phase.toLowerCase()} agent ${res.status}; ${res.stderr.slice(0, 300)}`,
+        );
+      }
+
+      const sha = await this.workspace.commitAll(p.ws.dir, p.commitMessage(attempt));
+
+      if (sha === null) {
+        if (attempt === 1) {
+          // A clean exit that edited nothing is not a success, however long its output.
+          await this.agent.markRunFailed(res.runId, p.noChangesError);
+          throw new Error(p.noChangesError);
+        }
+        // A continuation that changed nothing — the agent considers itself done. Accept and proceed.
+        this.logger.log(
+          `[job ${p.job.id}] ${p.phase} continuation ${attempt} made no further changes; proceeding`,
+        );
+        break;
+      }
+
+      await this.pushBranch(p.job, p.installationId, p.ws.branch);
+
+      // Out of judge budget (or it's disabled) — proceed; VERIFY/REVIEW are the backstop.
+      if (maxRetries <= 0 || attempt > maxRetries) {
+        if (attempt > 1) {
+          this.logger.warn(
+            `[job ${p.job.id}] ${p.phase} completion budget (${maxRetries}) exhausted after ${attempt} attempts; proceeding with possible gaps`,
+          );
+        }
+        break;
+      }
+
+      const verdict = await this.judge.assess({
+        jobId: p.job.id,
+        repoFullName: p.job.repoFullName,
+        baseBranch: p.ws.baseBranch,
+        phase: p.phase,
+        goal: p.goal,
+        agentOutput: res.stdout,
+        cwd: p.ws.dir,
+        attempt,
+      });
+
+      if (verdict.met) {
+        break;
+      }
+
+      critique = verdict.critique;
+      this.logger.log(
+        `[job ${p.job.id}] ${p.phase} judged incomplete (attempt ${attempt}); continuing with judge critique`,
+      );
+    }
   }
 
   /**
@@ -993,37 +1069,36 @@ export class OrchestratorService {
     const revisionNumber =
       (await this.prisma.agentRun.count({ where: { jobId, phase: 'REVISE' } })) + 1;
 
-    await rm(join(ws.dir, '.olympian'), { force: true, recursive: true });
+    // The judge's "goal" for a revision is the set of things it was asked to resolve.
+    const goal =
+      [
+        verifyFailure ? `Failing build/tests:\n${verifyFailure}` : '',
+        latestIssues.length > 0 ? `Review issues to fix:\n${formatIssues(latestIssues)}` : '',
+        humanFeedback ? `Human feedback to address:\n${humanFeedback}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n') || 'Resolve all outstanding review issues and make the build/tests pass.';
 
-    const rev = await this.agent.run({
-      jobId,
+    await this.runWithCompletionLoop({
+      job,
       phase: 'REVISE',
-      cwd: ws.dir,
-      prompt: buildRevisePrompt({
-        jobId,
-        plan,
-        verifyFailure,
-        latestIssuesText: latestIssues.length > 0 ? formatIssues(latestIssues) : undefined,
-        priorIssuesText: priorIssues.length > 0 ? formatIssues(priorIssues) : undefined,
-        humanFeedback,
-      }),
-      validate: (stdout) => incompleteOutputReason(stdout, 200),
+      installationId: this.ghIdFromRef(ref),
+      ws,
+      goal,
+      buildPrompt: (_attempt, critique) =>
+        buildRevisePrompt({
+          jobId,
+          plan,
+          verifyFailure,
+          latestIssuesText: latestIssues.length > 0 ? formatIssues(latestIssues) : undefined,
+          priorIssuesText: priorIssues.length > 0 ? formatIssues(priorIssues) : undefined,
+          humanFeedback,
+          // On a continuation the judge's critique lists what the prior pass left unfinished.
+          incompleteWork: critique,
+        }),
+      commitMessage: (attempt) => reviseCommitMessage(revisionNumber + attempt - 1),
+      noChangesError: 'revision produced no file changes — issues were not addressed',
     });
-
-    if (rev.status !== 'SUCCEEDED') {
-      throw new Error(`revise agent ${rev.status}; ${rev.stderr.slice(0, 300)}`);
-    }
-
-    const sha = await this.workspace.commitAll(ws.dir, reviseCommitMessage(revisionNumber));
-
-    if (sha === null) {
-      // A revise that edits nothing didn't address the issues — it just narrated. Mark
-      // the run FAILED (not a phantom success) and let the task retry give a real fix.
-      await this.agent.markRunFailed(rev.runId, 'revision produced no file changes');
-      throw new Error('revision produced no file changes — issues were not addressed');
-    }
-
-    await this.pushBranch(job, this.ghIdFromRef(ref), ws.branch);
 
     await this.jobs.transition(jobId, 'VERIFYING', {
       reason: 'revision complete',

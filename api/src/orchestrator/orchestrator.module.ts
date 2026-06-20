@@ -5,6 +5,7 @@ import { AgentModule } from '../agent/agent.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 import { ReviewModule } from '../review/review.module.js';
 import { VerifyModule } from '../verify/verify.module.js';
+import { JudgeModule } from '../judge/judge.module.js';
 import { GithubModule } from '../github/github.module.js';
 import { OrchestratorService } from './orchestrator.service.js';
 import { OrchestratorController } from './orchestrator.controller.js';
@@ -17,6 +18,7 @@ import { OrchestratorController } from './orchestrator.controller.js';
     WorkspaceModule,
     ReviewModule,
     VerifyModule,
+    JudgeModule,
     GithubModule,
   ],
   controllers: [OrchestratorController],
