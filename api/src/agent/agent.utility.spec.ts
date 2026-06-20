@@ -160,40 +160,42 @@ describe('buildAgentSpec', () => {
 });
 
 describe('generateHermesConfig auxiliary model', () => {
+  type AuxTask = { provider?: string; model?: string; timeout?: number };
   async function generateAuxiliary(
     opts: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<Record<string, AuxTask>> {
     const dir = await mkdtemp(join(tmpdir(), 'olympian-aux-'));
     try {
       await generateHermesConfig(dir, { sandboxMode: 'none', ...opts });
-      const config = parseYaml(await readFile(join(dir, 'config.yaml'), 'utf8')) as Record<
-        string,
-        unknown
-      >;
-      return (config.auxiliary as Record<string, unknown>) ?? { __absent: true };
+      const config = parseYaml(await readFile(join(dir, 'config.yaml'), 'utf8')) as {
+        auxiliary?: Record<string, AuxTask>;
+      };
+      return config.auxiliary ?? {};
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }
 
-  it('applies the auxiliary model and provider to every auxiliary task', async () => {
-    const auxiliary = await generateAuxiliary({
+  it('applies the auxiliary model and provider over the base config for every task', async () => {
+    const aux = await generateAuxiliary({
       auxiliaryModel: 'qwen3.6:8b',
       auxiliaryProvider: 'custom',
     });
-    const expected = { provider: 'custom', model: 'qwen3.6:8b' };
-    expect(auxiliary.vision).toEqual(expected);
-    expect(auxiliary.web_extract).toEqual(expected);
-    expect(auxiliary.compression).toEqual(expected);
+    for (const task of ['vision', 'web_extract', 'compression']) {
+      expect(aux[task]).toMatchObject({ provider: 'custom', model: 'qwen3.6:8b' });
+    }
   });
 
   it('applies each override independently', async () => {
-    const auxiliary = await generateAuxiliary({ auxiliaryModel: 'qwen3.6:8b' });
-    expect(auxiliary.compression).toEqual({ model: 'qwen3.6:8b' });
+    const aux = await generateAuxiliary({ auxiliaryModel: 'qwen3.6:8b' });
+    expect(aux.compression).toMatchObject({ model: 'qwen3.6:8b' });
+    expect(aux.compression.provider).toBeUndefined();
   });
 
-  it('omits the auxiliary section entirely when neither override is set', async () => {
-    const auxiliary = await generateAuxiliary({});
-    expect(auxiliary).toEqual({ __absent: true });
+  it('keeps the base auxiliary timeouts (no model/provider) when neither override is set', async () => {
+    const aux = await generateAuxiliary({});
+    expect(aux.compression.model).toBeUndefined();
+    expect(aux.compression.provider).toBeUndefined();
+    expect(typeof aux.compression.timeout).toBe('number');
   });
 });
