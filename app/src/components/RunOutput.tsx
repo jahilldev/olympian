@@ -1044,7 +1044,7 @@ function CompressionMarker({
       <div class="flex shrink-0 items-center gap-2 rounded-xl border border-cyan-900/50 bg-cyan-950/30 px-3 py-1.5 text-cyan-500">
         <IconCompress />
         <span class="text-[11px] font-mono font-semibold uppercase tracking-wide">Compress</span>
-        <span class="whitespace-nowrap text-[10px] font-mono text-cyan-500 tabular-nums">
+        <span class="whitespace-nowrap text-[10px] font-mono text-cyan-600 tabular-nums">
           {k(before)}→{k(after)} tok · {pct(before)}%→{pct(after)}%
         </span>
       </div>

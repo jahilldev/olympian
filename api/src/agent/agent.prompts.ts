@@ -4,7 +4,9 @@
 
 // Counters the most common failure mode: the agent ends a turn by asking whether to
 // continue. In headless --yolo mode there is no human to answer, so that strands the run.
-export const AUTONOMY_NOTICE = `You are running fully autonomously — there is NO human watching and nobody can answer questions mid-run. Never end your turn by asking whether to continue, asking for confirmation, or noting that your response was "cut off". If there is more work to do, just keep going until it is genuinely complete. When you must make a judgement call, choose the most reasonable option, proceed, and record the assumption in your final summary — do not stop to ask.`;
+export const AUTONOMY_NOTICE = `You are running fully autonomously — there is NO human watching and nobody can answer questions mid-run. Never end your turn by asking whether to continue, asking for confirmation, or noting that your response was "cut off". If there is more work to do, just keep going until it is genuinely complete. When you must make a judgement call, choose the most reasonable option, proceed, and record the assumption in your final summary — do not stop to ask.
+
+**Ending your turn is a commitment that the task is fully complete.** Your turn does not end when you have a plan, when you are partway through, or when you have described what you would do — only when the work is actually finished. Before you write your final message, stop and verify you have genuinely carried out everything the task requires; if any part is unstarted, half-done, or unverified, keep working instead of signing off. A premature final message is treated as a failed run, so when in doubt, continue.`;
 
 // Your work is graded by a CLEAN, isolated build/test run from committed files only — not
 // your live working directory. This is what catches "works on my machine": dependencies
