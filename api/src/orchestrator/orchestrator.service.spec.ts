@@ -71,7 +71,7 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
 
   const prisma = {
     job: { findUnique: resolved(job), findFirst: resolved(null), update: resolved(job) },
-    planRevision: { findFirst: resolved({ content: 'the plan' }) },
+    planRevision: { findFirst: resolved({ content: 'the plan' }), updateMany: resolved(undefined) },
     prRevisionFeedback: { findMany: resolved([] as unknown[]) },
     reviewPass: {
       findMany: resolved([] as unknown[]),
@@ -378,6 +378,32 @@ describe('OrchestratorService.cancelJob', () => {
     await service.cancelJob('job1', '@alice');
 
     expect(queue.cancelForJob).not.toHaveBeenCalled();
+    expect(jobs.transition).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrchestratorService.approvePlan', () => {
+  it('approves the plan: marks it APPROVED, moves to IMPLEMENTING, enqueues IMPLEMENT', async () => {
+    const { service, prisma, queue, jobs } = setup({ job: { state: 'AWAITING_PLAN_APPROVAL' } });
+
+    const result = await service.approvePlan('job1', 'the dashboard');
+
+    expect(result).toEqual({ approved: true });
+    expect(prisma.planRevision.updateMany).toHaveBeenCalledWith({
+      where: { jobId: 'job1', status: 'PROPOSED' },
+      data: { status: 'APPROVED' },
+    });
+    expect(transitionedTo(jobs)).toContain('IMPLEMENTING');
+    expect(enqueuedKinds(queue)).toEqual(['IMPLEMENT']);
+  });
+
+  it('refuses to approve when the job is not awaiting plan approval', async () => {
+    const { service, queue, jobs } = setup({ job: { state: 'IMPLEMENTING' } });
+
+    const result = await service.approvePlan('job1', 'the dashboard');
+
+    expect(result.approved).toBe(false);
+    expect(queue.enqueue).not.toHaveBeenCalled();
     expect(jobs.transition).not.toHaveBeenCalled();
   });
 });

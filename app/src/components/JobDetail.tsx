@@ -98,14 +98,15 @@ export default function JobDetail() {
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  async function act(action: 'cancel' | 'retry') {
+  async function act(action: 'cancel' | 'retry' | 'approve') {
     if (action === 'cancel' && !window.confirm('Cancel this job? This stops the running agent.')) {
       return;
     }
     setActionPending(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/jobs/${id}/${action}`, { method: 'POST' });
+      const path = action === 'approve' ? 'plan/approve' : action;
+      const res = await fetch(`/api/jobs/${id}/${path}`, { method: 'POST' });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { message?: string };
         setActionError(body.message ?? `Could not ${action} (${res.status})`);
@@ -237,6 +238,17 @@ export default function JobDetail() {
                       Watch live →
                     </button>
                   </div>
+                )}
+                {/* Approve sits on the left; hidden while a plan is still generating (the
+                    watch-live banner takes that space instead). */}
+                {!activeRun && job.state === 'AWAITING_PLAN_APPROVAL' && (
+                  <button
+                    disabled={actionPending}
+                    onClick={() => act('approve')}
+                    class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                  >
+                    {actionPending ? 'Approving…' : 'Approve plan'}
+                  </button>
                 )}
                 <div class={`flex items-stretch gap-2 ${activeRun ? 'shrink-0' : 'ml-auto'}`}>
                   {job.state === 'FAILED' && (

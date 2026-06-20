@@ -312,24 +312,7 @@ export class OrchestratorService {
     }
 
     if (command.kind === 'approve') {
-      await this.prisma.planRevision.updateMany({
-        where: { jobId: job.id, status: 'PROPOSED' },
-        data: { status: 'APPROVED' },
-      });
-
-      await this.jobs.transition(job.id, 'IMPLEMENTING', {
-        reason: `plan approved by @${evt.author}`,
-        actor: 'HUMAN',
-      });
-
-      await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
-
-      await this.safeComment(
-        ref,
-        evt.issueNumber,
-        `Plan approved — implementing now. I'll open a draft PR when it's ready.`,
-      );
-
+      await this.approvePlan(job.id, `@${evt.author}`);
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
 
       return;
@@ -548,6 +531,49 @@ export class OrchestratorService {
     } catch {
       // best-effort notification
     }
+  }
+
+  /**
+   * Approve the proposed plan: mark it APPROVED, move to IMPLEMENTING, and start the
+   * implement loop. Returns `{ approved: false }` (with a reason) when the job isn't
+   * awaiting plan approval, so callers can surface that instead of acting. `by` is a
+   * display string for the audit trail (e.g. `@user` or `the dashboard`).
+   */
+  async approvePlan(jobId: string, by: string): Promise<{ approved: boolean; reason?: string }> {
+    const job = await this.jobs.findById(jobId);
+
+    if (!job) {
+      return { approved: false, reason: 'job not found' };
+    }
+
+    if (job.state !== 'AWAITING_PLAN_APPROVAL') {
+      return { approved: false, reason: `job is ${job.state}, not awaiting plan approval` };
+    }
+
+    await this.prisma.planRevision.updateMany({
+      where: { jobId, status: 'PROPOSED' },
+      data: { status: 'APPROVED' },
+    });
+
+    await this.jobs.transition(jobId, 'IMPLEMENTING', {
+      reason: `plan approved by ${by}`,
+      actor: 'HUMAN',
+    });
+
+    await this.queue.enqueue({ jobId, kind: 'IMPLEMENT' });
+
+    try {
+      const { ref } = await this.context(jobId);
+      await this.safeComment(
+        ref,
+        job.issueNumber,
+        `Plan approved — implementing now. I'll open a draft PR when it's ready.`,
+      );
+    } catch {
+      // best-effort notification
+    }
+
+    return { approved: true };
   }
 
   /**
