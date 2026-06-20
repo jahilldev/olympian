@@ -35,6 +35,9 @@ export const envSchema = z.object({
   HERMES_CONTEXT_LENGTH: z.coerce.number().int().optional(),
   HERMES_COMPRESS_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
   HERMES_MODEL_BASE_URL: z.string().optional(),
+  // Diagnostic: log a compact identity line for every incoming trace span so the
+  // exact shape of auxiliary/compression events can be inspected. Off by default.
+  LANGFUSE_DEBUG_SPANS: booleanFromString.default(false),
 
   // orchestration policy
   TRIGGER_LABEL: z.string().default('hermes'),

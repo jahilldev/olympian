@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Subject, type Observable } from 'rxjs';
+import { AppConfigService } from '../config/config.service.js';
 import {
   BUFFER_EVENTS,
   LANGFUSE_PUBLIC_KEY,
@@ -9,8 +10,36 @@ import {
 
 @Injectable()
 export class LangfuseService {
+  private readonly logger = new Logger(LangfuseService.name);
   private readonly subjects = new Map<string, Subject<LangfuseEvent>>();
   private readonly buffers = new Map<string, LangfuseEvent[]>();
+
+  constructor(private readonly config: AppConfigService) {}
+
+  /**
+   * Diagnostic: emit a compact identity line per span so the exact shape of
+   * auxiliary/compression events can be inspected against a real run. Enable with
+   * LANGFUSE_DEBUG_SPANS=true. Logs name, observation type, model, token usage, and
+   * the full attribute-key list — enough to pin down how Hermes traces compression.
+   */
+  private debugLogSpan(sessionId: string, ev: LangfuseEvent): void {
+    if (!this.config.get('LANGFUSE_DEBUG_SPANS')) {
+      return;
+    }
+
+    const body = ev.body;
+    const name = body['langfuse.observation.name'] ?? body.name ?? '';
+    const obsType = body['langfuse.observation.type'] ?? '(none)';
+    const model = body['langfuse.observation.model.name'] ?? '';
+    const usage = body['langfuse.observation.usage_details'] ?? '';
+    const keys = Object.keys(body)
+      .filter((k) => !['traceId', 'spanId', 'parentSpanId', 'startTime', 'endTime'].includes(k))
+      .join(',');
+
+    this.logger.log(
+      `[span ${sessionId.slice(0, 8)}] type=${String(obsType)} name=${JSON.stringify(name)} model=${String(model)} usage=${String(usage)} keys=[${keys}]`,
+    );
+  }
 
   verifyCredentials(authHeader: string | undefined): boolean {
     if (!authHeader?.startsWith('Basic ')) {
@@ -40,6 +69,8 @@ export class LangfuseService {
     const buffer = this.buffers.get(sessionId)!;
 
     for (const ev of events) {
+      this.debugLogSpan(sessionId, ev);
+
       if (buffer.length >= BUFFER_EVENTS) {
         buffer.shift();
       }

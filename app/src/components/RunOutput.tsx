@@ -883,42 +883,61 @@ function GenericSpanCard({ event }: { event: LangfuseEvent }) {
   );
 }
 
-// ── Compression / auxiliary detection ──────────────────────────────────────
+// ── Compression detection ──────────────────────────────────────────────────
 
 /**
- * Detects a background auxiliary-model call (overwhelmingly context compression
- * during a coding run). Hermes tags the compression call with task="compression"
- * and runs it on the auxiliary/summary model. We check, in order: an explicit
- * compression marker in the span name or attributes, then a fall-back match
- * against the configured auxiliary model. Returns the label to show, or null.
+ * Detects an EXPLICIT compression span — one Hermes labels with task="compression"
+ * (in the span name, a *.task attribute, or serialised metadata). When present this
+ * carries the summary output, so we render it as a rich card. It is not guaranteed
+ * to appear in the stream, so the primary signal is the input-token drop detected
+ * in `compressionDrops()` below.
  */
-function compressionLabel(
-  event: LangfuseEvent,
-  auxModel: string | null,
-): 'compression' | 'auxiliary' | null {
-  if ((event.body['langfuse.observation.type'] as string | undefined) !== 'generation') return null;
+function isExplicitCompression(event: LangfuseEvent): boolean {
   const body = event.body;
-
   const name = String(body['langfuse.observation.name'] ?? body.name ?? '').toLowerCase();
-  if (/compress|summari[sz]/.test(name)) return 'compression';
-
-  // task marker — flat attribute or serialised metadata
+  if (/compress|summari[sz]/.test(name)) return true;
   for (const [k, v] of Object.entries(body)) {
-    if (typeof v === 'string' && /task$/i.test(k) && v.toLowerCase() === 'compression')
-      return 'compression';
+    if (typeof v === 'string' && /task$/i.test(k) && v.toLowerCase() === 'compression') return true;
   }
   const meta = body['langfuse.observation.metadata'];
-  if (typeof meta === 'string' && /"task"\s*:\s*"compression"/i.test(meta)) return 'compression';
-
-  // Fall back to model identity: a generation on the auxiliary model is a
-  // background secondary task (compression is by far the most common).
-  const model = body['langfuse.observation.model.name'] as string | undefined;
-  if (auxModel && model && model === auxModel) return 'auxiliary';
-
-  return null;
+  return typeof meta === 'string' && /"task"\s*:\s*"compression"/i.test(meta);
 }
 
-function CompressionCard({ event, label }: { event: LangfuseEvent; label: string }) {
+/** Input-token count reported by a generation event, or null. */
+function inputTokens(event: LangfuseEvent): number | null {
+  if ((event.body['langfuse.observation.type'] as string | undefined) !== 'generation') return null;
+  const raw = event.body['langfuse.observation.usage_details'] as string | undefined;
+  if (!raw) return null;
+  try {
+    const usage = JSON.parse(raw) as { input?: number };
+    return typeof usage.input === 'number' ? usage.input : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Infers compression from its OBSERVABLE EFFECT: prompt-token count only ever grows
+ * turn-to-turn as context accumulates, so a sharp drop between successive generations
+ * means the conversation was compressed in between. Returns a map of event index →
+ * { before, after } token counts, keyed on the first generation after each drop.
+ */
+function compressionDrops(events: LangfuseEvent[]): Map<number, { before: number; after: number }> {
+  const drops = new Map<number, { before: number; after: number }>();
+  let prev: number | null = null;
+  for (let i = 0; i < events.length; i++) {
+    const cur = inputTokens(events[i]);
+    if (cur === null) continue;
+    // >20% drop and a meaningful absolute reduction — well clear of token-accounting noise.
+    if (prev !== null && cur < prev * 0.8 && prev - cur > 2000) {
+      drops.set(i, { before: prev, after: cur });
+    }
+    prev = cur;
+  }
+  return drops;
+}
+
+function CompressionCard({ event }: { event: LangfuseEvent }) {
   const [outputOpen, setOutputOpen] = useState(true);
   const [inputOpen, setInputOpen] = useState(false);
   const body = event.body;
@@ -945,7 +964,7 @@ function CompressionCard({ event, label }: { event: LangfuseEvent; label: string
     <div class="rounded-xl border border-cyan-900/50 overflow-hidden text-xs shadow-sm">
       <div class="flex items-center gap-2 px-3 py-2.5 bg-cyan-950/40 text-cyan-200">
         <IconCompress />
-        <span class="font-semibold font-mono tracking-wide uppercase">{label}</span>
+        <span class="font-semibold font-mono tracking-wide uppercase">compression</span>
         {model && (
           <span class="text-zinc-500 font-mono font-normal truncate flex-1 min-w-0">{model}</span>
         )}
@@ -1007,9 +1026,35 @@ function CompressionCard({ event, label }: { event: LangfuseEvent; label: string
   );
 }
 
-function EventCard({ event, auxModel }: { event: LangfuseEvent; auxModel: string | null }) {
-  const compression = compressionLabel(event, auxModel);
-  if (compression) return <CompressionCard event={event} label={compression} />;
+/** Inline divider marking that a context compression happened between two turns. */
+function CompressionMarker({
+  before,
+  after,
+  contextLength,
+}: {
+  before: number;
+  after: number;
+  contextLength: number;
+}) {
+  const pct = (t: number) => Math.round((t / contextLength) * 100);
+  const k = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t));
+  return (
+    <div class="mb-3 flex items-center gap-2 sm:gap-3">
+      <div class="h-px flex-1 bg-cyan-900/40" />
+      <div class="flex shrink-0 items-center gap-2 rounded-xl border border-cyan-900/50 bg-cyan-950/30 px-3 py-1.5 text-cyan-300">
+        <IconCompress />
+        <span class="text-[11px] font-mono font-semibold uppercase tracking-wide">Compress</span>
+        <span class="whitespace-nowrap text-[10px] font-mono text-cyan-500 tabular-nums">
+          {k(before)}→{k(after)} tok · {pct(before)}%→{pct(after)}%
+        </span>
+      </div>
+      <div class="h-px flex-1 bg-cyan-900/40" />
+    </div>
+  );
+}
+
+function EventCard({ event }: { event: LangfuseEvent }) {
+  if (isExplicitCompression(event)) return <CompressionCard event={event} />;
   const obsType = event.body['langfuse.observation.type'] as string | undefined;
   if (obsType === 'generation') return <GenerationCard event={event} />;
   if (obsType === 'tool') return <ToolCard event={event} />;
@@ -1122,24 +1167,18 @@ function StreamingOutput({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [contextLength, setContextLength] = useState(131072);
   const [compressionThreshold, setCompressionThreshold] = useState(0.5);
-  const [auxModel, setAuxModel] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/config', { signal: controller.signal })
       .then((r) =>
         r.ok
-          ? (r.json() as Promise<{
-              contextLength?: number;
-              compressionThreshold?: number;
-              auxiliaryModel?: string | null;
-            }>)
+          ? (r.json() as Promise<{ contextLength?: number; compressionThreshold?: number }>)
           : Promise.reject(new Error(`${r.status}`)),
       )
-      .then(({ contextLength: cl, compressionThreshold: ct, auxiliaryModel: am }) => {
+      .then(({ contextLength: cl, compressionThreshold: ct }) => {
         if (cl !== undefined) setContextLength(cl);
         if (ct !== undefined) setCompressionThreshold(ct);
-        if (am !== undefined) setAuxModel(am);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -1148,9 +1187,12 @@ function StreamingOutput({
     return () => controller.abort();
   }, []);
 
+  // Compression is inferred from the input-token drop between turns (see
+  // compressionDrops), plus any explicitly-labelled compression span.
+  const drops = useMemo(() => compressionDrops(events), [events]);
   const compressionCount = useMemo(
-    () => events.reduce((n, ev) => n + (compressionLabel(ev, auxModel) ? 1 : 0), 0),
-    [events, auxModel],
+    () => drops.size + events.reduce((n, ev) => n + (isExplicitCompression(ev) ? 1 : 0), 0),
+    [drops, events],
   );
 
   const contextPct = useMemo(() => {
@@ -1285,16 +1327,24 @@ function StreamingOutput({
             <p class="text-zinc-700 italic text-xs">Waiting for agent activity…</p>
           )}
           {events.map((ev, i) => {
-            // A compression/auxiliary call isn't part of the main-loop turn flow,
+            // An explicit compression span isn't part of the main-loop turn flow,
             // so don't let it start a new "turn" divider.
             const isMainGen = (e: LangfuseEvent) =>
               (e.body['langfuse.observation.type'] as string | undefined) === 'generation' &&
-              compressionLabel(e, auxModel) === null;
-            const showDivider = isMainGen(ev) && i > 0 && !isMainGen(events[i - 1]);
+              !isExplicitCompression(e);
+            const drop = drops.get(i);
+            const showDivider = !drop && isMainGen(ev) && i > 0 && !isMainGen(events[i - 1]);
             return (
               <div key={i}>
+                {drop && (
+                  <CompressionMarker
+                    before={drop.before}
+                    after={drop.after}
+                    contextLength={contextLength}
+                  />
+                )}
                 {showDivider && <hr class="border-zinc-800 my-4" />}
-                <EventCard event={ev} auxModel={auxModel} />
+                <EventCard event={ev} />
               </div>
             );
           })}
