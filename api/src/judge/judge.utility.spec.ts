@@ -1,5 +1,4 @@
-import { judgeMetFromStderr, parseJudgeVerdict } from './judge.utility.js';
-import { JUDGE_MET_MARKER, JUDGE_UNMET_MARKER } from './judge.model.js';
+import { parseJudgeVerdict } from './judge.utility.js';
 
 describe('parseJudgeVerdict', () => {
   it('parses a met verdict', () => {
@@ -23,15 +22,5 @@ describe('parseJudgeVerdict', () => {
     expect(parseJudgeVerdict('```json\n{"critique":"x"}\n```')).toBeNull();
     expect(parseJudgeVerdict('{"met":"yes"}')).toBeNull();
     expect(parseJudgeVerdict('no json here')).toBeNull();
-  });
-});
-
-describe('judgeMetFromStderr', () => {
-  it('reads the met / unmet / unknown markers', () => {
-    expect(judgeMetFromStderr(`build noise\n${JUDGE_MET_MARKER}`)).toBe(true);
-    expect(judgeMetFromStderr(`build noise\n${JUDGE_UNMET_MARKER}`)).toBe(false);
-    expect(judgeMetFromStderr('no marker')).toBeNull();
-    expect(judgeMetFromStderr(null)).toBeNull();
-    expect(judgeMetFromStderr(undefined)).toBeNull();
   });
 });

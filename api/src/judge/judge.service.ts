@@ -2,13 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/config.service.js';
 import { HermesAgentService } from '../agent/agent.service.js';
-import { STDOUT_CAP } from '../agent/agent.model.js';
 import { buildJudgePrompt } from './judge.prompts.js';
-import { judgeMetFromStderr, parseJudgeVerdict } from './judge.utility.js';
+import { parseJudgeVerdict } from './judge.utility.js';
 import {
-  JUDGE_MET_MARKER,
   JUDGE_TIMEOUT_MS,
-  JUDGE_UNMET_MARKER,
   type JudgeAssessInput,
   type JudgementDto,
   type JudgeVerdict,
@@ -59,22 +56,17 @@ export class JudgeService {
       );
     }
 
-    // Persist the verdict as a stderr marker so the runs list can show met/unmet with no
-    // schema change. stdout (the full critique + reasoning) remains viewable via the run output.
-    // Best-effort: a marker-write failure is a UI-only loss and must never fail the run.
+    // Record the pass/fail verdict on the run for the UI badge. The critique itself stays in
+    // stdout (the run's output), like every other agent run. Best-effort: a write failure is a
+    // UI-only loss and must never fail the run.
     try {
       await this.prisma.agentRun.update({
         where: { id: res.runId },
-        data: {
-          stderr:
-            `${res.stderr ?? ''}\n${verdict.met ? JUDGE_MET_MARKER : JUDGE_UNMET_MARKER}`.slice(
-              -STDOUT_CAP,
-            ),
-        },
+        data: { judgeMet: verdict.met },
       });
     } catch (e) {
       this.logger.warn(
-        `[job ${input.jobId}] could not persist judge verdict marker: ${(e as Error).message}`,
+        `[job ${input.jobId}] could not persist judge verdict: ${(e as Error).message}`,
       );
     }
 
@@ -86,15 +78,15 @@ export class JudgeService {
     const rows = await this.prisma.agentRun.findMany({
       where: { jobId, phase: 'JUDGE' },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, stdout: true, stderr: true, createdAt: true },
+      select: { id: true, stdout: true, judgeMet: true, createdAt: true },
     });
 
     return rows.map((r) => {
       const verdict = parseJudgeVerdict(r.stdout ?? '');
       return {
         id: r.id,
-        met: judgeMetFromStderr(r.stderr),
-        // The clean critique from the verdict; fall back to raw output only if unparseable.
+        met: r.judgeMet,
+        // The clean critique parsed from the run's output; fall back to raw stdout if unparseable.
         critique: verdict ? verdict.critique : (r.stdout ?? ''),
         createdAt: r.createdAt.toISOString(),
       };

@@ -30,11 +30,6 @@ export interface JudgementDto {
   createdAt: string;
 }
 
-// Verdict markers appended to the JUDGE run's stderr so the UI can show met/unmet
-// without a schema migration. Parsed by agent.service when building the runs list.
-export const JUDGE_MET_MARKER = '[judge:met]';
-export const JUDGE_UNMET_MARKER = '[judge:unmet]';
-
 // A judge call is a focused evaluation, not a full work session — cap it well under the
 // main agent budget so a stuck judge can't stall the loop for hours.
 export const JUDGE_TIMEOUT_MS = 30 * 60 * 1000;

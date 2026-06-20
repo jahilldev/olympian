@@ -18,7 +18,6 @@ import {
   prepareHermesMemoryPaths,
   generateHermesConfig,
 } from './agent.utility.js';
-import { judgeMetFromStderr } from '../judge/judge.utility.js';
 import { LangfuseService } from '../langfuse/langfuse.service.js';
 
 /**
@@ -266,7 +265,7 @@ export class HermesAgentService implements OnModuleInit {
         exitCode: true,
         durationMs: true,
         stdout: true,
-        stderr: true,
+        judgeMet: true,
         createdAt: true,
       },
     });
@@ -280,7 +279,7 @@ export class HermesAgentService implements OnModuleInit {
       durationMs: r.durationMs,
       hasOutput: !!(r.stdout && r.stdout.length > 0),
       createdAt: r.createdAt.toISOString(),
-      judgeMet: r.phase === 'JUDGE' ? judgeMetFromStderr(r.stderr) : null,
+      judgeMet: r.judgeMet,
     }));
   }
 

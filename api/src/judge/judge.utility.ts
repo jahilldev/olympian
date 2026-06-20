@@ -1,21 +1,5 @@
 import { extractJsonBlock } from '../agent/agent.utility.js';
-import { JUDGE_MET_MARKER, JUDGE_UNMET_MARKER, type JudgeVerdict } from './judge.model.js';
-
-/**
- * Reads the completion-judge verdict from a JUDGE run's stderr marker:
- * true (criteria met), false (not met), or null (no/unparseable verdict).
- */
-export function judgeMetFromStderr(stderr: string | null | undefined): boolean | null {
-  if (stderr?.includes(JUDGE_MET_MARKER)) {
-    return true;
-  }
-
-  if (stderr?.includes(JUDGE_UNMET_MARKER)) {
-    return false;
-  }
-
-  return null;
-}
+import { type JudgeVerdict } from './judge.model.js';
 
 /**
  * Parses the judge's verdict from its stdout. Returns null when no valid verdict could be
