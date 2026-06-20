@@ -917,22 +917,26 @@ function inputTokens(event: LangfuseEvent): number | null {
 }
 
 /**
- * Infers compression from its OBSERVABLE EFFECT: prompt-token count only ever grows
- * turn-to-turn as context accumulates, so a sharp drop between successive generations
- * means the conversation was compressed in between. Returns a map of event index →
- * { before, after } token counts, keyed on the first generation after each drop.
+ * Infers compression from its OBSERVABLE EFFECT: within a single conversation, prompt-token
+ * count only ever grows as context accumulates, so a sharp drop means the conversation was
+ * compressed in between. Crucially this is tracked PER traceId: a run's stream interleaves
+ * the main agent with its delegate_task children, and each child is a separate trace that
+ * starts with a small fresh context — a cross-trace "drop" is delegation, not compression.
+ * Returns a map of event index → { before, after } token counts at each real drop.
  */
 function compressionDrops(events: LangfuseEvent[]): Map<number, { before: number; after: number }> {
   const drops = new Map<number, { before: number; after: number }>();
-  let prev: number | null = null;
+  const lastByTrace = new Map<string, number>();
   for (let i = 0; i < events.length; i++) {
     const cur = inputTokens(events[i]);
     if (cur === null) continue;
+    const trace = String(events[i].body.traceId ?? '');
+    const prev = lastByTrace.get(trace);
     // >20% drop and a meaningful absolute reduction — well clear of token-accounting noise.
-    if (prev !== null && cur < prev * 0.8 && prev - cur > 2000) {
+    if (prev !== undefined && cur < prev * 0.8 && prev - cur > 2000) {
       drops.set(i, { before: prev, after: cur });
     }
-    prev = cur;
+    lastByTrace.set(trace, cur);
   }
   return drops;
 }
