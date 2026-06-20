@@ -94,7 +94,10 @@ function IconCompress() {
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <path d="m21 8-4-4M21 8h-4M21 8V4M3 16l4 4M3 16h4M3 16v4M14 10l7-6M10 14l-7 6" />
+      <polyline points="4 14 10 14 10 20" />
+      <polyline points="20 10 14 10 14 4" />
+      <line x1="14" y1="10" x2="21" y2="3" />
+      <line x1="3" y1="21" x2="10" y2="14" />
     </svg>
   );
 }

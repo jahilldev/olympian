@@ -18,6 +18,19 @@ compression:
   protect_last_n: 20 # protect last 20 messages / ~10 full turns (default: 20)
   protect_first_n: 5 # pin system prompt + first 5 messages including the plan (default: 3)
 
+# Background auxiliary model timeouts. The Hermes default is 30s — far too short to
+# summarise a ~100k-token context on local inference, so the compression call times out
+# right when context crosses the threshold and the whole run dies with "no final response".
+# Raised well above the main-model prefill time. Tune down if compressions are fast.
+# (generateHermesConfig merges provider/model from HERMES_AUXILIARY_* over these.)
+auxiliary:
+  compression:
+    timeout: 900 # seconds
+  vision:
+    timeout: 900
+  web_extract:
+    timeout: 900
+
 delegation:
   max_concurrent_children: 2
 
