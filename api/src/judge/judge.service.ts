@@ -61,14 +61,22 @@ export class JudgeService {
 
     // Persist the verdict as a stderr marker so the runs list can show met/unmet with no
     // schema change. stdout (the full critique + reasoning) remains viewable via the run output.
-    await this.prisma.agentRun.update({
-      where: { id: res.runId },
-      data: {
-        stderr: `${res.stderr ?? ''}\n${verdict.met ? JUDGE_MET_MARKER : JUDGE_UNMET_MARKER}`.slice(
-          -STDOUT_CAP,
-        ),
-      },
-    });
+    // Best-effort: a marker-write failure is a UI-only loss and must never fail the run.
+    try {
+      await this.prisma.agentRun.update({
+        where: { id: res.runId },
+        data: {
+          stderr:
+            `${res.stderr ?? ''}\n${verdict.met ? JUDGE_MET_MARKER : JUDGE_UNMET_MARKER}`.slice(
+              -STDOUT_CAP,
+            ),
+        },
+      });
+    } catch (e) {
+      this.logger.warn(
+        `[job ${input.jobId}] could not persist judge verdict marker: ${(e as Error).message}`,
+      );
+    }
 
     return verdict;
   }
