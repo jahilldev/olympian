@@ -26,6 +26,9 @@ describe('parseJudgeVerdict', () => {
     const verdict = parseJudgeVerdict(stdout);
     expect(verdict?.passed).toBe(false);
     expect(verdict?.critique).toContain('tests fail');
+    // The recovered critique must be clean prose, not the raw JSON block.
+    expect(verdict?.critique).not.toContain('```');
+    expect(verdict?.critique).not.toContain('"passed"');
   });
 
   it('returns null when passed is missing or non-boolean, or there is no JSON', () => {

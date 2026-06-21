@@ -23,15 +23,45 @@ export function parseJudgeVerdict(stdout: string): JudgeVerdict | null {
   // Fallback: the judge frequently emits a valid `passed` boolean but a multi-line `critique`
   // string with unescaped newlines/quotes that breaks strict JSON.parse. Recovering the verdict
   // here is critical — a "not passed" run carries a long critique (most likely to break JSON),
-  // so without this an unparseable failure silently falls open to "passed".
-  const match = stdout.match(/"passed"\s*:\s*(true|false)/i);
+  // so without this an unparseable failure silently falls open to "passed". The schema is fixed
+  // (`passed` + `critique`), so we extract those fields directly and clean the critique up.
+  const block = stdout.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] ?? stdout;
+  const passedMatch = block.match(/"passed"\s*:\s*(true|false)/i);
 
-  if (match) {
-    const passed = match[1].toLowerCase() === 'true';
-
-    // Hand the next pass the judge's full output as the critique — it holds the detail.
-    return { passed, critique: passed ? '' : stdout.trim() };
+  if (!passedMatch) {
+    return null;
   }
 
-  return null;
+  return {
+    passed: passedMatch[1].toLowerCase() === 'true',
+    critique: extractCritique(block),
+  };
+}
+
+/**
+ * Pulls the `critique` value out of a (possibly malformed) JSON block. The critique is the last
+ * field, so it runs from the opening quote to the final quote in the block; common JSON escapes
+ * are un-escaped so the next agent receives clean prose rather than raw JSON.
+ */
+function extractCritique(block: string): string {
+  const start = block.match(/"critique"\s*:\s*"/);
+
+  if (!start) {
+    return '';
+  }
+
+  const from = (start.index ?? 0) + start[0].length;
+  const end = block.lastIndexOf('"');
+
+  if (end <= from) {
+    return '';
+  }
+
+  return block
+    .slice(from, end)
+    .replace(
+      /\\(["\\/nt])/g,
+      (_, c: string) => ({ '"': '"', '\\': '\\', '/': '/', n: '\n', t: '\t' })[c] ?? c,
+    )
+    .trim();
 }
