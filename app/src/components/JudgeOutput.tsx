@@ -53,7 +53,7 @@ export default function JudgeOutput() {
     );
   }
 
-  const { met, output } = judgement;
+  const { passed, output } = judgement;
   const html = output.trim() ? DOMPurify.sanitize(marked.parse(output) as string) : '';
 
   return (
@@ -70,9 +70,9 @@ export default function JudgeOutput() {
           JUDGE
         </span>
         <span
-          class={`text-xs font-medium ${met === false ? 'text-amber-400' : met ? 'text-green-400' : 'text-zinc-500'}`}
+          class={`text-xs font-medium ${passed === false ? 'text-amber-400' : passed ? 'text-green-400' : 'text-zinc-500'}`}
         >
-          {met === null ? 'verdict unknown' : met ? '✓ criteria met' : '✗ criteria not met'}
+          {passed === null ? 'verdict unknown' : passed ? '✓ criteria met' : '✗ criteria not met'}
         </span>
       </header>
 

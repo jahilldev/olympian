@@ -128,7 +128,7 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
 
   const verify = { countForCycle: resolved(0), record: resolved(undefined) };
 
-  const judge = { assess: resolved({ met: true, critique: '' }), listForJob: resolved([]) };
+  const judge = { assess: resolved({ passed: true, critique: '' }), listForJob: resolved([]) };
 
   const github = {
     createIssueComment: resolved(1),
@@ -284,7 +284,10 @@ describe('OrchestratorService.handleImplement', () => {
 
   it('re-runs the agent with the judge critique when the pass is judged incomplete', async () => {
     const { service, agent, judge, queue } = setup({ job: { state: 'IMPLEMENTING' } });
-    judge.assess.mockResolvedValueOnce({ met: false, critique: 'finish the aimLaunchDot cleanup' });
+    judge.assess.mockResolvedValueOnce({
+      passed: false,
+      critique: 'finish the aimLaunchDot cleanup',
+    });
 
     await callPrivate(service, 'handleImplement', 'job1');
 

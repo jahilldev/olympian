@@ -20,8 +20,8 @@ export interface AgentRunDto {
   durationMs: number | null;
   hasOutput: boolean;
   createdAt: string;
-  /** For JUDGE runs: whether the completion judge found the acceptance criteria met. null otherwise. */
-  judgeMet?: boolean | null;
+  /** For JUDGE runs: the completion judge's verdict (did the work pass?). null otherwise. */
+  judgePassed?: boolean | null;
 }
 
 export interface AgentRunOutputDto {

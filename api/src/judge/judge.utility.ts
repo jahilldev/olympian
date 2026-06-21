@@ -15,12 +15,12 @@ export function parseJudgeVerdict(stdout: string): JudgeVerdict | null {
 
   const obj = json as Record<string, unknown>;
 
-  if (typeof obj.met !== 'boolean') {
+  if (typeof obj.passed !== 'boolean') {
     return null;
   }
 
   return {
-    met: obj.met,
+    passed: obj.passed,
     critique: typeof obj.critique === 'string' ? obj.critique.trim() : '',
   };
 }

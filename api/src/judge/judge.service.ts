@@ -48,11 +48,11 @@ export class JudgeService {
 
     // Fail open: an unparseable/failed judge must not stall the pipeline — proceed (the
     // downstream VERIFY/REVIEW gates still apply), but record it so it's visible.
-    const verdict: JudgeVerdict = parsed ?? { met: true, critique: '' };
+    const verdict: JudgeVerdict = parsed ?? { passed: true, critique: '' };
 
     if (!parsed) {
       this.logger.warn(
-        `[job ${input.jobId}] judge produced no parseable verdict (${input.phase} attempt ${input.attempt}); treating as met`,
+        `[job ${input.jobId}] judge produced no parseable verdict (${input.phase} attempt ${input.attempt}); treating as passed`,
       );
     }
 
@@ -62,7 +62,7 @@ export class JudgeService {
     try {
       await this.prisma.agentRun.update({
         where: { id: res.runId },
-        data: { judgeMet: verdict.met },
+        data: { judgePassed: verdict.passed },
       });
     } catch (e) {
       this.logger.warn(
@@ -78,7 +78,7 @@ export class JudgeService {
   async getForJob(id: string): Promise<JudgementDto | null> {
     const r = await this.prisma.agentRun.findFirst({
       where: { id, phase: 'JUDGE' },
-      select: { id: true, stdout: true, judgeMet: true, createdAt: true },
+      select: { id: true, stdout: true, judgePassed: true, createdAt: true },
     });
 
     if (!r) {
@@ -87,7 +87,7 @@ export class JudgeService {
 
     return {
       id: r.id,
-      met: r.judgeMet,
+      passed: r.judgePassed,
       output: r.stdout ?? '',
       createdAt: r.createdAt.toISOString(),
     };

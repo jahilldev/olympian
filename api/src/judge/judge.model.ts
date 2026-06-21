@@ -18,14 +18,14 @@ export interface JudgeAssessInput extends JudgePromptContext {
 
 export interface JudgeVerdict {
   /** True when every part of the goal is evidenced in the committed changes (or genuinely blocked). */
-  met: boolean;
-  /** When not met, a specific, actionable list of what remains — fed verbatim to the next agent. */
+  passed: boolean;
+  /** When not passed, a specific, actionable list of what remains — fed verbatim to the next agent. */
   critique: string;
 }
 
 export interface JudgementDto {
   id: string;
-  met: boolean | null;
+  passed: boolean | null;
   /** The judge agent's full output (verdict block + reasoning), like any other run's stdout. */
   output: string;
   createdAt: string;

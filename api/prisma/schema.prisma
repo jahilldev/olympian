@@ -135,9 +135,9 @@ model AgentRun {
   stdout     String?  // truncated
   stderr     String?  // truncated
   durationMs Int?
-  // For JUDGE-phase runs: the completion judge's verdict (criteria met?). null otherwise.
+  // For JUDGE-phase runs: the completion judge's verdict (did the work pass?). null otherwise.
   // The critique itself lives in stdout, like every other run's output.
-  judgeMet   Boolean?
+  judgePassed Boolean?
   createdAt  DateTime @default(now())
 
   @@index([jobId])

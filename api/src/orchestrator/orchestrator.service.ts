@@ -937,7 +937,7 @@ export class OrchestratorService {
         attempt,
       });
 
-      if (verdict.met) {
+      if (verdict.passed) {
         break;
       }
 

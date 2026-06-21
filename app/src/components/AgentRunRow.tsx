@@ -60,9 +60,9 @@ export default function AgentRunRow({ run, jobId }: Props) {
             </span>
           ) : isJudge && run.status === 'SUCCEEDED' ? (
             <span
-              class={`text-xs font-medium ${run.judgeMet === false ? 'text-amber-400' : run.judgeMet ? 'text-green-400' : 'text-zinc-400'}`}
+              class={`text-xs font-medium ${run.judgePassed === false ? 'text-amber-400' : run.judgePassed ? 'text-green-400' : 'text-zinc-400'}`}
             >
-              {run.judgeMet === false ? 'Failed' : run.judgeMet ? 'Passed' : 'Evaluated'}
+              {run.judgePassed === false ? 'Failed' : run.judgePassed ? 'Passed' : 'Evaluated'}
             </span>
           ) : run.status === 'SUCCEEDED' ? (
             <span class="text-xs text-zinc-400">Completed</span>
