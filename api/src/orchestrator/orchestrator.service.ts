@@ -450,7 +450,11 @@ export class OrchestratorService {
       where: { repoFullName, prNumber: evt.prNumber },
     });
 
-    if (!job || job.state !== 'AWAITING_PR_APPROVAL') {
+    // Record inline comments on any live job — not only one parked at AWAITING_PR_APPROVAL — so
+    // a comment left while the agent is mid-cycle isn't lost. The recorded feedback is folded
+    // into the next REVISE/IMPLEMENT pass, and the OPEN_PR gate won't present the PR until it's
+    // been through a work pass.
+    if (!job || TERMINAL_STATES.has(job.state as JobState)) {
       return;
     }
 

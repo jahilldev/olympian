@@ -460,6 +460,26 @@ describe('OrchestratorService.onPullRequestReview (changes requested)', () => {
   });
 });
 
+describe('OrchestratorService.onPrReviewComment', () => {
+  it('records an inline review comment even when the job is mid-cycle', async () => {
+    const { service, prisma } = setup({ job: { state: 'IMPLEMENTING' } });
+    prisma.job.findFirst.mockResolvedValue(makeJob({ state: 'IMPLEMENTING' }));
+
+    await service.onPrReviewComment({
+      owner: 'acme',
+      repo: 'widgets',
+      prNumber: 7,
+      author: 'alice',
+      body: 'tweak this line',
+      path: 'src/x.ts',
+      line: 12,
+      isBot: false,
+    } as never);
+
+    expect(prisma.prRevisionFeedback.create).toHaveBeenCalled();
+  });
+});
+
 describe('OrchestratorService.retryJob', () => {
   it('re-runs a FAILED job from its last phase', async () => {
     const { service, prisma, queue, jobs } = setup({ job: { state: 'FAILED' } });
