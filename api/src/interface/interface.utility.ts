@@ -34,6 +34,9 @@ export function attachInterface(server: ReturnType<typeof express>): void {
       if (/^\/jobs\/[^/]+\/verifications\/[^/]/.test(p)) {
         return res.sendFile(join(distPath, 'jobs', 'verifications', 'index.html'));
       }
+      if (/^\/jobs\/[^/]+\/judgements\/[^/]/.test(p)) {
+        return res.sendFile(join(distPath, 'jobs', 'judgements', 'index.html'));
+      }
       if (/^\/jobs\/[^/]/.test(p)) {
         return res.sendFile(join(distPath, 'jobs', 'index.html'));
       }

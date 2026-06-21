@@ -65,6 +65,18 @@ export class JobController {
     return this.judge.listForJob(id);
   }
 
+  @Get(':id/judgements/:jid')
+  @Header('Cache-Control', 'no-store')
+  async getJudgement(@Param('id') _id: string, @Param('jid') jid: string): Promise<JudgementDto> {
+    const judgement = await this.judge.getForJob(jid);
+
+    if (!judgement) {
+      throw new NotFoundException(`Judgement ${jid} not found`);
+    }
+
+    return judgement;
+  }
+
   @Get(':id/runs')
   @Header('Cache-Control', 'no-store')
   listRuns(@Param('id') id: string): Promise<AgentRunDto[]> {

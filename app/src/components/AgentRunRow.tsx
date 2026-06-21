@@ -33,6 +33,11 @@ export default function AgentRunRow({ run, jobId }: Props) {
   const isRunning = run.status === 'RUNNING';
   const canView = run.hasOutput || isRunning;
   const duration = run.durationMs !== null ? formatDuration(run.durationMs) : null;
+  const isJudge = run.phase === 'JUDGE';
+  // A finished judge run opens its dedicated critique page; everything else (and a still-running
+  // judge, which you watch live) opens the run output.
+  const viewHref =
+    isJudge && !isRunning ? `/jobs/${jobId}/judgements/${run.id}` : `/jobs/${jobId}/runs/${run.id}`;
 
   return (
     <div
@@ -52,6 +57,16 @@ export default function AgentRunRow({ run, jobId }: Props) {
             <span class="flex items-center gap-1.5 text-xs text-green-400 font-medium">
               <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               Running
+            </span>
+          ) : isJudge && run.status === 'SUCCEEDED' ? (
+            <span
+              class={`text-xs font-medium ${run.judgeMet === false ? 'text-amber-400' : run.judgeMet ? 'text-green-400' : 'text-zinc-400'}`}
+            >
+              {run.judgeMet === false
+                ? 'Criteria not met'
+                : run.judgeMet
+                  ? 'Criteria met'
+                  : 'Evaluated'}
             </span>
           ) : run.status === 'SUCCEEDED' ? (
             <span class="text-xs text-zinc-400">Completed</span>
@@ -78,7 +93,7 @@ export default function AgentRunRow({ run, jobId }: Props) {
                 ? 'bg-green-800 text-green-200 hover:bg-green-700'
                 : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
             }`}
-            onClick={() => navigate(`/jobs/${jobId}/runs/${run.id}`)}
+            onClick={() => navigate(viewHref)}
           >
             {isRunning ? 'Watch →' : 'View →'}
           </button>

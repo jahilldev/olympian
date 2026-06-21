@@ -9,7 +9,6 @@ import Timeline from './Timeline.tsx';
 import ReviewPassCard from './ReviewPassCard.tsx';
 import PlanViewer from './PlanViewer.tsx';
 import AgentRunRow from './AgentRunRow.tsx';
-import JudgeCard from './JudgeCard.tsx';
 import VerifyRunRow from './VerifyRunRow.tsx';
 
 const TERMINAL_STATES = new Set(['DONE', 'FAILED', 'CANCELLED']);
@@ -325,42 +324,30 @@ export default function JobDetail() {
             <Timeline transitions={job.transitions} />
           </section>
 
-          {/* Runs — agent runs and verify executions, interleaved chronologically. Completion-judge
-              runs are collapsed into a single aggregated Judge card so the list stays clean. */}
-          {(runs.length > 0 || verifications.length > 0) &&
-            (() => {
-              const judgeRuns = runs.filter((r) => r.phase === 'JUDGE');
-              const otherRuns = runs.filter((r) => r.phase !== 'JUDGE');
-              const items = [
-                ...otherRuns.map((r) => ({ kind: 'agent' as const, at: r.createdAt, run: r })),
-                ...verifications.map((v) => ({ kind: 'verify' as const, at: v.createdAt, run: v })),
-                ...(judgeRuns.length > 0
-                  ? [{ kind: 'judge' as const, at: judgeRuns[0].createdAt }]
-                  : []),
-              ].sort((a, b) => (a.at < b.at ? 1 : -1));
-
-              return (
-                <section>
-                  <SectionHeading>Runs</SectionHeading>
-                  <div class="space-y-2">
-                    {items.map((item) =>
-                      item.kind === 'agent' ? (
-                        <AgentRunRow key={`a-${item.run.id}`} run={item.run} jobId={id} />
-                      ) : item.kind === 'verify' ? (
-                        <VerifyRunRow key={`v-${item.run.id}`} run={item.run} jobId={id} />
-                      ) : (
-                        <JudgeCard
-                          key="judge"
-                          jobId={id}
-                          count={judgeRuns.length}
-                          anyUnmet={judgeRuns.some((r) => r.judgeMet === false)}
-                        />
-                      ),
-                    )}
-                  </div>
-                </section>
-              );
-            })()}
+          {/* Runs — agent runs (incl. completion-judge) and verify executions, interleaved chronologically. */}
+          {(runs.length > 0 || verifications.length > 0) && (
+            <section>
+              <SectionHeading>Runs</SectionHeading>
+              <div class="space-y-2">
+                {[
+                  ...runs.map((r) => ({ kind: 'agent' as const, at: r.createdAt, run: r })),
+                  ...verifications.map((v) => ({
+                    kind: 'verify' as const,
+                    at: v.createdAt,
+                    run: v,
+                  })),
+                ]
+                  .sort((a, b) => (a.at < b.at ? 1 : -1))
+                  .map((item) =>
+                    item.kind === 'agent' ? (
+                      <AgentRunRow key={`a-${item.run.id}`} run={item.run} jobId={id} />
+                    ) : (
+                      <VerifyRunRow key={`v-${item.run.id}`} run={item.run} jobId={id} />
+                    ),
+                  )}
+              </div>
+            </section>
+          )}
 
           {/* Reviews */}
           {reviews.length > 0 && (
