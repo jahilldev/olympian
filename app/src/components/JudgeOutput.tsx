@@ -66,7 +66,7 @@ export default function JudgeOutput() {
           ← Back
         </button>
         <span class="text-zinc-700 text-sm">/</span>
-        <span class="font-mono text-xs px-2 py-0.5 rounded shrink-0 bg-amber-900/60 text-amber-300">
+        <span class="font-mono text-xs px-2 py-0.5 rounded shrink-0 bg-pink-900/60 text-pink-300">
           JUDGE
         </span>
         <span

@@ -13,7 +13,7 @@ const PHASE_COLOURS: Record<string, string> = {
   REVISE: 'bg-orange-900/60 text-orange-300',
   VERIFY: 'bg-teal-900/60 text-teal-300',
   SUMMARY: 'bg-zinc-800 text-zinc-300',
-  JUDGE: 'bg-amber-900/60 text-amber-300',
+  JUDGE: 'bg-pink-900/60 text-pink-300',
 };
 
 function phasePill(phase: string): string {
