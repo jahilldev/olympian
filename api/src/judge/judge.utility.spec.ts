@@ -1,39 +1,51 @@
 import { parseJudgeVerdict } from './judge.utility.js';
 
 describe('parseJudgeVerdict', () => {
-  it('parses a passed verdict', () => {
-    expect(parseJudgeVerdict('```json\n{"passed":true,"critique":""}\n```')).toEqual({
+  it('parses a passed verdict (JSON block only)', () => {
+    expect(parseJudgeVerdict('```json\n{"passed": true}\n```')).toEqual({
       passed: true,
       critique: '',
     });
   });
 
-  it('parses a not-passed verdict with a critique, ignoring surrounding text', () => {
-    expect(
-      parseJudgeVerdict('reasoning ```json\n{"passed":false,"critique":"finish X"}\n``` trailing'),
-    ).toEqual({ passed: false, critique: 'finish X' });
+  it('captures the summary on a passed verdict (kept for oversight)', () => {
+    const verdict = parseJudgeVerdict(
+      '```json\n{"passed": true}\n```\n\n## Critique\nAll criteria met; tests pass.',
+    );
+    expect(verdict?.passed).toBe(true);
+    expect(verdict?.critique).toBe('All criteria met; tests pass.');
   });
 
-  it('trims the critique', () => {
-    expect(parseJudgeVerdict('{"passed":false,"critique":"  do it  "}')?.critique).toBe('do it');
+  it('takes the critique as the markdown beneath the JSON block', () => {
+    const verdict = parseJudgeVerdict(
+      '```json\n{"passed": false}\n```\n\n## Critique\nFinish `foo()` in src/x.ts.',
+    );
+    expect(verdict?.passed).toBe(false);
+    expect(verdict?.critique).toBe('Finish `foo()` in src/x.ts.');
   });
 
-  it('recovers passed:false even when the critique string breaks strict JSON', () => {
-    // The judge often writes a multi-line critique with literal newlines / unescaped quotes,
-    // which makes JSON.parse fail. We must still recover the verdict (not fall open to passed).
+  it('preserves a critique containing markdown code fences and quotes', () => {
     const stdout =
-      '```json\n{\n  "passed": false,\n  "critique": "Broken: tests fail.\nLine two with a " quote"\n}\n```';
+      '```json\n{"passed": false}\n```\n\n## Critique\n' +
+      'Fix the bug:\n```ts\nconst a = "b";\n```\nThen add a test that "fails" first.';
     const verdict = parseJudgeVerdict(stdout);
     expect(verdict?.passed).toBe(false);
-    expect(verdict?.critique).toContain('tests fail');
-    // The recovered critique must be clean prose, not the raw JSON block.
-    expect(verdict?.critique).not.toContain('```');
+    expect(verdict?.critique).toContain('```ts');
+    expect(verdict?.critique).toContain('const a = "b";');
+    expect(verdict?.critique).toContain('Then add a test');
+    // The JSON verdict block must not leak into the critique.
     expect(verdict?.critique).not.toContain('"passed"');
   });
 
-  it('returns null when passed is missing or non-boolean, or there is no JSON', () => {
-    expect(parseJudgeVerdict('```json\n{"critique":"x"}\n```')).toBeNull();
+  it('falls back to a bare (unfenced) verdict object', () => {
+    const verdict = parseJudgeVerdict('{"passed": false}\nNeeds more work.');
+    expect(verdict?.passed).toBe(false);
+    expect(verdict?.critique).toBe('Needs more work.');
+  });
+
+  it('returns null when there is no passed boolean', () => {
+    expect(parseJudgeVerdict('```json\n{"foo": 1}\n```')).toBeNull();
     expect(parseJudgeVerdict('{"passed":"yes"}')).toBeNull();
-    expect(parseJudgeVerdict('no json here')).toBeNull();
+    expect(parseJudgeVerdict('no verdict here')).toBeNull();
   });
 });
