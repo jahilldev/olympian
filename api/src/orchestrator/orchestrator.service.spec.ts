@@ -72,7 +72,11 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
   const prisma = {
     job: { findUnique: resolved(job), findFirst: resolved(null), update: resolved(job) },
     planRevision: { findFirst: resolved({ content: 'the plan' }), updateMany: resolved(undefined) },
-    prRevisionFeedback: { findMany: resolved([] as unknown[]) },
+    prRevisionFeedback: {
+      findMany: resolved([] as unknown[]),
+      create: resolved(undefined),
+      count: resolved(0),
+    },
     reviewPass: {
       findMany: resolved([] as unknown[]),
       findFirst: resolved(null),
@@ -130,6 +134,7 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     createIssueComment: resolved(1),
     getDefaultBranch: resolved('main'),
     createIssueReaction: resolved(undefined),
+    getCollaboratorPermission: resolved('admin'),
   };
 
   const service = new OrchestratorService(
@@ -405,6 +410,53 @@ describe('OrchestratorService.approvePlan', () => {
     expect(result.approved).toBe(false);
     expect(queue.enqueue).not.toHaveBeenCalled();
     expect(jobs.transition).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrchestratorService.handleOpenPr', () => {
+  it('loops back to REVISE when PR feedback arrived after the last work pass', async () => {
+    const { service, prisma, queue, jobs } = setup({ job: { state: 'OPENING_PR' } });
+    prisma.agentRun.findFirst.mockResolvedValue({ createdAt: new Date(0) });
+    prisma.prRevisionFeedback.count.mockResolvedValue(1);
+
+    await callPrivate(service, 'handleOpenPr', 'job1');
+
+    expect(transitionedTo(jobs)).toContain('REVISING');
+    expect(enqueuedKinds(queue)).toEqual(['REVISE']);
+  });
+});
+
+describe('OrchestratorService.onPullRequestReview (changes requested)', () => {
+  const prEvent = {
+    owner: 'acme',
+    repo: 'widgets',
+    prNumber: 7,
+    state: 'changes_requested' as const,
+    author: 'alice',
+    body: 'please fix the edge case',
+    isBot: false,
+  };
+
+  it('records feedback and restarts the cycle when the PR is awaiting approval', async () => {
+    const { service, prisma, queue, jobs } = setup({ job: { state: 'AWAITING_PR_APPROVAL' } });
+    prisma.job.findFirst.mockResolvedValue(makeJob({ state: 'AWAITING_PR_APPROVAL' }));
+
+    await service.onPullRequestReview(prEvent as never);
+
+    expect(prisma.prRevisionFeedback.create).toHaveBeenCalled();
+    expect(transitionedTo(jobs)).toContain('IMPLEMENTING');
+    expect(enqueuedKinds(queue)).toEqual(['IMPLEMENT']);
+  });
+
+  it('records feedback but does NOT restart when the job is already working mid-cycle', async () => {
+    const { service, prisma, queue, jobs } = setup({ job: { state: 'IMPLEMENTING' } });
+    prisma.job.findFirst.mockResolvedValue(makeJob({ state: 'IMPLEMENTING' }));
+
+    await service.onPullRequestReview(prEvent as never);
+
+    expect(prisma.prRevisionFeedback.create).toHaveBeenCalled(); // not lost
+    expect(jobs.transition).not.toHaveBeenCalled();
+    expect(queue.enqueue).not.toHaveBeenCalled();
   });
 });
 

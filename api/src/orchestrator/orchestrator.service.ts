@@ -368,7 +368,9 @@ export class OrchestratorService {
       where: { repoFullName, prNumber: evt.prNumber },
     });
 
-    if (!job || job.state !== 'AWAITING_PR_APPROVAL') {
+    // Act on any live job for this PR — not only one parked at AWAITING_PR_APPROVAL, so a
+    // second round of requested changes mid-cycle is still recorded and acknowledged.
+    if (!job || TERMINAL_STATES.has(job.state as JobState)) {
       return;
     }
 
@@ -379,6 +381,11 @@ export class OrchestratorService {
     }
 
     if (evt.state === 'approved') {
+      // Approval only completes a job that's actually waiting on the PR.
+      if (job.state !== 'AWAITING_PR_APPROVAL') {
+        return;
+      }
+
       await this.prisma.pullRequestRef.updateMany({
         where: { jobId: job.id },
         data: { state: 'open' },
@@ -397,22 +404,34 @@ export class OrchestratorService {
     }
 
     if (evt.state === 'changes_requested' || evt.state === 'commented') {
+      // Always record the feedback so it's never lost, even mid-cycle. The implement/revise
+      // stages pick up PR feedback created since the last implement run.
       await this.prisma.prRevisionFeedback.create({
         data: { jobId: job.id, author: evt.author, body: evt.body },
       });
 
-      await this.jobs.transition(job.id, 'IMPLEMENTING', {
-        reason: `changes requested by @${evt.author}`,
-        actor: 'HUMAN',
-      });
+      if (job.state === 'AWAITING_PR_APPROVAL') {
+        // The PR was settled — start a fresh revision cycle to address the feedback.
+        await this.jobs.transition(job.id, 'IMPLEMENTING', {
+          reason: `changes requested by @${evt.author}`,
+          actor: 'HUMAN',
+        });
 
-      await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
+        await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
 
-      await this.safeComment(
-        ref,
-        evt.prNumber,
-        `On it — addressing the requested changes and I'll push an update.`,
-      );
+        await this.safeComment(
+          ref,
+          evt.prNumber,
+          `On it — addressing the requested changes and I'll push an update.`,
+        );
+      } else {
+        // Already working — the new feedback folds into the in-flight cycle's next revision.
+        await this.safeComment(
+          ref,
+          evt.prNumber,
+          `Noted — I'll fold this into the changes already in progress.`,
+        );
+      }
 
       await this.safeReaction(ref, evt.prNumber, 'eyes');
     }
@@ -1354,6 +1373,37 @@ export class OrchestratorService {
 
   private async handleOpenPr(jobId: string): Promise<void> {
     const { job, installation, ref } = await this.context(jobId);
+
+    // Guard: if a reviewer requested changes while this cycle was wrapping up, that feedback
+    // arrived after the last work pass and hasn't been addressed — loop back to REVISE rather
+    // than presenting the PR for approval. (The next REVISE/IMPLEMENT then folds it in.)
+    const lastWorkRun = await this.prisma.agentRun.findFirst({
+      where: { jobId, phase: { in: ['IMPLEMENT', 'REVISE'] } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+
+    const unaddressedFeedback = await this.prisma.prRevisionFeedback.count({
+      where: {
+        jobId,
+        ...(lastWorkRun ? { createdAt: { gt: lastWorkRun.createdAt } } : {}),
+      },
+    });
+
+    if (unaddressedFeedback > 0) {
+      this.logger.log(
+        `[job ${jobId}] ${unaddressedFeedback} PR comment(s) arrived since the last work pass; revising before opening for approval`,
+      );
+
+      await this.jobs.transition(jobId, 'REVISING', {
+        reason: 'unaddressed PR feedback',
+        actor: 'AGENT',
+      });
+
+      await this.queue.enqueue({ jobId, kind: 'REVISE' });
+
+      return;
+    }
 
     const ghId = this.ghId(installation);
 
