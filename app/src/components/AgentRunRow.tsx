@@ -10,7 +10,7 @@ const PHASE_COLOURS: Record<string, string> = {
   PLAN: 'bg-blue-900/60 text-blue-300',
   IMPLEMENT: 'bg-sky-900/60 text-sky-300',
   REVIEW: 'bg-violet-900/60 text-violet-300',
-  REVISE: 'bg-orange-900/60 text-orange-300',
+  REVISE: 'bg-sky-900/60 text-sky-300',
   VERIFY: 'bg-teal-900/60 text-teal-300',
   SUMMARY: 'bg-zinc-800 text-zinc-300',
   JUDGE: 'bg-pink-900/60 text-pink-300',
