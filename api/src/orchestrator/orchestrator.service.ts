@@ -1092,6 +1092,20 @@ export class OrchestratorService {
         ? `The verification command \`${lastVerify.command}\` failed:\n\n${lastVerify.output.slice(0, 4000)}`
         : undefined;
 
+    // Download any attachments referenced in the human feedback (and the issue) so the agent
+    // can open them locally — it can't fetch GitHub URLs from the sandbox. Mirrors IMPLEMENT.
+    const attachmentRefs = extractAttachmentUrls(
+      [job.issueBody, ...prFeedback.map((r) => r.body)].join('\n'),
+    );
+
+    const downloaded = await this.workspace.downloadAttachments(
+      ws.dir,
+      this.ghIdFromRef(ref),
+      attachmentRefs,
+    );
+
+    const attachments = formatDownloadedAttachments(downloaded);
+
     const revisionNumber =
       (await this.prisma.agentRun.count({ where: { jobId, phase: 'REVISE' } })) + 1;
 
@@ -1119,6 +1133,7 @@ export class OrchestratorService {
           latestIssuesText: latestIssues.length > 0 ? formatIssues(latestIssues) : undefined,
           priorIssuesText: priorIssues.length > 0 ? formatIssues(priorIssues) : undefined,
           humanFeedback,
+          attachments,
           // On a continuation the judge's critique lists what the prior pass left unfinished.
           incompleteWork: critique,
         }),

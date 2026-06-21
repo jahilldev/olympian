@@ -157,6 +157,7 @@ export function formatDownloadedAttachments(
   if (attachments.length === 0) {
     return undefined;
   }
+
   return (
     'The following files were attached to the issue or comments and have been downloaded to your workspace:\n' +
     attachments.map((a) => `- \`${a.relativePath}\``).join('\n') +

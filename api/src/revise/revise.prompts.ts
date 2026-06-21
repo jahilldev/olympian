@@ -30,6 +30,10 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     );
   }
 
+  if (ctx.attachments) {
+    parts.push(ctx.attachments);
+  }
+
   const issueSections: string[] = [];
 
   if (ctx.latestIssuesText) {

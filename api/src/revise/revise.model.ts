@@ -6,6 +6,8 @@ export interface RevisePromptContext {
   latestIssuesText?: string;
   priorIssuesText?: string;
   humanFeedback?: string;
+  /** Pre-formatted list of downloaded attachment file paths the agent can open locally. */
+  attachments?: string;
   /** Set on a completion-judge continuation: what the previous pass left unfinished. */
   incompleteWork?: string;
 }
