@@ -1,10 +1,13 @@
-import { type Command } from './orchestrator.model.js';
+import {
+  APPROVE_VERBS,
+  CANCEL_VERBS,
+  REVISE_VERBS,
+  RETRY_VERBS,
+  STATE_LABELS,
+  type Command,
+  type StatusContext,
+} from './orchestrator.model.js';
 import { type DownloadedAttachment } from '../workspace/workspace.model.js';
-
-const APPROVE_VERBS = new Set(['approve', 'approved', 'lgtm', 'ship', 'go']);
-const CANCEL_VERBS = new Set(['cancel', 'stop', 'abort']);
-const REVISE_VERBS = new Set(['revise', 'iterate', 'change', 'update']);
-const RETRY_VERBS = new Set(['retry', 'restart', 'resume']);
 
 /**
  * Parses a `<prefix> <verb> [text]` command out of a comment body. Returns
@@ -48,39 +51,6 @@ export function parseCommand(body: string, prefix: string): Command {
     return { kind: 'none' };
   }
   return { kind: 'none' };
-}
-
-const STATE_LABELS: Record<string, string> = {
-  TRIAGED: 'waiting to start',
-  PLANNING: 'agent is writing a plan',
-  AWAITING_PLAN_APPROVAL: 'waiting for plan approval',
-  IMPLEMENTING: 'agent is writing code',
-  VERIFYING: 'running tests/build',
-  SELF_REVIEWING: 'agent is reviewing its own changes',
-  REVISING: 'agent is revising code after review feedback',
-  OPENING_PR: 'opening a pull request',
-  AWAITING_PR_APPROVAL: 'PR is open, awaiting human review',
-  DONE: 'complete',
-  FAILED: 'failed',
-  CANCELLED: 'cancelled',
-};
-
-export interface StatusContext {
-  state: string;
-  confidence?: number | null;
-  error?: string | null;
-  prNumber?: number | null;
-  activeRunPhase?: string | null;
-  activeRunStartedAt?: Date | null;
-  reviewPassCount: number;
-  activeTask?: { attempts: number; maxAttempts: number; lastError?: string | null } | null;
-  commandPrefix: string;
-  lastReviewIssues?: string;
-  lastReviewIssueCount?: number;
-  /** Last verify result: true=green, false=red, null=no command discovered. */
-  verifyOk?: boolean | null;
-  /** Rubric dimensions the last review marked as failing. */
-  failedChecks?: string[];
 }
 
 export function buildStatusReport(ctx: StatusContext): string {
