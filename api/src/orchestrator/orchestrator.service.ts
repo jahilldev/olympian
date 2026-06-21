@@ -874,6 +874,8 @@ export class OrchestratorService {
     installationId: number;
     ws: { dir: string; branch: string; baseBranch: string };
     goal: string;
+    /** Original plan supplied to the judge as background context (REVISE), when the goal isn't the plan. */
+    context?: string;
     buildPrompt: (attempt: number, critique: string | undefined) => string;
     commitMessage: (attempt: number) => string;
     noChangesError: string;
@@ -932,6 +934,7 @@ export class OrchestratorService {
         baseBranch: p.ws.baseBranch,
         phase: p.phase,
         goal: p.goal,
+        context: p.context,
         agentOutput: res.stdout,
         cwd: p.ws.dir,
         attempt,
@@ -1148,6 +1151,7 @@ export class OrchestratorService {
       installationId: this.ghIdFromRef(ref),
       ws,
       goal,
+      context: plan,
       buildPrompt: (_attempt, critique) =>
         buildRevisePrompt({
           jobId,

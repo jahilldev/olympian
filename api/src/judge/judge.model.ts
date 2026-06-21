@@ -5,6 +5,10 @@ export interface JudgePromptContext {
   phase: 'IMPLEMENT' | 'REVISE';
   /** What must be fully done — the plan's acceptance criteria (IMPLEMENT) or the issues to fix (REVISE). */
   goal: string;
+  /** The original approved plan, supplied as background context (not the pass/fail bar) — e.g. for
+   * REVISE, so the judge can flag a fix that regresses a plan requirement. Omitted when the goal
+   * already is the plan (IMPLEMENT). */
+  context?: string;
   /** The agent's final message from the run being judged. */
   agentOutput: string;
 }

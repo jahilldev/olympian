@@ -6,6 +6,9 @@ export function buildJudgePrompt(ctx: JudgePromptContext): string {
   return [
     `You are Hermes acting as a strict completion judge for \`${ctx.repoFullName}\`. An agent just finished ${passKind} pass; its changes are committed on a branch over \`${ctx.baseBranch}\`. Your ONLY job is to decide whether the agent FULLY completed the work, or stopped early with work still remaining.`,
     `--- GOAL (everything that must be fully done) ---\n${ctx.goal}\n--- END GOAL ---`,
+    ctx.context
+      ? `--- CONTEXT (e.g the original approved plan, for CONTEXT only) ---\n${ctx.context.slice(0, 8000)}\n--- END CONTEXT ---\nThis is background ONLY and must NOT affect your verdict — \`passed\` is decided solely by the GOAL above. Never set \`passed\` to false for anything here that is outside the goal. If you notice the changes regress or contradict something in this context, note it in the critique for human reviewers; it never flips the verdict on its own.`
+      : '',
     `--- THE AGENT'S FINAL MESSAGE ---\n${ctx.agentOutput.slice(0, 8000)}\n--- END MESSAGE ---`,
     `Judge by EVIDENCE in the committed changes, not by the agent's claims. Inspect the diff against \`${ctx.baseBranch}\` with git and read files as needed. Use \`.olympian/\` as a scratch directory. **This is read-only: do NOT modify any files and do NOT use the clarify tool.**`,
     `Set **\`passed\`** to true ONLY if EVERY item in the goal is actually present in the committed changes, OR the agent has hit a genuine blocker that truly requires human input. Set it **false** if the final message lists remaining tasks, says things like "now I need to…", "next", "TODO", "still to do", or otherwise signals unfinished work — even if what's there so far looks correct. When you are unsure, lean toward **false**.`,
@@ -18,5 +21,7 @@ export function buildJudgePrompt(ctx: JudgePromptContext): string {
 ## Critique
 
 Under that heading, if not passed, write a concise, specific, actionable checklist of exactly what still needs doing — name files, functions, and the concrete remaining steps. This is plain markdown, so code fences, quotes and lists are all fine and need no escaping; it is handed verbatim to the next agent as its to-do list. If passed, instead write a short summary of what you found. Keep the JSON block exactly as shown — \`passed\` is the only field, and the critique never goes inside it.`,
-  ].join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
