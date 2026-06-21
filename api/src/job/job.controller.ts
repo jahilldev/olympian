@@ -59,12 +59,6 @@ export class JobController {
     return run;
   }
 
-  @Get(':id/judgements')
-  @Header('Cache-Control', 'no-store')
-  listJudgements(@Param('id') id: string): Promise<JudgementDto[]> {
-    return this.judge.listForJob(id);
-  }
-
   @Get(':id/judgements/:jid')
   @Header('Cache-Control', 'no-store')
   async getJudgement(@Param('id') _id: string, @Param('jid') jid: string): Promise<JudgementDto> {

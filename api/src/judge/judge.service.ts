@@ -73,39 +73,22 @@ export class JudgeService {
     return verdict;
   }
 
-  /** All judge evaluations for a job, newest first. */
-  async listForJob(jobId: string): Promise<JudgementDto[]> {
-    const rows = await this.prisma.agentRun.findMany({
-      where: { jobId, phase: 'JUDGE' },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, stdout: true, judgeMet: true, createdAt: true },
-    });
-
-    return rows.map((r) => this.toJudgement(r));
-  }
-
-  /** A single judge evaluation — backs the dedicated critique page. */
+  /** A single judge evaluation — backs the dedicated critique page. Returns the run's full
+   * output (the verdict + the judge's reasoning), like any other run's output view. */
   async getForJob(id: string): Promise<JudgementDto | null> {
     const r = await this.prisma.agentRun.findFirst({
       where: { id, phase: 'JUDGE' },
       select: { id: true, stdout: true, judgeMet: true, createdAt: true },
     });
 
-    return r ? this.toJudgement(r) : null;
-  }
+    if (!r) {
+      return null;
+    }
 
-  private toJudgement(r: {
-    id: string;
-    stdout: string | null;
-    judgeMet: boolean | null;
-    createdAt: Date;
-  }): JudgementDto {
-    const verdict = parseJudgeVerdict(r.stdout ?? '');
     return {
       id: r.id,
       met: r.judgeMet,
-      // The clean critique parsed from the run's output; fall back to raw stdout if unparseable.
-      critique: verdict ? verdict.critique : (r.stdout ?? ''),
+      output: r.stdout ?? '',
       createdAt: r.createdAt.toISOString(),
     };
   }

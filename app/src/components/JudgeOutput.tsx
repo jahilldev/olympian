@@ -53,8 +53,8 @@ export default function JudgeOutput() {
     );
   }
 
-  const { met, critique } = judgement;
-  const html = critique.trim() ? DOMPurify.sanitize(marked.parse(critique) as string) : '';
+  const { met, output } = judgement;
+  const html = output.trim() ? DOMPurify.sanitize(marked.parse(output) as string) : '';
 
   return (
     <div class="flex flex-col h-full overflow-hidden">
@@ -78,9 +78,6 @@ export default function JudgeOutput() {
 
       <div class="flex-1 overflow-y-auto">
         <div class="max-w-4xl mx-auto px-4 py-5 space-y-4">
-          <h2 class="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-            {met ? 'Notes' : 'What still needs doing'}
-          </h2>
           {html ? (
             <div
               class="prose prose-sm prose-invert max-w-none prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-li:text-zinc-300 prose-strong:text-zinc-200 prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800"
@@ -88,11 +85,7 @@ export default function JudgeOutput() {
               dangerouslySetInnerHTML={{ __html: html }}
             />
           ) : (
-            <p class="text-xs text-zinc-600 italic">
-              {met
-                ? 'The judge found the acceptance criteria met — no outstanding items.'
-                : 'No critique was recorded.'}
-            </p>
+            <p class="text-xs text-zinc-600 italic">No output recorded.</p>
           )}
         </div>
       </div>

@@ -26,7 +26,8 @@ export interface JudgeVerdict {
 export interface JudgementDto {
   id: string;
   met: boolean | null;
-  critique: string;
+  /** The judge agent's full output (verdict block + reasoning), like any other run's stdout. */
+  output: string;
   createdAt: string;
 }
 
