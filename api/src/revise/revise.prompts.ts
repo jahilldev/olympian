@@ -60,7 +60,7 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   parts.push(VERIFY_CONTRACT);
 
   parts.push(
-    `**Do not end your session until every numbered issue above is fixed.** Listing remaining issues in your summary and stopping does not count as done. The session is not complete until every fix is applied and static analysis passes.\n\nWhen all issues are resolved, end your reply with a short summary of what was fixed. Use \`.olympian/\` as a scratch directory for any temporary files — it is excluded from commits automatically. The orchestrator will commit your changes — do not run git yourself, and do not start a dev server.\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
+    `**Finishing:** the session is not done until every numbered issue above is fixed and static analysis passes — listing remaining issues and stopping does not count. Then end with a short summary of what was fixed. Do not start a dev server (the review stage handles runtime testing).\n\n${STATIC_ANALYSIS_INSTRUCTIONS}`,
   );
 
   return parts.join('\n\n');

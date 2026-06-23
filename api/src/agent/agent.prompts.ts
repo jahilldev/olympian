@@ -21,24 +21,24 @@ export const VERIFY_CONTRACT = `**How your work is verified:** after you finish,
 // to "get oriented", fills the context, triggers compaction (which discards file contents), then
 // re-reads everything — looping until it gives up. These two contracts attack that directly:
 // read narrowly, and keep durable notes on disk so a compaction never forces a re-read.
-
 export const READ_DISCIPLINE = `**Read narrowly — your context window is a scarce resource, and filling it is the #1 cause of failed runs here.** Reading whole files triggers a context compaction that silently discards those file contents, forcing you to re-read them — a loop that wastes the whole budget. Avoid it:
 - ALWAYS \`search_files\` for the exact symbol, function, or text you need, then \`read_file\` ONLY that region with \`offset\`/\`limit\` (a ~20-40 line window). Never read a file in full just to orient yourself.
 - NEVER re-read a file or range you have already read this session. If you need to remember something, write it to your notes (below) the first time — do not re-open the file.
 - Prefer \`patch\` (small, targeted edits) over \`write_file\` (whole-file rewrites): patches keep both your context and the diff small. Use \`write_file\` only for genuinely new files.
 - Work ONE file at a time — read its window, edit, verify, record progress, move on. Do not pre-load many files at once.`;
 
-export const WORKING_MEMORY_CONTRACT = `**Keep durable working notes in \`.olympian/PROGRESS.md\`.** A context compaction keeps only a short summary — it throws away file contents and your detailed findings. So persist what matters to disk, where compaction cannot erase it:
+export const WORKING_MEMORY_CONTRACT = `**Keep durable working notes in \`.olympian/PROGRESS.md\` — your primary source of truth, ahead of the filesystem.** Compaction discards file contents and findings, so anything you will need later must live on disk here:
 - FIRST, create \`.olympian/PROGRESS.md\` with a checklist (one \`- [ ]\` item per acceptance criterion / issue / failing test) and an empty "## Findings" section.
 - As you work, append concise findings: which file and line range implements what, key signatures, decisions made, and what each remaining item still needs. Record PATHS and line ranges — never paste file contents.
+- Keep PROGRESS.md SMALL — it is a compact index, not a log. Aim for a few lines per item, and once an item is done and verified trim its entry to a one-line note. You re-read this file often, so every line in it costs you context: distil, don't dump.
 - Tick an item (\`- [x]\`) only once its change is on disk and static analysis passes.
-- After ANY context compaction, re-read \`.olympian/PROGRESS.md\` FIRST to re-orient, then resume from the first unchecked item. Do NOT re-explore the codebase or re-read source you have already covered — your notes are the memory, not the transcript.
+- **Whenever you need context — what is already done, where something lives, what a subagent changed — READ \`.olympian/PROGRESS.md\` FIRST.** Only fall back to \`search_files\`/\`read_file\` if the answer genuinely is not recorded there, and when it is not, write it down once you find it. This applies doubly right after a context compaction: re-read PROGRESS.md to re-orient and resume from the first unchecked item — do NOT re-explore the codebase or re-read source you have already covered. Your notes are the memory, not the transcript.
 \`.olympian/\` is excluded from commits, so these notes never reach the PR.`;
 
 // The structural fix for context bloat: keep file bodies OUT of the parent's context. The parent
 // orchestrates from the plan + PROGRESS.md and delegates each unit of file work to a child that has
 // its own fresh context window; the parent only ever sees the child's short summary.
-export const DELEGATION_STRATEGY = `**You are the ORCHESTRATOR — delegate the file work instead of doing it yourself.** Reading and editing files in your OWN context is what fills it and triggers the compaction loop you must avoid. Keep your context small by handing each concrete unit of work to a fresh subagent that has its own full context window: it does the reading and editing in ITS context, and you only ever see its short summary.
+export const DELEGATION_STRATEGY = `**You are the ORCHESTRATOR — delegate the file work, don't do it yourself.** Hand each concrete unit of work to a fresh subagent with its own context window: it reads and edits in ITS context and returns only a short summary, so file bodies never enter yours.
 
 1. **Map the work once.** Unless you already know exactly where everything lives, spawn ONE read-only survey subagent and use its summary to split the work into small units — ideally one file (or one acceptance criterion / issue) per unit. Do not read source yourself to plan.
    delegate_task(goal="Locate the files and line ranges relevant to each item to be implemented/fixed", context="<the plan / issues>", toolsets=["file"], max_iterations=10)
@@ -50,7 +50,7 @@ export const DELEGATION_STRATEGY = `**You are the ORCHESTRATOR — delegate the 
      max_iterations=40,
    )
    Run units that touch DIFFERENT files in parallel; run units that share a file or depend on each other ONE at a time, feeding the earlier unit's summary into the next unit's context.
-3. **Integrate, don't re-read.** When a subagent returns, append its summary to \`.olympian/PROGRESS.md\` and tick the item. Do NOT re-open the file to double-check — trust the summary; the verification stage is the safety net.
+3. **Distil every subagent result immediately — do not paste it verbatim.** The MOMENT a subagent returns, condense its report into a FEW lines under that item (the files + line ranges it touched, key decisions, and anything still outstanding), then tick it. Do this BEFORE starting the next unit: that distilled note is the ONLY record that survives a compaction. Keep it short on purpose — PROGRESS.md is an index you re-read often, so a verbatim dump would re-bloat your context the moment you consult it. Capture just enough that you never need to re-open the file; the verification stage is the safety net for the rest.
 4. **Reserve your own tools** for maintaining \`.olympian/PROGRESS.md\`, small cross-cutting wiring that spans several summaries, and a final whole-repo static-analysis pass before finishing. A trivial single-file change you may make directly — but anything that needs you to read substantial code MUST be delegated.`;
 
 export const STATIC_ANALYSIS_INSTRUCTIONS = `**After making changes, run the project's static analysis tooling to catch errors before committing:**
