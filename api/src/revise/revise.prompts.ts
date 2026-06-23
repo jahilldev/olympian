@@ -1,5 +1,6 @@
 import {
   AUTONOMY_NOTICE,
+  DELEGATION_STRATEGY,
   READ_DISCIPLINE,
   STATIC_ANALYSIS_INSTRUCTIONS,
   VERIFY_CONTRACT,
@@ -52,32 +53,9 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
     parts.push(`--- REVIEW ISSUES TO FIX ---\n${issueSections.join('\n\n')}\n--- END ISSUES ---`);
   }
 
-  parts.push(
-    `**Locate the code first (keep your context small)** — before reading source into your own context, run a read-only exploration subagent to find exactly where each issue lives:
-\`\`\`
-delegate_task(
-  goal="Locate the files and specific line ranges relevant to the issues and failing tests/build to fix",
-  context="<one-paragraph summary of the issues and any verify failure above>",
-  toolsets=["file"],
-  max_iterations=10
-)
-\`\`\`
-Use the returned summary to open only the relevant 20-40 line windows with \`search_files\` — do not read whole files into your context.`,
-  );
-
   parts.push(READ_DISCIPLINE);
   parts.push(WORKING_MEMORY_CONTRACT);
-
-  parts.push(
-    `**For each fix, follow these steps in order:**
-1. Edit the file using a file-write tool.
-2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
-3. Run static analysis and fix any errors.
-4. Tick the item off in \`.olympian/PROGRESS.md\` and note where the fix landed.
-
-When a test or the verification command fails, fix the root cause in the implementation. NEVER weaken, skip, or delete a test to reach a green result — and add a test if a fix addresses behaviour that wasn't covered.`,
-  );
-
+  parts.push(DELEGATION_STRATEGY);
   parts.push(AUTONOMY_NOTICE);
   parts.push(VERIFY_CONTRACT);
 

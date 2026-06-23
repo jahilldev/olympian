@@ -35,6 +35,24 @@ export const WORKING_MEMORY_CONTRACT = `**Keep durable working notes in \`.olymp
 - After ANY context compaction, re-read \`.olympian/PROGRESS.md\` FIRST to re-orient, then resume from the first unchecked item. Do NOT re-explore the codebase or re-read source you have already covered — your notes are the memory, not the transcript.
 \`.olympian/\` is excluded from commits, so these notes never reach the PR.`;
 
+// The structural fix for context bloat: keep file bodies OUT of the parent's context. The parent
+// orchestrates from the plan + PROGRESS.md and delegates each unit of file work to a child that has
+// its own fresh context window; the parent only ever sees the child's short summary.
+export const DELEGATION_STRATEGY = `**You are the ORCHESTRATOR — delegate the file work instead of doing it yourself.** Reading and editing files in your OWN context is what fills it and triggers the compaction loop you must avoid. Keep your context small by handing each concrete unit of work to a fresh subagent that has its own full context window: it does the reading and editing in ITS context, and you only ever see its short summary.
+
+1. **Map the work once.** Unless you already know exactly where everything lives, spawn ONE read-only survey subagent and use its summary to split the work into small units — ideally one file (or one acceptance criterion / issue) per unit. Do not read source yourself to plan.
+   delegate_task(goal="Locate the files and line ranges relevant to each item to be implemented/fixed", context="<the plan / issues>", toolsets=["file"], max_iterations=10)
+2. **Delegate each unit.** For every item, spawn a subagent that does the actual reading and editing:
+   delegate_task(
+     goal="<the specific change to make>. Work test-first: add or extend the automated test that encodes the acceptance criterion and confirm it FAILS first, then implement until it passes — set up the standard runner for this stack if none exists (Vitest for Vite/TS, Jest for plain Node, pytest for Python), and never weaken, skip, or delete a test to go green. Run the project's static analysis on the files you touch and fix every error. Report the exact files and line ranges you changed plus the test result — do not paste file contents back.",
+     context="<the slice of the plan/issue this unit covers and where it lives, from the survey>",
+     toolsets=["file","terminal","search"],
+     max_iterations=40,
+   )
+   Run units that touch DIFFERENT files in parallel; run units that share a file or depend on each other ONE at a time, feeding the earlier unit's summary into the next unit's context.
+3. **Integrate, don't re-read.** When a subagent returns, append its summary to \`.olympian/PROGRESS.md\` and tick the item. Do NOT re-open the file to double-check — trust the summary; the verification stage is the safety net.
+4. **Reserve your own tools** for maintaining \`.olympian/PROGRESS.md\`, small cross-cutting wiring that spans several summaries, and a final whole-repo static-analysis pass before finishing. A trivial single-file change you may make directly — but anything that needs you to read substantial code MUST be delegated.`;
+
 export const STATIC_ANALYSIS_INSTRUCTIONS = `**After making changes, run the project's static analysis tooling to catch errors before committing:**
 - **TypeScript / Node.js**: check \`package.json\` scripts for \`typecheck\`, \`lint\`, \`build\` — run whichever exist (e.g. \`npm run typecheck && npm run lint\`); if no script exists, try \`npx tsc --noEmit\`
 - **Python**: run \`mypy\` and \`ruff check .\` (or \`pylint\`) if available; check \`pyproject.toml\` or \`setup.cfg\` for the configured tools
