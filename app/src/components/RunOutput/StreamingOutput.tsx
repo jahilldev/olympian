@@ -57,6 +57,16 @@ export function StreamingOutput({
     [drops, events],
   );
 
+  // The parent agent's trace is the first one we see; delegate_task children run as separate
+  // traces under the same session. Anything not on the parent trace is sub-agent activity.
+  const parentTraceId = useMemo(() => {
+    for (const ev of events) {
+      const t = String(ev.body.traceId ?? '');
+      if (t) return t;
+    }
+    return null;
+  }, [events]);
+
   const contextPct = useMemo(() => {
     // Track the MAIN agent's context only — the first generation's trace. A run's stream
     // interleaves delegate_task children (separate traces) whose small fresh contexts would
@@ -228,6 +238,9 @@ export function StreamingOutput({
               !isExplicitCompression(e);
             const drop = drops.get(i);
             const showDivider = !drop && isMainGen(ev) && i > 0 && !isMainGen(events[i - 1]);
+            const evTrace = String(ev.body.traceId ?? '');
+            const isSubagent =
+              parentTraceId !== null && evTrace !== '' && evTrace !== parentTraceId;
             return (
               <div key={i}>
                 {drop && (
@@ -238,7 +251,7 @@ export function StreamingOutput({
                   />
                 )}
                 {showDivider && <hr class="border-zinc-800 my-4" />}
-                <EventCard event={ev} />
+                <EventCard event={ev} isSubagent={isSubagent} />
               </div>
             );
           })}

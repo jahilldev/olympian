@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { LangfuseEvent } from '@olympian/api/langfuse/langfuse.model.js';
-import { IconBrain, IconWrench } from './Icons.tsx';
+import { IconBrain, IconRobot, IconWrench } from './Icons.tsx';
 import { fmtTime, splitThinking } from './format.tsx';
 import {
   ChatMessages,
@@ -17,11 +17,10 @@ import {
 } from './Observations.tsx';
 import { CompressionCard, isExplicitCompression } from './Compression.tsx';
 
-function GenerationCard({ event }: { event: LangfuseEvent }) {
+function GenerationCard({ event, isSubagent }: { event: LangfuseEvent; isSubagent?: boolean }) {
   const [inputOpen, setInputOpen] = useState(false);
   const [thinkOpen, setThinkOpen] = useState(false);
   const body = event.body;
-  const model = body['langfuse.observation.model.name'] as string | undefined;
   const usageRaw = body['langfuse.observation.usage_details'] as string | undefined;
   const usage = usageRaw ? (JSON.parse(usageRaw) as Record<string, number>) : null;
   const totalTokens = usage?.total ?? usage?.output ?? null;
@@ -61,28 +60,44 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
 
   const { thinking, output } = llmText ? splitThinking(llmText) : { thinking: null, output: '' };
 
+  // A delegate_task child's generation is tinted cyan to set it apart from the primary agent
+  const c = isSubagent
+    ? {
+        border: 'border-cyan-900/50',
+        header: 'bg-cyan-950/50 text-cyan-200',
+        section: 'border-cyan-900/30',
+        thinkLabel: 'text-cyan-900/80',
+      }
+    : {
+        border: 'border-indigo-900/50',
+        header: 'bg-indigo-950/50 text-indigo-200',
+        section: 'border-indigo-900/30',
+        thinkLabel: 'text-indigo-900/80',
+      };
+
   return (
-    <div class="rounded-xl border border-indigo-900/50 overflow-hidden text-xs shadow-sm">
+    <div class={`rounded-xl border ${c.border} overflow-hidden text-xs shadow-sm`}>
       {/* Header */}
-      <div class="flex items-center gap-2 px-3 py-2.5 bg-indigo-950/50 text-indigo-200">
-        <IconBrain />
-        <span class="font-semibold font-mono tracking-wide">LLM</span>
-        {model && (
-          <span class="text-zinc-500 font-mono font-normal truncate flex-1 min-w-0">{model}</span>
-        )}
-        {totalTokens != null && (
-          <span class="text-zinc-600 font-mono text-[10px] tabular-nums">
-            {totalTokens.toLocaleString()} tok
-          </span>
-        )}
-        {tps != null && (
-          <span class="text-zinc-600 font-mono text-[10px] tabular-nums">
-            {tps.toFixed(1)} tok/s
-          </span>
-        )}
-        <span class="ml-auto shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
-          {fmtTime(event.timestamp)}
+      <div class={`flex items-center gap-2 px-3 py-2.5 ${c.header}`}>
+        {isSubagent ? <IconRobot /> : <IconBrain />}
+        <span class="font-semibold font-mono tracking-wide">
+          {isSubagent ? 'SUBAGENT' : 'PRIMARY'}
         </span>
+        <div class="ml-auto flex items-center gap-2">
+          {totalTokens != null && (
+            <span class="text-zinc-600 font-mono text-[10px] tabular-nums">
+              {totalTokens.toLocaleString()} tok
+            </span>
+          )}
+          {tps != null && (
+            <span class="text-zinc-600 font-mono text-[10px] tabular-nums">
+              {tps.toFixed(1)} tok/s
+            </span>
+          )}
+          <span class="shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
+            {fmtTime(event.timestamp)}
+          </span>
+        </div>
       </div>
 
       {rawInput && (
@@ -92,7 +107,7 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
             onToggle={() => setInputOpen((o) => !o)}
             label="Input"
             preview={obsPreview(rawInput)}
-            borderClass="border-indigo-900/30"
+            borderClass={c.section}
           />
           {inputOpen && (
             <div class="border-t border-zinc-800/40 px-3 py-3 bg-zinc-950/70 max-h-72 overflow-y-auto">
@@ -118,7 +133,7 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
 
       {/* Tool calls the LLM is invoking */}
       {toolCalls && toolCalls.length > 0 && (
-        <div class="border-t border-indigo-900/30 px-3 py-2.5 bg-zinc-950/50">
+        <div class={`border-t ${c.section} px-3 py-2.5 bg-zinc-950/50`}>
           <LlmToolCallList calls={toolCalls} />
         </div>
       )}
@@ -131,8 +146,8 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
             onToggle={() => setThinkOpen((o) => !o)}
             label="Thinking"
             preview={`${thinking.split('\n').length} lines`}
-            borderClass="border-indigo-900/30"
-            labelClass="text-indigo-900/80"
+            borderClass={c.section}
+            labelClass={c.thinkLabel}
           />
           {thinkOpen && (
             <div class="border-t border-zinc-800/40 px-3 py-2.5 bg-zinc-950/70 max-h-64 overflow-y-auto">
@@ -153,7 +168,7 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
             .replace(/<\/table>/g, '</table></div>');
           const html = DOMPurify.sanitize(wrapped);
           return (
-            <div class="border-t border-indigo-900/30 px-3 py-3 bg-black/15">
+            <div class={`border-t ${c.section} px-3 py-3 bg-black/15`}>
               <div
                 class="prose prose-sm prose-invert max-w-none
               prose-headings:font-semibold prose-headings:text-zinc-100
@@ -176,7 +191,7 @@ function GenerationCard({ event }: { event: LangfuseEvent }) {
   );
 }
 
-function ToolCard({ event }: { event: LangfuseEvent }) {
+function ToolCard({ event, isSubagent }: { event: LangfuseEvent; isSubagent?: boolean }) {
   const [inputOpen, setInputOpen] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
   const body = event.body;
@@ -192,6 +207,11 @@ function ToolCard({ event }: { event: LangfuseEvent }) {
         <IconWrench />
         <span class="font-semibold font-mono tracking-wide">TOOL</span>
         <span class="text-zinc-300 font-mono font-medium">{displayName}</span>
+        <span
+          class={`text-[10px] font-mono tracking-wide ${isSubagent ? 'text-cyan-500/80' : 'text-zinc-500/80'}`}
+        >
+          {isSubagent ? 'subagent' : 'primary'}
+        </span>
         <span class="ml-auto shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
           {fmtTime(event.timestamp)}
         </span>
@@ -247,10 +267,10 @@ function GenericSpanCard({ event }: { event: LangfuseEvent }) {
   );
 }
 
-export function EventCard({ event }: { event: LangfuseEvent }) {
+export function EventCard({ event, isSubagent }: { event: LangfuseEvent; isSubagent?: boolean }) {
   if (isExplicitCompression(event)) return <CompressionCard event={event} />;
   const obsType = event.body['langfuse.observation.type'] as string | undefined;
-  if (obsType === 'generation') return <GenerationCard event={event} />;
-  if (obsType === 'tool') return <ToolCard event={event} />;
+  if (obsType === 'generation') return <GenerationCard event={event} isSubagent={isSubagent} />;
+  if (obsType === 'tool') return <ToolCard event={event} isSubagent={isSubagent} />;
   return <GenericSpanCard event={event} />;
 }
