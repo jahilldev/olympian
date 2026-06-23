@@ -155,7 +155,7 @@ def _fetch_as_markdown(url: str, timeout: int) -> str:
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "Mozilla/5.0 (compatible; HermesBot/1.0)",
+            "User-Agent": "Mozilla/5.0 (compatible; HermesAgent/1.0)",
             "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
         },

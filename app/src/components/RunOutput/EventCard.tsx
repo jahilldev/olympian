@@ -210,7 +210,7 @@ function ToolCard({ event, isSubagent }: { event: LangfuseEvent; isSubagent?: bo
         <span
           class={`text-[10px] font-mono tracking-wide ${isSubagent ? 'text-cyan-500/80' : 'text-zinc-500/80'}`}
         >
-          {isSubagent ? 'subagent' : 'primary'}
+          {isSubagent ? 'SUBAGENT' : 'PRIMARY'}
         </span>
         <span class="ml-auto shrink-0 text-zinc-700 font-mono text-[10px] tabular-nums">
           {fmtTime(event.timestamp)}

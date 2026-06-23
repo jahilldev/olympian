@@ -1,0 +1,6 @@
+name: persist_state
+version: 1.0.0
+description: "Mirrors the primary agent's todo list and every delegate_task result to .olympian/PROGRESS.md, so working state survives a crashed or early-exiting run and a re-run can resume."
+hooks:
+  - pre_tool_call
+  - post_tool_call

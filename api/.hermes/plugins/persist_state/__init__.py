@@ -1,0 +1,212 @@
+"""persist_state — durable working memory for Olympian agent runs.
+
+Hermes keeps the todo list in memory (lost when a run crashes or exits early), and a delegated
+subagent's findings only ever reach the parent as a one-off summary. This plugin persists both to
+``.olympian/PROGRESS.md`` deterministically — driven by tools the model already uses reliably — so a
+re-run resumes instead of starting over:
+
+  * the PRIMARY agent's ``todo`` list  -> the "## Checklist" section (rewritten on each update)
+  * every ``delegate_task`` result     -> appended to the "## Findings" section (capped)
+
+Primary vs sub-agent is decided WITHOUT relying on call ordering:
+  * Only the primary agent can call ``delegate_task`` (spawn depth is capped at 1), so the
+    ``delegate_task`` pre-hook reveals the primary's ``task_id`` authoritatively — and fires before
+    the child's own tool calls begin.
+  * ``delegate_task`` blocks the parent until its children finish, so any tool call seen WHILE a
+    delegation is in flight, under a different ``task_id``, is definitively a sub-agent. We record
+    those ids and never mirror their todos, so a child can't clobber the primary checklist.
+
+``task_id`` is the executing agent's id, correctly propagated across worker threads by Hermes, so
+this holds regardless of which thread a call runs on. The hooks never raise — a mirror failure must
+never break a run.
+"""
+from __future__ import annotations
+
+import json
+import os
+import threading
+from typing import Any
+
+_PROGRESS_REL = os.path.join(".olympian", "PROGRESS.md")
+_CHECKLIST_HEADER = "## Checklist"
+_FINDINGS_HEADER = "## Findings"
+_FINDINGS_BUDGET = 12_000  # max chars kept in Findings (drop oldest beyond this) — keep re-reads cheap
+_ENTRY_CAP = 2_000  # max chars of any single subagent report
+
+_LOCK = threading.Lock()
+_STATE: dict[str, Any] = {
+    "primary": None,  # the primary agent's task_id, once known
+    "active": 0,  # in-flight delegate_task calls
+    "subagents": set(),  # task_ids identified as delegated sub-agents
+    "delegations": 0,  # running count, for Findings entry numbering
+}
+
+
+# ── workspace / file helpers ────────────────────────────────────────────────
+
+
+def _workspace_dir() -> str:
+    try:
+        from agent.runtime_cwd import resolve_agent_cwd  # type: ignore
+
+        return str(resolve_agent_cwd())
+    except Exception:
+        return os.getcwd()
+
+
+def _progress_path() -> str:
+    return os.path.join(_workspace_dir(), _PROGRESS_REL)
+
+
+def _read() -> str:
+    try:
+        with open(_progress_path(), "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _split(text: str) -> tuple[str, str]:
+    """Return (checklist_body, findings_body) parsed from an existing PROGRESS.md."""
+    checklist, findings = "", ""
+    head = text
+    if _FINDINGS_HEADER in text:
+        head, findings = text.split(_FINDINGS_HEADER, 1)
+        findings = findings.strip()
+    if _CHECKLIST_HEADER in head:
+        checklist = head.split(_CHECKLIST_HEADER, 1)[1].strip()
+    return checklist, findings
+
+
+def _write(checklist: str, findings: str) -> None:
+    findings = findings.strip()
+    if len(findings) > _FINDINGS_BUDGET:
+        findings = "_…older findings trimmed…_\n\n" + findings[-_FINDINGS_BUDGET:].lstrip()
+    body = (
+        "# Olympian progress\n\n"
+        f"{_CHECKLIST_HEADER}\n{checklist or '_(no checklist yet)_'}\n\n"
+        f"{_FINDINGS_HEADER}\n{findings or '_(none yet)_'}\n"
+    )
+    path = _progress_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(body)
+    os.replace(tmp, path)  # atomic — a crashed write never leaves a half file
+
+
+# ── rendering ───────────────────────────────────────────────────────────────
+
+
+def _checkbox(status: Any) -> str:
+    return {"completed": "[x]", "in_progress": "[~]", "cancelled": "[-]"}.get(str(status), "[ ]")
+
+
+def _render_checklist(result: Any) -> str:
+    items = result
+    if isinstance(items, str):
+        try:
+            items = json.loads(items)
+        except Exception:
+            return items.strip()
+    if isinstance(items, dict):
+        items = items.get("todos") or items.get("items") or []
+    if not isinstance(items, list):
+        return ""
+    lines: list[str] = []
+    for it in items:
+        if isinstance(it, dict):
+            content = str(it.get("content", "")).strip()
+            if content:
+                lines.append(f"- {_checkbox(it.get('status'))} {content}")
+        elif isinstance(it, str) and it.strip():
+            lines.append(f"- [ ] {it.strip()}")
+    return "\n".join(lines)
+
+
+def _summarise_delegation(result: Any) -> str:
+    def one(r: Any) -> str:
+        if isinstance(r, dict):
+            return str(
+                r.get("summary")
+                or r.get("error")
+                or r.get("result")
+                or json.dumps(r, ensure_ascii=False, default=str)
+            )
+        return str(r)
+
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except Exception:
+            return result.strip()[:_ENTRY_CAP]
+    text = "\n".join(one(r) for r in result) if isinstance(result, list) else one(result)
+    text = text.strip()
+    if len(text) > _ENTRY_CAP:
+        text = text[:_ENTRY_CAP].rstrip() + " …[trimmed]"
+    return text
+
+
+# ── classification (called under _LOCK) ─────────────────────────────────────
+
+
+def _note_primary(task_id: str) -> None:
+    if _STATE["primary"] is None and task_id:
+        _STATE["primary"] = task_id
+
+
+def _observe(task_id: str) -> None:
+    # A tool call during an in-flight delegation, under a non-primary id, is a sub-agent's.
+    if _STATE["active"] > 0 and task_id and task_id != _STATE["primary"]:
+        _STATE["subagents"].add(task_id)
+
+
+# ── hooks ───────────────────────────────────────────────────────────────────
+
+
+def on_pre_tool_call(*, tool_name: str = "", task_id: str = "", **_: Any) -> None:
+    try:
+        with _LOCK:
+            if tool_name == "delegate_task":
+                _note_primary(task_id)  # only the primary delegates → this id is the primary's
+                _STATE["active"] += 1
+            else:
+                _observe(task_id)
+    except Exception:
+        pass
+
+
+def on_post_tool_call(
+    *, tool_name: str = "", args: Any = None, result: Any = None, task_id: str = "", **_: Any
+) -> None:
+    try:
+        if tool_name == "delegate_task":
+            with _LOCK:
+                _note_primary(task_id)
+                _STATE["active"] = max(0, _STATE["active"] - 1)
+                _STATE["delegations"] += 1
+                n = _STATE["delegations"]
+                goal = ""
+                if isinstance(args, dict):
+                    first = str(args.get("goal", "")).strip().splitlines()
+                    goal = first[0] if first else ""
+                entry = (f"### {n}. {goal}".rstrip()) + "\n" + _summarise_delegation(result) + "\n"
+                checklist, findings = _split(_read())
+                _write(checklist, (findings + "\n\n" + entry) if findings else entry)
+        elif tool_name == "todo":
+            with _LOCK:
+                _observe(task_id)
+                if task_id in _STATE["subagents"]:
+                    return  # a sub-agent's own todo — never overwrite the primary checklist
+                checklist = _render_checklist(result)
+                if not checklist:
+                    return
+                _, findings = _split(_read())
+                _write(checklist, findings)
+    except Exception:
+        pass  # mirroring must never break a run
+
+
+def register(ctx) -> None:
+    ctx.register_hook("pre_tool_call", on_pre_tool_call)
+    ctx.register_hook("post_tool_call", on_post_tool_call)

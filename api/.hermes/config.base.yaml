@@ -8,6 +8,7 @@ providers:
 
 plugins:
   enabled:
+    - persist_state # stores todo + delegate_task results to .olympian/PROGRESS.md (durable working memory)
     - web_fetch
     - observability/langfuse
 
