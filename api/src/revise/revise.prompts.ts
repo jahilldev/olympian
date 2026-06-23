@@ -1,7 +1,9 @@
 import {
   AUTONOMY_NOTICE,
+  READ_DISCIPLINE,
   STATIC_ANALYSIS_INSTRUCTIONS,
   VERIFY_CONTRACT,
+  WORKING_MEMORY_CONTRACT,
 } from '../agent/agent.prompts.js';
 import { type RevisePromptContext } from './revise.model.js';
 
@@ -63,16 +65,15 @@ delegate_task(
 Use the returned summary to open only the relevant 20-40 line windows with \`search_files\` — do not read whole files into your context.`,
   );
 
-  parts.push(
-    `**Track your work with a todo list:** before fixing anything, add one todo item for every issue, failing test, and feedback point listed above. The todo list survives context compaction — after a compaction, re-read it (and the issues above, which are always present) to re-orient instead of re-exploring the codebase. Mark an item done only once its fix is on disk and static analysis passes, and do not end your session while any item is still open.`,
-  );
+  parts.push(READ_DISCIPLINE);
+  parts.push(WORKING_MEMORY_CONTRACT);
 
   parts.push(
     `**For each fix, follow these steps in order:**
 1. Edit the file using a file-write tool.
 2. Read back the changed lines with \`search_files\` or \`read_file\` to confirm the edit is on disk. If the file content does not reflect your change, write it again.
 3. Run static analysis and fix any errors.
-4. Mark the item done in your todo list.
+4. Tick the item off in \`.olympian/PROGRESS.md\` and note where the fix landed.
 
 When a test or the verification command fails, fix the root cause in the implementation. NEVER weaken, skip, or delete a test to reach a green result — and add a test if a fix addresses behaviour that wasn't covered.`,
   );

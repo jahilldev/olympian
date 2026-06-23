@@ -17,6 +17,24 @@ export const VERIFY_CONTRACT = `**How your work is verified:** after you finish,
 - Before finishing, make sure a clean install of your committed manifests would build — don't trust a \`node_modules\` you mutated by hand.
 - The check covers the WHOLE repo. If it fails in code outside this issue's scope — a pre-existing breakage in another package/workspace, or shared config — make the minimal fix needed to get a green result. That is expected and in-scope, not scope creep. Note what you changed outside the issue's area, and why, in your summary so the reviewer has context.`;
 
+// The dominant failure mode on local models with a 128k window: the agent reads whole files
+// to "get oriented", fills the context, triggers compaction (which discards file contents), then
+// re-reads everything — looping until it gives up. These two contracts attack that directly:
+// read narrowly, and keep durable notes on disk so a compaction never forces a re-read.
+
+export const READ_DISCIPLINE = `**Read narrowly — your context window is a scarce resource, and filling it is the #1 cause of failed runs here.** Reading whole files triggers a context compaction that silently discards those file contents, forcing you to re-read them — a loop that wastes the whole budget. Avoid it:
+- ALWAYS \`search_files\` for the exact symbol, function, or text you need, then \`read_file\` ONLY that region with \`offset\`/\`limit\` (a ~20-40 line window). Never read a file in full just to orient yourself.
+- NEVER re-read a file or range you have already read this session. If you need to remember something, write it to your notes (below) the first time — do not re-open the file.
+- Prefer \`patch\` (small, targeted edits) over \`write_file\` (whole-file rewrites): patches keep both your context and the diff small. Use \`write_file\` only for genuinely new files.
+- Work ONE file at a time — read its window, edit, verify, record progress, move on. Do not pre-load many files at once.`;
+
+export const WORKING_MEMORY_CONTRACT = `**Keep durable working notes in \`.olympian/PROGRESS.md\`.** A context compaction keeps only a short summary — it throws away file contents and your detailed findings. So persist what matters to disk, where compaction cannot erase it:
+- FIRST, create \`.olympian/PROGRESS.md\` with a checklist (one \`- [ ]\` item per acceptance criterion / issue / failing test) and an empty "## Findings" section.
+- As you work, append concise findings: which file and line range implements what, key signatures, decisions made, and what each remaining item still needs. Record PATHS and line ranges — never paste file contents.
+- Tick an item (\`- [x]\`) only once its change is on disk and static analysis passes.
+- After ANY context compaction, re-read \`.olympian/PROGRESS.md\` FIRST to re-orient, then resume from the first unchecked item. Do NOT re-explore the codebase or re-read source you have already covered — your notes are the memory, not the transcript.
+\`.olympian/\` is excluded from commits, so these notes never reach the PR.`;
+
 export const STATIC_ANALYSIS_INSTRUCTIONS = `**After making changes, run the project's static analysis tooling to catch errors before committing:**
 - **TypeScript / Node.js**: check \`package.json\` scripts for \`typecheck\`, \`lint\`, \`build\` — run whichever exist (e.g. \`npm run typecheck && npm run lint\`); if no script exists, try \`npx tsc --noEmit\`
 - **Python**: run \`mypy\` and \`ruff check .\` (or \`pylint\`) if available; check \`pyproject.toml\` or \`setup.cfg\` for the configured tools

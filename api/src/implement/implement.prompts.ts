@@ -1,7 +1,9 @@
 import {
   AUTONOMY_NOTICE,
+  READ_DISCIPLINE,
   STATIC_ANALYSIS_INSTRUCTIONS,
   VERIFY_CONTRACT,
+  WORKING_MEMORY_CONTRACT,
 } from '../agent/agent.prompts.js';
 import { type ImplementPromptContext } from './implement.model.js';
 
@@ -9,12 +11,10 @@ const IMPLEMENT_OUTPUT_CONTRACT = `Make the actual code changes in the working d
 
 **After any context compaction**: the compaction summary describes only the sub-task that was in progress at the time — it does NOT represent the complete scope. The APPROVED PLAN above is always present in your context and is the single source of truth for what must be delivered. Always re-read the plan's file list and acceptance criteria after a compaction and continue working until ALL of them are satisfied.
 
-**Efficient file reading**: before reading any file in full, use \`search_files\` to locate the specific function, class, or symbol you need. Read only the relevant 20-40 line window around each match. Full file reads are expensive — reserve them for understanding overall file structure only.
-
 **For each task**:
-1. Write the file.
+1. Make the change (prefer \`patch\` over a whole-file \`write_file\`).
 2. Run static analysis and fix all errors before continuing.
-3. Mark the task done in your todo list.
+3. Tick the item off in \`.olympian/PROGRESS.md\` and note where the change landed.
 
 **Before ending your session**, verify every file required by the plan actually exists on disk with non-trivial content. List the files you created and cross-check them against the plan. If any are missing or empty, create them before finishing. Do not stop after partial implementation — the session is not done until every deliverable from the plan is on disk.
 
@@ -32,6 +32,8 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
     `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
     `The full issue description and plan are provided above — do NOT fetch them from GitHub or any external URL.`,
+    READ_DISCIPLINE,
+    WORKING_MEMORY_CONTRACT,
   ];
 
   if (ctx.guidance) {
