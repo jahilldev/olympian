@@ -918,16 +918,13 @@ export class OrchestratorService {
 
       await this.pushBranch(p.job, p.installationId, p.ws.branch);
 
-      // Out of judge budget (or it's disabled) — proceed; VERIFY/REVIEW are the backstop.
-      if (maxRetries <= 0 || attempt > maxRetries) {
-        if (attempt > 1) {
-          this.logger.warn(
-            `[job ${p.job.id}] ${p.phase} completion budget (${maxRetries}) exhausted after ${attempt} attempts; proceeding with possible gaps`,
-          );
-        }
+      // Judge disabled entirely — proceed; VERIFY/REVIEW are the backstop.
+      if (maxRetries <= 0) {
         break;
       }
 
+      // Always judge the pass — the one that ships (the final, over-budget attempt) is the most
+      // worth a verdict for oversight, so we judge every attempt and only gate *retries* on budget.
       const verdict = await this.judge.assess({
         jobId: p.job.id,
         repoFullName: p.job.repoFullName,
@@ -941,6 +938,14 @@ export class OrchestratorService {
       });
 
       if (verdict.passed) {
+        break;
+      }
+
+      // Judged incomplete but out of retry budget: this pass ships to VERIFY/REVIEW regardless.
+      if (attempt > maxRetries) {
+        this.logger.warn(
+          `[job ${p.job.id}] ${p.phase} completion budget (${maxRetries}) exhausted after ${attempt} attempts; proceeding with possible gaps`,
+        );
         break;
       }
 

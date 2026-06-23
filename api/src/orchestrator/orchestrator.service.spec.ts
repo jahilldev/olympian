@@ -297,6 +297,20 @@ describe('OrchestratorService.handleImplement', () => {
     expect(secondPrompt).toContain('finish the aimLaunchDot cleanup');
     expect(enqueuedKinds(queue)).toEqual(['VERIFY']);
   });
+
+  it('judges every pass, including the final over-budget one, before proceeding', async () => {
+    const { service, agent, judge, queue } = setup({ job: { state: 'IMPLEMENTING' } });
+    // Judge never passes → the loop runs until the retry budget is exhausted.
+    judge.assess.mockResolvedValue({ passed: false, critique: 'still incomplete' });
+
+    await callPrivate(service, 'handleImplement', 'job1');
+
+    // MAX_COMPLETION_RETRIES=2 → 3 passes (initial + 2 retries). The final, over-budget pass is
+    // still judged (oversight), then ships to VERIFY regardless of the verdict.
+    expect(agent.run.mock.calls.length).toBe(3);
+    expect(judge.assess).toHaveBeenCalledTimes(3);
+    expect(enqueuedKinds(queue)).toEqual(['VERIFY']);
+  });
 });
 
 describe('OrchestratorService.handleRevise', () => {
