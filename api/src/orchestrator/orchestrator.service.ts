@@ -884,9 +884,6 @@ export class OrchestratorService {
     let critique: string | undefined;
 
     for (let attempt = 1; ; attempt++) {
-      // A prior attempt's scratch dir must not leak into this one.
-      await rm(join(p.ws.dir, '.olympian'), { force: true, recursive: true });
-
       const res = await this.agent.run({
         jobId: p.job.id,
         phase: p.phase,

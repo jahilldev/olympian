@@ -28,7 +28,7 @@ export const READ_DISCIPLINE = `**Read narrowly — your context window is a sca
 - Work ONE file at a time — read its window, edit, verify, record progress, move on. Do not pre-load many files at once.`;
 
 export const WORKING_MEMORY_CONTRACT = `**Keep durable working notes in \`.olympian/PROGRESS.md\` — your primary source of truth, ahead of the filesystem.** Compaction discards file contents and findings, so anything you will need later must live on disk here:
-- FIRST, create \`.olympian/PROGRESS.md\` with a checklist (one \`- [ ]\` item per acceptance criterion / issue / failing test) and an empty "## Findings" section.
+- FIRST, check whether \`.olympian/PROGRESS.md\` already exists. If it DOES, it is your own notes from an earlier run of this same task that errored or was interrupted — READ it and resume from the first unchecked item rather than starting over (the workspace already holds that prior work, so re-doing it wastes effort). If it does NOT, create it with a checklist (one \`- [ ]\` item per acceptance criterion / issue / failing test) and an empty "## Findings" section.
 - As you work, append concise findings: which file and line range implements what, key signatures, decisions made, and what each remaining item still needs. Record PATHS and line ranges — never paste file contents.
 - Keep PROGRESS.md SMALL — it is a compact index, not a log. Aim for a few lines per item, and once an item is done and verified trim its entry to a one-line note. You re-read this file often, so every line in it costs you context: distil, don't dump.
 - Tick an item (\`- [x]\`) only once its change is on disk and static analysis passes.
