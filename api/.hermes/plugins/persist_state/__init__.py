@@ -192,10 +192,23 @@ def _observe(task_id: str) -> None:
         _STATE["subagents"].add(task_id)
 
 
+# Only IMPLEMENT/REVISE own the working-memory file. REVIEW, VERIFY, JUDGE, etc. run the same
+# global plugin and share the workspace — without this gate a JUDGE (mid completion-loop) or a
+# REVIEW would write its own todos over the IMPLEMENT/REVISE checklist. The orchestrator sets
+# OLYMPIAN_PHASE per agent run (see agent.service.ts).
+_WORK_PHASES = {"IMPLEMENT", "REVISE"}
+
+
+def _is_work_phase() -> bool:
+    return (os.environ.get("OLYMPIAN_PHASE") or "").strip().upper() in _WORK_PHASES
+
+
 # ── hooks ───────────────────────────────────────────────────────────────────
 
 
 def on_pre_tool_call(*, tool_name: str = "", task_id: str = "", **_: Any) -> None:
+    if not _is_work_phase():
+        return
     try:
         with _LOCK:
             if tool_name == "delegate_task":
@@ -210,6 +223,8 @@ def on_pre_tool_call(*, tool_name: str = "", task_id: str = "", **_: Any) -> Non
 def on_post_tool_call(
     *, tool_name: str = "", args: Any = None, result: Any = None, task_id: str = "", **_: Any
 ) -> None:
+    if not _is_work_phase():
+        return
     try:
         with _LOCK:
             _seed()

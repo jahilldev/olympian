@@ -171,10 +171,17 @@ export class HermesAgentService implements OnModuleInit {
 
     if (imageIdx > -1) {
       spec.args.splice(imageIdx, 0, '--env', `OTEL_RESOURCE_ATTRIBUTES=${sessionAttr}`);
+
+      // Tell the persist_state plugin which phase this is, so it only maintains
+      // .olympian/PROGRESS.md for IMPLEMENT/REVISE and never lets a REVIEW/VERIFY/JUDGE agent
+      // (which share the same workspace) write over the working memory.
+      spec.args.splice(imageIdx, 0, '--env', `OLYMPIAN_PHASE=${opts.phase}`);
     } else if (spec.env) {
       const env = spec.env as Record<string, string>;
       const existing = env.OTEL_RESOURCE_ATTRIBUTES;
+
       env.OTEL_RESOURCE_ATTRIBUTES = existing ? `${existing},${sessionAttr}` : sessionAttr;
+      env.OLYMPIAN_PHASE = opts.phase;
     }
 
     this.logger.log(`[job ${opts.jobId}] agent ${opts.phase} starting: ${commandLine}`);
