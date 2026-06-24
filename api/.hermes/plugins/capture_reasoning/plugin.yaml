@@ -1,0 +1,5 @@
+name: capture_reasoning
+version: 1.0.0
+description: "Backfills reasoning text (reasoning_content / inline <think>) into the Langfuse generation span's output so the live stream can render the agent's thinking. Hermes only serializes message.reasoning, which most reasoning models leave empty."
+hooks:
+  - pre_api_request

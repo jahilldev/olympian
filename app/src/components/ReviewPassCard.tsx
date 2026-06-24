@@ -31,20 +31,25 @@ export default function ReviewPassCard({ pass }: Props) {
       {pass.issues.length > 0 && (
         <div class="space-y-2 pt-1">
           {pass.issues.map((issue, i) => (
-            <div
-              key={i}
-              class="rounded border border-zinc-700 bg-zinc-800/50 p-3 space-y-1 overflow-x-auto"
-            >
-              <div class="flex items-center gap-2">
+            <div key={i} class="rounded border border-zinc-700 bg-zinc-800/50 p-3 space-y-1">
+              <div class="flex items-start gap-2">
                 <span
                   class={`shrink-0 text-xs font-mono px-1.5 py-0.5 rounded ${SEVERITY_STYLES[issue.severity] ?? SEVERITY_STYLES.medium}`}
                 >
                   {issue.severity}
                 </span>
-                <span class="text-sm font-medium text-zinc-200">{issue.title}</span>
+                <span class="text-sm font-medium text-zinc-200 min-w-0 break-words">
+                  {issue.title}
+                </span>
               </div>
-              <p class="text-xs text-zinc-400 leading-relaxed">{issue.detail}</p>
-              {issue.file && <p class="text-xs text-zinc-500 font-mono">{issue.file}</p>}
+              <p class="text-xs text-zinc-400 leading-relaxed break-words">{issue.detail}</p>
+              {issue.file && (
+                <div class="overflow-x-auto">
+                  <span class="inline-block whitespace-nowrap pr-3 text-xs text-zinc-500 font-mono">
+                    {issue.file}
+                  </span>
+                </div>
+              )}
             </div>
           ))}
         </div>

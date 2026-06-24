@@ -9,8 +9,9 @@ providers:
 plugins:
   enabled:
     - persist_state # stores todo + delegate_task results to .olympian/PROGRESS.md (durable working memory)
-    - web_fetch
+    - web_fetch # free version of web_extract plugin (fetches a web page and returns its main content as markdown)
     - observability/langfuse
+    - capture_reasoning # backfills reasoning_content/<think> into the langfuse span so thinking renders in the stream
 
 browser:
   inactivity_timeout: 120
