@@ -49,23 +49,37 @@ export function StreamingOutput({
     return () => controller.abort();
   }, []);
 
+  // Spans arrive parent-last: an OTLP span is exported when it ENDS, and a delegate_task span ends
+  // only after the sub-agent it wraps has finished — so its tool card would otherwise render AFTER
+  // the sub-agent's activity. Render in true chronological order by span start time (the event's
+  // `timestamp`, an ISO string that sorts correctly), with arrival order as a stable tiebreaker.
+  const orderedEvents = useMemo(() => {
+    return events
+      .map((ev, i) => ({ ev, i }))
+      .sort((a, b) => {
+        if (a.ev.timestamp !== b.ev.timestamp) return a.ev.timestamp < b.ev.timestamp ? -1 : 1;
+        return a.i - b.i;
+      })
+      .map((x) => x.ev);
+  }, [events]);
+
   // Compression is inferred from the input-token drop between turns (see
   // compressionDrops), plus any explicitly-labelled compression span.
-  const drops = useMemo(() => compressionDrops(events), [events]);
+  const drops = useMemo(() => compressionDrops(orderedEvents), [orderedEvents]);
   const compressionCount = useMemo(
-    () => drops.size + events.reduce((n, ev) => n + (isExplicitCompression(ev) ? 1 : 0), 0),
-    [drops, events],
+    () => drops.size + orderedEvents.reduce((n, ev) => n + (isExplicitCompression(ev) ? 1 : 0), 0),
+    [drops, orderedEvents],
   );
 
   // The parent agent's trace is the first one we see; delegate_task children run as separate
   // traces under the same session. Anything not on the parent trace is sub-agent activity.
   const parentTraceId = useMemo(() => {
-    for (const ev of events) {
+    for (const ev of orderedEvents) {
       const t = String(ev.body.traceId ?? '');
       if (t) return t;
     }
     return null;
-  }, [events]);
+  }, [orderedEvents]);
 
   const contextPct = useMemo(() => {
     // Track the MAIN agent's context only — the first generation's trace. A run's stream
@@ -73,7 +87,7 @@ export function StreamingOutput({
     // otherwise make the meter lurch down without any compression having happened.
     let mainTrace: string | null = null;
     let latestInput: number | null = null;
-    for (const ev of events) {
+    for (const ev of orderedEvents) {
       const cur = inputTokens(ev);
       if (cur === null) continue;
       const trace = String(ev.body.traceId ?? '');
@@ -82,7 +96,7 @@ export function StreamingOutput({
     }
     if (latestInput === null) return null;
     return Math.min(100, Math.round((latestInput / contextLength) * 100));
-  }, [events, contextLength]);
+  }, [orderedEvents, contextLength]);
 
   useEffect(() => {
     const es = new EventSource(`/stream/runs/${runId}`);
@@ -227,17 +241,17 @@ export function StreamingOutput({
           onScroll={handleScroll}
           class="h-full overflow-y-auto bg-black px-5 py-4 space-y-3 font-mono text-sm"
         >
-          {events.length === 0 && streamStatus === 'live' && (
+          {orderedEvents.length === 0 && streamStatus === 'live' && (
             <p class="text-zinc-700 italic text-xs">Waiting for agent activity…</p>
           )}
-          {events.map((ev, i) => {
+          {orderedEvents.map((ev, i) => {
             // An explicit compression span isn't part of the main-loop turn flow,
             // so don't let it start a new "turn" divider.
             const isMainGen = (e: LangfuseEvent) =>
               (e.body['langfuse.observation.type'] as string | undefined) === 'generation' &&
               !isExplicitCompression(e);
             const drop = drops.get(i);
-            const showDivider = !drop && isMainGen(ev) && i > 0 && !isMainGen(events[i - 1]);
+            const showDivider = !drop && isMainGen(ev) && i > 0 && !isMainGen(orderedEvents[i - 1]);
             const evTrace = String(ev.body.traceId ?? '');
             const isSubagent =
               parentTraceId !== null && evTrace !== '' && evTrace !== parentTraceId;
