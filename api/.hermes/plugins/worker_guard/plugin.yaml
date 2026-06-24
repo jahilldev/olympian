@@ -1,6 +1,6 @@
 name: worker_guard
 version: 1.0.0
-description: "Blocks write_file/patch for the IMPLEMENT/REVISE PRIMARY agent (sub-agents unaffected) so every edit is delegated. The primary may still read files (read_file/search_files/cat) to verify a sub-agent's work. We block rather than remove the tools because Hermes caps a child's toolset to a subset of the parent's, so removing them from the parent would also strip editing from sub-agents."
+description: "Blocks write_file/patch AND file-mutating shell commands (sed -i, > / >> redirects, tee, mv/cp/rm, ...) for the IMPLEMENT/REVISE PRIMARY agent (sub-agents unaffected) so every edit is delegated. The primary may still read files (read_file/search_files/cat) and run tests/builds via terminal to verify a sub-agent's work. We block rather than remove the write tools because Hermes caps a child's toolset to a subset of the parent's, so removing them from the parent would also strip editing from sub-agents."
 hooks:
   - pre_tool_call
   - post_tool_call
