@@ -1,13 +1,12 @@
-"""worker_guard — force the IMPLEMENT/REVISE primary to delegate by blocking its file tools.
+"""worker_guard — force the IMPLEMENT/REVISE primary to delegate every edit.
 
-We cannot simply remove read/write from the parent's toolset: Hermes caps a child's toolset to a
-subset of the parent's (see delegate_tool's intersection), so removing those tools from the parent
-strips them from sub-agents too — which blinds the whole tree. Instead we keep full tools for
-everyone and BLOCK read_file/search_files/write_file/patch for the PRIMARY agent only, via a
-pre_tool_call block directive. Sub-agents (depth > 0) are unaffected and read/edit normally.
-
-The prompt tells the model these tools are blocked so it delegates from the start and rarely trips
-the block — the block is the deterministic safety net, not the primary mechanism.
+The primary may READ files (to verify a sub-agent's work), but it must not EDIT them: every change
+goes through a sub-agent so the work is delegated, captured in PROGRESS.md's Findings, and the
+primary's context stays manageable. We cannot remove write_file/patch from the parent's toolset —
+Hermes caps a child's toolset to a subset of the parent's (see delegate_tool's intersection), so
+that would strip editing from sub-agents too. Instead we keep the tools and BLOCK them for the
+primary only, via a pre_tool_call directive. The prompt tells the model they're disabled so it
+delegates up front and rarely trips the block.
 
 Primary vs sub-agent is decided by task_id without relying on call ordering: the first tool call in
 the process is the parent's (a child only exists after a delegate_task), and any task_id seen WHILE a
@@ -21,7 +20,8 @@ import threading
 from typing import Any
 
 _WORKER_PHASES = {"IMPLEMENT", "REVISE"}
-_BLOCKED = {"read_file", "search_files", "write_file", "patch"}
+# Editing only — the primary may still read (read_file/search_files/cat) to verify a sub-agent.
+_BLOCKED = {"write_file", "patch"}
 
 _LOCK = threading.Lock()
 _STATE: dict[str, Any] = {
@@ -51,17 +51,18 @@ def on_pre_tool_call(*, tool_name: str = "", task_id: str = "", **_: Any) -> Any
                 _STATE["subagents"].add(task_id)
             if _STATE["primary"] is None and task_id:
                 _STATE["primary"] = task_id  # first non-delegate tool call = the parent
+            is_subagent = task_id in _STATE["subagents"]
 
-            if tool_name in _BLOCKED and task_id not in _STATE["subagents"]:
-                return {
-                    "action": "block",
-                    "message": (
-                        f"`{tool_name}` is disabled for you (the orchestrator). Do NOT read or edit "
-                        "files yourself — delegate this to a sub-agent with delegate_task; it reads "
-                        "and edits in its own context and returns the result to you in-band. Re-issue "
-                        "this as a delegate_task instead."
-                    ),
-                }
+        if tool_name in _BLOCKED and not is_subagent:
+            return {
+                "action": "block",
+                "message": (
+                    f"`{tool_name}` is disabled for you (the orchestrator) — you must not edit files "
+                    "yourself. Delegate this change to a sub-agent with delegate_task; it edits in its "
+                    "own context and returns the result to you. (You can still read files directly to "
+                    "verify a sub-agent's work.)"
+                ),
+            }
     except Exception:
         return None
     return None

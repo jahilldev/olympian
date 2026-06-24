@@ -30,8 +30,8 @@ from typing import Any
 _PROGRESS_REL = os.path.join(".olympian", "PROGRESS.md")
 _CHECKLIST_HEADER = "## Checklist"
 _FINDINGS_HEADER = "## Findings"
-_FINDINGS_BUDGET = 12_000  # max chars kept in Findings (drop oldest beyond this) — keep re-reads cheap
-_ENTRY_CAP = 2_000  # max chars of any single subagent report
+_FINDINGS_BUDGET = 50_000  # max chars kept in Findings (drop oldest beyond this)
+_ENTRY_CAP = 12_000  # max chars of any single subagent report (holds a thorough survey whole)
 
 _LOCK = threading.Lock()
 _STATE: dict[str, Any] = {
@@ -186,6 +186,9 @@ def _summarise_delegation(result: Any) -> str:
 
     text = "\n".join(p for p in (one(r) for r in items) if p.strip())
     text = _strip_thinking(text)
+    # Demote markdown headings one level so a subagent's "## …" nests under "## Findings" and
+    # never collides with the structural ## Checklist / ## Findings markers.
+    text = _re.sub(r"(?m)^(#{1,5}) ", r"#\1 ", text)
     if len(text) > _ENTRY_CAP:
         text = text[:_ENTRY_CAP].rstrip() + " …[trimmed]"
     return text
