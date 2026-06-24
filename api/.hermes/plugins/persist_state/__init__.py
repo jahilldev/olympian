@@ -24,14 +24,15 @@ from __future__ import annotations
 
 import json
 import os
+import re as _re
 import threading
 from typing import Any
 
 _PROGRESS_REL = os.path.join(".olympian", "PROGRESS.md")
 _CHECKLIST_HEADER = "## Checklist"
 _FINDINGS_HEADER = "## Findings"
-_FINDINGS_BUDGET = 12_000  # max chars kept in Findings (drop oldest beyond this) — keep re-reads cheap
-_ENTRY_CAP = 2_000  # max chars of any single subagent report
+_FINDINGS_BUDGET = 50_000  # max chars kept in Findings (drop oldest beyond this)
+_ENTRY_CAP = 12_000  # max chars of any single subagent report (holds a thorough survey whole)
 
 _LOCK = threading.Lock()
 _STATE: dict[str, Any] = {
@@ -111,6 +112,10 @@ def _seed() -> None:
         checklist, findings = _split(_read())
         _STATE["checklist"] = checklist
         _STATE["findings"] = findings
+        # Continue Findings numbering from the highest existing entry so a retry (a fresh process
+        # that resumes this file) doesn't restart at 1 and produce a jumbled "1, 2, 1" sequence.
+        nums = [int(m) for m in _re.findall(r"(?m)^### (\d+)\.", findings or "")]
+        _STATE["delegations"] = max(nums) if nums else 0
 
 
 def _flush() -> None:
@@ -154,27 +159,118 @@ def _render_checklist(result: Any) -> str:
     return "\n".join(lines)
 
 
-def _summarise_delegation(result: Any) -> str:
-    def one(r: Any) -> str:
-        if isinstance(r, dict):
-            return str(
-                r.get("summary")
-                or r.get("error")
-                or r.get("result")
-                or json.dumps(r, ensure_ascii=False, default=str)
-            )
+_THINK_TAGS = _re.compile(r"<(antThinking|think|thinking|reasoning)>.*?</\\1>", _re.DOTALL | _re.IGNORECASE)
+
+
+def _strip_thinking(text: str) -> str:
+    return _THINK_TAGS.sub("", text).strip()
+
+
+_HEADING_RE = _re.compile(r"^[ \t]*(#{1,6})[ \t]+(.+?)[ \t]*#*$")
+
+
+def _relevel_headings(text: str, base: int = 4) -> str:
+    """Re-base the headings in captured (model-authored) goal/report text so the shallowest sits at
+    ``base`` — one level below a "### N." Findings entry (h3) — while preserving the content's own
+    relative hierarchy. This keeps the agent's structure intact AND nested correctly under the entry,
+    so its headings never sit above, or collide with, the structural ## Findings / ### N. markers
+    when the file is injected into a prompt. Headings inside fenced code blocks are left untouched.
+    """
+    lines = text.split("\n")
+
+    def heading_levels():
+        in_fence = False
+        for line in lines:
+            s = line.lstrip()
+            if s.startswith("```") or s.startswith("~~~"):
+                in_fence = not in_fence
+                continue
+            m = None if in_fence else _HEADING_RE.match(line)
+            if m:
+                yield len(m.group(1))
+
+    levels = list(heading_levels())
+    if not levels:
+        return text
+    shift = base - min(levels)
+
+    out: list[str] = []
+    in_fence = False
+    for line in lines:
+        s = line.lstrip()
+        if s.startswith("```") or s.startswith("~~~"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        m = None if in_fence else _HEADING_RE.match(line)
+        if m:
+            level = max(1, min(6, len(m.group(1)) + shift))
+            out.append("#" * level + " " + m.group(2).strip())
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+_DONE = {"completed", "complete", "success", "succeeded", "ok"}
+
+
+def _one_result(r: Any) -> str:
+    """Render a single child task result. Only a COMPLETED child contributes its summary; an
+    incomplete one (timeout / max_iterations / error / interrupted) is recorded as a short marker
+    instead of its truncated mid-thought narration — capturing that pollutes Findings."""
+    if not isinstance(r, dict):
         return str(r)
+    status = str(r.get("status") or "").strip().lower()
+    exit_reason = str(r.get("exit_reason") or "").strip().lower()
+    # No status fields at all (older/other shapes) → treat as a plain result.
+    if (status or exit_reason) and status not in _DONE and exit_reason not in _DONE:
+        why = status or exit_reason or "unknown"
+        detail = str(r.get("error") or "").strip() or "cut off before producing a final report"
+        return f"⚠️ Sub-agent did not finish (status: {why}) — {detail[:200]}"
+    return str(r.get("summary") or r.get("result") or r.get("error") or "")
+
+
+def _summarise_delegation(result: Any) -> str:
+    one = _one_result
 
     if isinstance(result, str):
         try:
             result = json.loads(result)
         except Exception:
-            return result.strip()[:_ENTRY_CAP]
-    text = "\n".join(one(r) for r in result) if isinstance(result, list) else one(result)
-    text = text.strip()
+            return _strip_thinking(result)[:_ENTRY_CAP]
+
+    # delegate_task returns {"results": [ {summary,...}, ... ], "note": ...}; older/other shapes
+    # may be a bare list or dict.
+    if isinstance(result, dict) and isinstance(result.get("results"), list):
+        items = result["results"]
+    elif isinstance(result, list):
+        items = result
+    else:
+        items = [result]
+
+    text = "\n".join(p for p in (one(r) for r in items) if p.strip())
+    text = _strip_thinking(text)
+    text = _relevel_headings(text)
     if len(text) > _ENTRY_CAP:
         text = text[:_ENTRY_CAP].rstrip() + " …[trimmed]"
     return text
+
+
+def _heading_label(goal: Any, cap: int = 100) -> str:
+    """A short one-line label for a Findings heading. The primary writes the whole task as a single
+    long line, so we take the first line, cut it at the first sentence/clause boundary if that is
+    short enough, then hard-cap on a word boundary."""
+    line = str(goal or "").strip().splitlines()
+    line = line[0].strip() if line else ""
+    # Cut at the first clause/sentence boundary that is actually present and short enough.
+    for sep in (": ", ". "):
+        if sep in line:
+            head = line.split(sep, 1)[0]
+            if 0 < len(head) <= cap:
+                return head
+    if len(line) > cap:
+        line = line[:cap].rsplit(" ", 1)[0].rstrip(" ,.;:") + "…"
+    return line
 
 
 def _is_dispatch_ack(result):
@@ -254,11 +350,14 @@ def on_post_tool_call(
                 if not _is_dispatch_ack(result):
                     _STATE["delegations"] += 1
                     n = _STATE["delegations"]
-                    goal = ""
-                    if isinstance(args, dict):
-                        first = str(args.get("goal", "")).strip().splitlines()
-                        goal = first[0] if first else ""
-                    entry = (f"### {n}. {goal}".rstrip()) + "\n" + _summarise_delegation(result) + "\n"
+                    goal_full = str(args.get("goal", "")).strip() if isinstance(args, dict) else ""
+                    label = _heading_label(goal_full)
+                    # Short heading for readability; the full goal is kept as body so no context is
+                    # lost, then the subagent's report.
+                    entry = f"### {n}. {label}".rstrip() + "\n"
+                    if goal_full and goal_full != label:
+                        entry += f"**Goal:** {_relevel_headings(goal_full)}\n\n"
+                    entry += _summarise_delegation(result) + "\n"
                     prior = _STATE["findings"] or ""
                     _STATE["findings"] = (prior + "\n\n" + entry) if prior else entry
                     _flush()
