@@ -909,6 +909,10 @@ export class OrchestratorService {
         jobId: p.job.id,
         phase: p.phase,
         cwd: p.ws.dir,
+        // Read + delegate only: the worker_toolset plugin omits write_file/patch, so the parent
+        // must delegate every edit to a subagent (keeping its context small). Children get the
+        // full file toolset via their own delegate_task toolsets.
+        toolsets: 'worker_toolset',
         prompt: p.buildPrompt(attempt, critique, progress),
         validate: (stdout) => incompleteOutputReason(stdout, 200),
       });

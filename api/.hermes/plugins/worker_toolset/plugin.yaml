@@ -1,0 +1,3 @@
+name: worker_toolset
+version: 1.0.0
+description: "Registers the 'worker_toolset' toolset — read_file, search_files, terminal, todo, delegation, but NO write_file/patch — so the IMPLEMENT/REVISE parent can read, test, and delegate but must hand all file edits to subagents (keeping its context small). The orchestrator passes -t olympian_orchestrator for worker-phase parents."

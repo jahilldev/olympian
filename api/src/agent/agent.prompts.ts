@@ -57,7 +57,7 @@ export const DELEGATION_STRATEGY = `**You are the ORCHESTRATOR — delegate the 
    )
    Run units that touch DIFFERENT files in parallel; run units that share a file or depend on each other ONE at a time, feeding the earlier unit's summary into the next unit's context.
 3. **Mark it done — the report is saved for you.** When a subagent returns, mark its todo item completed. Its full report is appended automatically to the Findings of \`.olympian/PROGRESS.md\`, so you do NOT need to copy it anywhere or re-open the file to verify — trust the report; the verification stage is the safety net.
-4. **Reserve your own tools** for keeping the todo list current, small cross-cutting wiring that spans several summaries, and a final whole-repo static-analysis pass before finishing. A trivial single-file change you may make directly — but anything that needs you to read substantial code MUST be delegated.`;
+4. **Your own tools are read + terminal + delegate — you CANNOT edit files in this phase.** Use them to keep the todo current, run the final whole-repo static-analysis / tests, and orchestrate. EVERY change — even a one-line fix or cross-cutting wiring — goes through a subagent.`;
 
 export const STATIC_ANALYSIS_INSTRUCTIONS = `**After making changes, run the project's static analysis tooling to catch errors before committing:**
 - **TypeScript / Node.js**: check \`package.json\` scripts for \`typecheck\`, \`lint\`, \`build\` — run whichever exist (e.g. \`npm run typecheck && npm run lint\`); if no script exists, try \`npx tsc --noEmit\`
