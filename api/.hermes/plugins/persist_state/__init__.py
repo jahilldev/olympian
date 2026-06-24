@@ -178,6 +178,24 @@ def _summarise_delegation(result: Any) -> str:
     return text
 
 
+def _is_dispatch_ack(result):
+    """A background delegation's post-hook result is only a dispatch acknowledgement, not the
+    subagent's report (that arrives asynchronously) — recognise it so we don't record it."""
+    obj = result
+    if isinstance(obj, str):
+        try:
+            obj = json.loads(obj)
+        except Exception:
+            return False
+    if isinstance(obj, list):
+        obj = obj[0] if obj else None
+    return isinstance(obj, dict) and (
+        obj.get("status") == "dispatched"
+        or obj.get("mode") == "background"
+        or "delegation_id" in obj
+    )
+
+
 # ── classification (called under _LOCK) ─────────────────────────────────────
 
 
@@ -232,16 +250,19 @@ def on_post_tool_call(
             if tool_name == "delegate_task":
                 _note_primary(task_id)
                 _STATE["active"] = max(0, _STATE["active"] - 1)
-                _STATE["delegations"] += 1
-                n = _STATE["delegations"]
-                goal = ""
-                if isinstance(args, dict):
-                    first = str(args.get("goal", "")).strip().splitlines()
-                    goal = first[0] if first else ""
-                entry = (f"### {n}. {goal}".rstrip()) + "\n" + _summarise_delegation(result) + "\n"
-                prior = _STATE["findings"] or ""
-                _STATE["findings"] = (prior + "\n\n" + entry) if prior else entry
-                _flush()
+                # Background delegations report back here only with a dispatch ack; the real
+                # summary arrives async. Record real (foreground) results only.
+                if not _is_dispatch_ack(result):
+                    _STATE["delegations"] += 1
+                    n = _STATE["delegations"]
+                    goal = ""
+                    if isinstance(args, dict):
+                        first = str(args.get("goal", "")).strip().splitlines()
+                        goal = first[0] if first else ""
+                    entry = (f"### {n}. {goal}".rstrip()) + "\n" + _summarise_delegation(result) + "\n"
+                    prior = _STATE["findings"] or ""
+                    _STATE["findings"] = (prior + "\n\n" + entry) if prior else entry
+                    _flush()
             elif tool_name == "todo":
                 _observe(task_id)
                 if task_id not in _STATE["subagents"]:

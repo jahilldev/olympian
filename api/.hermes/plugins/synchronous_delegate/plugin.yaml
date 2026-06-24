@@ -1,0 +1,5 @@
+name: synchronous_delegate
+version: 1.0.0
+description: "Forces delegate_task to run synchronously in headless runs by making async_delivery_supported() return False, so the parent blocks on each delegation, the real subagent result returns in-band (and is captured to PROGRESS.md), and nothing is lost to an undeliverable background dispatch."
+hooks:
+  - pre_api_request

@@ -5,6 +5,7 @@ import {
   STATIC_ANALYSIS_INSTRUCTIONS,
   VERIFY_CONTRACT,
   WORKING_MEMORY_CONTRACT,
+  progressBlock,
 } from '../agent/agent.prompts.js';
 import { type RevisePromptContext } from './revise.model.js';
 
@@ -55,6 +56,9 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
 
   parts.push(READ_DISCIPLINE);
   parts.push(WORKING_MEMORY_CONTRACT);
+  if (ctx.progress) {
+    parts.push(progressBlock(ctx.progress));
+  }
   parts.push(DELEGATION_STRATEGY);
   parts.push(AUTONOMY_NOTICE);
   parts.push(VERIFY_CONTRACT);

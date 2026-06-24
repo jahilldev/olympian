@@ -5,6 +5,7 @@ import {
   STATIC_ANALYSIS_INSTRUCTIONS,
   VERIFY_CONTRACT,
   WORKING_MEMORY_CONTRACT,
+  progressBlock,
 } from '../agent/agent.prompts.js';
 import { type ImplementPromptContext } from './implement.model.js';
 
@@ -29,6 +30,10 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
     parts.push(
       `--- MANDATORY CORRECTIONS (read in full before doing anything else) ---\n${ctx.guidance}\n--- END CORRECTIONS ---\n\nThis is a retry — the workspace already contains code from the previous attempt. Do NOT recreate files that already exist and do NOT re-implement work that is already done. Survey the workspace first, then address ONLY the specific items listed in the corrections above.`,
     );
+  }
+
+  if (ctx.progress) {
+    parts.push(progressBlock(ctx.progress));
   }
 
   parts.push(DELEGATION_STRATEGY);

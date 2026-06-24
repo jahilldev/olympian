@@ -12,6 +12,7 @@ plugins:
     - web_fetch # free version of web_extract plugin (fetches a web page and returns its main content as markdown)
     - observability/langfuse
     - capture_reasoning # backfills reasoning_content/<think> into the langfuse span so thinking renders in the stream
+    - synchronous_delegate # forces delegate_task to run synchronously so the real result returns in-band (captured to PROGRESS.md) and nothing is lost
 
 browser:
   inactivity_timeout: 120

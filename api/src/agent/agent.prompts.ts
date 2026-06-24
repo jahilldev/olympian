@@ -28,8 +28,18 @@ export const READ_DISCIPLINE = `**Read narrowly — your context window is a sca
 
 export const WORKING_MEMORY_CONTRACT = `**Track every item of work with the \`todo\` tool — it is auto-saved to disk, so it survives a crash.** A background hook mirrors your todo list to the "## Checklist" of \`.olympian/PROGRESS.md\` and appends each subagent's report to its "## Findings". You do NOT write that file yourself — keep the todo list current and the hook persists it for you.
 - Maintain a real todo list: one item per acceptance criterion / issue / failing test, moved to in_progress then completed as you go. Make item text descriptive — name the file and, where known, the line range — because the todo text is exactly what gets saved and what a re-run reads back.
-- On START, check whether \`.olympian/PROGRESS.md\` already exists. If it DOES, it is the saved state of an earlier run of this same task that errored or was interrupted: READ it, rebuild your todo list from the Checklist, and use the Findings (plus the changes already in the workspace) to resume from the first unfinished item — do NOT start over or re-explore what the Findings already cover. If it does NOT exist, you are starting fresh.
+- If a "PRIOR PROGRESS" section appears in this prompt, it is the saved state of an earlier pass at this same task: rebuild your todo list from its Checklist and resume from the first unfinished item, using its Findings (and the changes already in the workspace) — do NOT start over or re-explore what the Findings already cover. If there is none, you are starting fresh.
 \`.olympian/\` is excluded from commits, so none of this reaches the PR.`;
+
+/** Renders the durable working-memory file into the prompt so a resume never depends on the model
+ * choosing to read it. Empty string when there is no prior progress (a fresh unit of work). */
+export function progressBlock(progress: string | undefined): string {
+  if (!progress) {
+    return '';
+  }
+
+  return `--- PRIOR PROGRESS (your saved working notes from an earlier pass at THIS task — resume from it: rebuild your todo list from the Checklist and continue from the first unfinished item; do NOT start over) ---\n${progress}\n--- END PRIOR PROGRESS ---`;
+}
 
 // The structural fix for context bloat: keep file bodies OUT of the parent's context. The parent
 // orchestrates from the plan + PROGRESS.md and delegates each unit of file work to a child that has

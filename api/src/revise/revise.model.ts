@@ -10,4 +10,6 @@ export interface RevisePromptContext {
   attachments?: string;
   /** Set on a completion-judge continuation: what the previous pass left unfinished. */
   incompleteWork?: string;
+  /** Durable working memory (.olympian/PROGRESS.md) from an earlier pass, injected so a resume doesn't depend on the agent reading it. */
+  progress?: string;
 }

@@ -1,4 +1,4 @@
-import { rm } from 'node:fs/promises';
+import { rm, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
@@ -832,7 +832,7 @@ export class OrchestratorService {
       installationId: ghId,
       ws,
       goal: plan,
-      buildPrompt: (attempt, critique) =>
+      buildPrompt: (attempt, critique, progress) =>
         buildImplementPrompt({
           jobId,
           repoFullName: job.repoFullName,
@@ -843,6 +843,7 @@ export class OrchestratorService {
           // On a continuation the judge's critique IS the to-do list; otherwise any PR-feedback guidance.
           guidance: critique ?? guidance,
           attachments,
+          progress,
         }),
       commitMessage: (attempt) => implementCommitMessage(job.issueNumber, job.issueTitle, attempt),
       noChangesError: 'implementation produced no file changes',
@@ -868,6 +869,18 @@ export class OrchestratorService {
    * MAX_COMPLETION_RETRIES, after which we proceed to VERIFY regardless (the deterministic gate
    * still applies). MAX_COMPLETION_RETRIES=0 disables the loop (single pass, no judge).
    */
+  /** The agent's durable working-memory file, injected into each pass so a resume never depends on
+   * the model choosing to read it. Returns undefined when absent/empty (a fresh unit of work). */
+  private async readWorkingMemory(dir: string): Promise<string | undefined> {
+    try {
+      const content = (await readFile(join(dir, '.olympian', 'PROGRESS.md'), 'utf8')).trim();
+
+      return content || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async runWithCompletionLoop(p: {
     job: Job;
     phase: 'IMPLEMENT' | 'REVISE';
@@ -876,7 +889,11 @@ export class OrchestratorService {
     goal: string;
     /** Original plan supplied to the judge as background context (REVISE), when the goal isn't the plan. */
     context?: string;
-    buildPrompt: (attempt: number, critique: string | undefined) => string;
+    buildPrompt: (
+      attempt: number,
+      critique: string | undefined,
+      progress: string | undefined,
+    ) => string;
     commitMessage: (attempt: number) => string;
     noChangesError: string;
   }): Promise<void> {
@@ -884,11 +901,15 @@ export class OrchestratorService {
     let critique: string | undefined;
 
     for (let attempt = 1; ; attempt++) {
+      // Inject the durable working-memory file into every pass so a resume never depends on the
+      // model remembering to read it (it's re-read each attempt, picking up the prior pass's state).
+      const progress = await this.readWorkingMemory(p.ws.dir);
+
       const res = await this.agent.run({
         jobId: p.job.id,
         phase: p.phase,
         cwd: p.ws.dir,
-        prompt: p.buildPrompt(attempt, critique),
+        prompt: p.buildPrompt(attempt, critique, progress),
         validate: (stdout) => incompleteOutputReason(stdout, 200),
       });
 
@@ -904,12 +925,15 @@ export class OrchestratorService {
         if (attempt === 1) {
           // A clean exit that edited nothing is not a success, however long its output.
           await this.agent.markRunFailed(res.runId, p.noChangesError);
+
           throw new Error(p.noChangesError);
         }
+
         // A continuation that changed nothing — the agent considers itself done. Accept and proceed.
         this.logger.log(
           `[job ${p.job.id}] ${p.phase} continuation ${attempt} made no further changes; proceeding`,
         );
+
         break;
       }
 
@@ -947,6 +971,7 @@ export class OrchestratorService {
       }
 
       critique = verdict.critique;
+
       this.logger.log(
         `[job ${p.job.id}] ${p.phase} judged incomplete (attempt ${attempt}); continuing with judge critique`,
       );
@@ -984,7 +1009,9 @@ export class OrchestratorService {
         reason: 'no verify command; skipping to review',
         actor: 'AGENT',
       });
+
       await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+
       return;
     }
 
@@ -1021,7 +1048,9 @@ export class OrchestratorService {
         reason: `verify passed (attempt ${attempt})`,
         actor: 'AGENT',
       });
+
       await this.queue.enqueue({ jobId, kind: 'REVIEW' });
+
       return;
     }
 
@@ -1033,7 +1062,9 @@ export class OrchestratorService {
         reason: `verify failed (attempt ${attempt})`,
         actor: 'AGENT',
       });
+
       await this.queue.enqueue({ jobId, kind: 'REVISE' });
+
       return;
     }
 
@@ -1147,6 +1178,20 @@ export class OrchestratorService {
         .filter(Boolean)
         .join('\n\n') || 'Resolve all outstanding review issues and make the build/tests pass.';
 
+    const buildPrompt = (critique: string | undefined, progress: string | undefined) =>
+      buildRevisePrompt({
+        jobId,
+        plan,
+        verifyFailure,
+        latestIssuesText: latestIssues.length > 0 ? formatIssues(latestIssues) : undefined,
+        priorIssuesText: priorIssues.length > 0 ? formatIssues(priorIssues) : undefined,
+        humanFeedback,
+        attachments,
+        // On a continuation the judge's critique lists what the prior pass left unfinished.
+        incompleteWork: critique,
+        progress,
+      });
+
     await this.runWithCompletionLoop({
       job,
       phase: 'REVISE',
@@ -1154,18 +1199,7 @@ export class OrchestratorService {
       ws,
       goal,
       context: plan,
-      buildPrompt: (_attempt, critique) =>
-        buildRevisePrompt({
-          jobId,
-          plan,
-          verifyFailure,
-          latestIssuesText: latestIssues.length > 0 ? formatIssues(latestIssues) : undefined,
-          priorIssuesText: priorIssues.length > 0 ? formatIssues(priorIssues) : undefined,
-          humanFeedback,
-          attachments,
-          // On a continuation the judge's critique lists what the prior pass left unfinished.
-          incompleteWork: critique,
-        }),
+      buildPrompt: (attempt, critique, progress) => buildPrompt(critique, progress),
       commitMessage: (attempt) => reviseCommitMessage(revisionNumber + attempt - 1),
       noChangesError: 'revision produced no file changes — issues were not addressed',
     });
