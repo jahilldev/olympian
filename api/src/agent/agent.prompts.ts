@@ -85,6 +85,11 @@ export const DELEGATION_STRATEGY = `# Delegation
 - In every goal you give a subagent, tell it that its FINAL report — the only part persisted to PROGRESS.md — must be concise: key facts in prose, with file paths and line numbers quoted in FULL, and no restated file contents.
 - It can still narrate freely between tool calls as it works; only the final summary needs to be tight.
 
+## Writing goals
+
+- Keep each goal a concise **pointer to work, not a pre-written solution**: name the issue, the file/area it lives in, and the acceptance criterion — then let the subagent investigate and implement. The subagent is there to work out the "how".
+- Do NOT read files to pre-analyse, solve the problem yourself, or paste code or line-by-line fix instructions into the goal. That pulls file bodies back into your context, bloats PROGRESS.md, and re-does the very work you are delegating. If you find yourself writing a detailed fix, stop — hand the subagent the problem, not the answer.
+
 ## Workflow
 
 1. **Map the work once.** Unless you already know exactly where everything lives, spawn ONE read-only survey subagent and use its summary to split the work into small units — ideally one file (or one acceptance criterion / issue) per unit. Do not read source yourself to plan.
