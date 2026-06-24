@@ -18,11 +18,18 @@ wrapped in try/except: a telemetry tweak must never break a run.
 """
 from __future__ import annotations
 
+import logging
 import re
 import sys
 from typing import Any
 
+_LOG = logging.getLogger("olympian.capture_reasoning")
+_SENTINEL = "⚠️ Unavailable: the capture_reasoning plugin failed to extract reasoning — please review."
+
 _patched = False
+_attempts = 0
+_warned_missing = False
+_warned_wrap_error = False
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
 
@@ -54,13 +61,21 @@ def _extract_reasoning_text(message: Any) -> str | None:
 def _wrap(orig: Any) -> Any:
     def wrapped(message: Any) -> Any:
         out = orig(message)
+        if not isinstance(out, dict) or out.get("reasoning"):
+            return out
         try:
-            if isinstance(out, dict) and not out.get("reasoning"):
-                reasoning = _extract_reasoning_text(message)
-                if reasoning:
-                    out["reasoning"] = reasoning
-        except Exception:
-            pass
+            reasoning = _extract_reasoning_text(message)
+            if reasoning:
+                out["reasoning"] = reasoning
+        except Exception as exc:
+            # Don't fail silently: surface it in the UI (the Thinking section shows the sentinel)
+            # AND the logs, so a future Hermes change that breaks extraction is visible rather than
+            # just a missing section. A real "no reasoning this turn" returns None (no sentinel).
+            global _warned_wrap_error
+            out["reasoning"] = f"{_SENTINEL} ({type(exc).__name__}: {exc})"
+            if not _warned_wrap_error:
+                _warned_wrap_error = True
+                _LOG.warning("capture_reasoning: reasoning extraction failed: %s", exc, exc_info=True)
         return out
 
     wrapped._olympian_reasoning_wrap = True  # type: ignore[attr-defined]
@@ -69,9 +84,10 @@ def _wrap(orig: Any) -> Any:
 
 def _ensure_patch() -> None:
     """Find the loaded Langfuse plugin module and wrap its serializer (idempotent)."""
-    global _patched
+    global _patched, _attempts, _warned_missing
     if _patched:
         return
+    _attempts += 1
     try:
         for mod in list(sys.modules.values()):
             if mod is None:
@@ -84,8 +100,22 @@ def _ensure_patch() -> None:
                 mod._serialize_assistant_message = _wrap(fn)
             _patched = True
             return
-    except Exception:
-        pass
+    except Exception as exc:
+        if not _warned_missing:
+            _warned_missing = True
+            _LOG.warning("capture_reasoning: error while patching the Langfuse serializer: %s", exc)
+        return
+
+    # Scanned everything and never found the Langfuse serializer. All plugins load well before the
+    # first API request, so after a couple of misses treat it as a real break and warn loudly, once.
+    if not _warned_missing and _attempts >= 2:
+        _warned_missing = True
+        _LOG.warning(
+            "capture_reasoning: could not locate the Langfuse serializer "
+            "(_serialize_assistant_message + _get_langfuse) to patch — agent reasoning will NOT be "
+            "captured in the live stream. The Hermes Langfuse plugin internals likely changed; "
+            "review the capture_reasoning plugin."
+        )
 
 
 def on_pre_api_request(**_: Any) -> None:
