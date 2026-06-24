@@ -154,24 +154,38 @@ def _render_checklist(result: Any) -> str:
     return "\n".join(lines)
 
 
+import re as _re
+
+_THINK_TAGS = _re.compile(r"<(antThinking|think|thinking|reasoning)>.*?</\\1>", _re.DOTALL | _re.IGNORECASE)
+
+
+def _strip_thinking(text: str) -> str:
+    return _THINK_TAGS.sub("", text).strip()
+
+
 def _summarise_delegation(result: Any) -> str:
     def one(r: Any) -> str:
         if isinstance(r, dict):
-            return str(
-                r.get("summary")
-                or r.get("error")
-                or r.get("result")
-                or json.dumps(r, ensure_ascii=False, default=str)
-            )
+            return str(r.get("summary") or r.get("error") or r.get("result") or "")
         return str(r)
 
     if isinstance(result, str):
         try:
             result = json.loads(result)
         except Exception:
-            return result.strip()[:_ENTRY_CAP]
-    text = "\n".join(one(r) for r in result) if isinstance(result, list) else one(result)
-    text = text.strip()
+            return _strip_thinking(result)[:_ENTRY_CAP]
+
+    # delegate_task returns {"results": [ {summary,...}, ... ], "note": ...}; older/other shapes
+    # may be a bare list or dict.
+    if isinstance(result, dict) and isinstance(result.get("results"), list):
+        items = result["results"]
+    elif isinstance(result, list):
+        items = result
+    else:
+        items = [result]
+
+    text = "\n".join(p for p in (one(r) for r in items) if p.strip())
+    text = _strip_thinking(text)
     if len(text) > _ENTRY_CAP:
         text = text[:_ENTRY_CAP].rstrip() + " …[trimmed]"
     return text

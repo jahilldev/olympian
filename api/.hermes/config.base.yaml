@@ -13,7 +13,7 @@ plugins:
     - observability/langfuse
     - capture_reasoning # backfills reasoning_content/<think> into the langfuse span so thinking renders in the stream
     - synchronous_delegate # forces delegate_task to run synchronously so the real result returns in-band (captured to PROGRESS.md) and nothing is lost
-    - worker_toolset # registers the read+delegate toolset for IMPLEMENT/REVISE parents (no write_file/patch — edits go to subagents)
+    - worker_guard # blocks read/write/patch/search for the IMPLEMENT/REVISE primary (subagents unaffected) so it must delegate
 
 browser:
   inactivity_timeout: 120

@@ -1,0 +1,6 @@
+name: worker_guard
+version: 1.0.0
+description: "Blocks read_file/search_files/write_file/patch for the IMPLEMENT/REVISE PRIMARY agent (sub-agents are unaffected) so it must delegate all reading and editing — keeping its context small. We block rather than remove the tools because Hermes caps a child's toolset to a subset of the parent's, so removing them from the parent would also strip them from sub-agents. The prompt tells the model these are blocked so it delegates up front and rarely trips the block."
+hooks:
+  - pre_tool_call
+  - post_tool_call
