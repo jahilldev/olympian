@@ -39,6 +39,13 @@ _STATE: dict[str, Any] = {
     "active": 0,  # in-flight delegate_task calls
     "subagents": set(),  # task_ids identified as delegated sub-agents
     "delegations": 0,  # running count, for Findings entry numbering
+    # In-memory source of truth for the file's two sections. We recompose the whole file from these
+    # on every write rather than re-reading it. PROGRESS.md is git-excluded, so a build/test step
+    # (e.g. `git clean -fdx`) or stray cleanup can delete it mid-run; keeping the content in memory
+    # lets us (a) never clobber a surviving section with an empty placeholder, and (b) restore the
+    # whole file on the very next tool call if it has gone missing (see _heal).
+    "checklist": None,  # str once known; None = not yet seeded from disk
+    "findings": None,
 }
 
 
@@ -93,6 +100,30 @@ def _write(checklist: str, findings: str) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(body)
     os.replace(tmp, path)  # atomic — a crashed write never leaves a half file
+
+
+# ── in-memory state: seed once from disk, then recompose from memory ─────────
+
+
+def _seed() -> None:
+    """One-time seed of the in-memory sections from disk, so a process that resumes an existing
+    PROGRESS.md inherits its content before appending. After this, memory is authoritative."""
+    if _STATE["checklist"] is None and _STATE["findings"] is None:
+        checklist, findings = _split(_read())
+        _STATE["checklist"] = checklist
+        _STATE["findings"] = findings
+
+
+def _flush() -> None:
+    _write(_STATE["checklist"] or "", _STATE["findings"] or "")
+
+
+def _heal() -> None:
+    """If the file has gone missing (e.g. a build's `git clean`), restore it from memory. Cheap:
+    an existence check on every tool call, a write only when it's actually gone."""
+    if _STATE["checklist"] or _STATE["findings"]:
+        if not os.path.exists(_progress_path()):
+            _flush()
 
 
 # ── rendering ───────────────────────────────────────────────────────────────
@@ -180,8 +211,10 @@ def on_post_tool_call(
     *, tool_name: str = "", args: Any = None, result: Any = None, task_id: str = "", **_: Any
 ) -> None:
     try:
-        if tool_name == "delegate_task":
-            with _LOCK:
+        with _LOCK:
+            _seed()
+
+            if tool_name == "delegate_task":
                 _note_primary(task_id)
                 _STATE["active"] = max(0, _STATE["active"] - 1)
                 _STATE["delegations"] += 1
@@ -191,18 +224,20 @@ def on_post_tool_call(
                     first = str(args.get("goal", "")).strip().splitlines()
                     goal = first[0] if first else ""
                 entry = (f"### {n}. {goal}".rstrip()) + "\n" + _summarise_delegation(result) + "\n"
-                checklist, findings = _split(_read())
-                _write(checklist, (findings + "\n\n" + entry) if findings else entry)
-        elif tool_name == "todo":
-            with _LOCK:
+                prior = _STATE["findings"] or ""
+                _STATE["findings"] = (prior + "\n\n" + entry) if prior else entry
+                _flush()
+            elif tool_name == "todo":
                 _observe(task_id)
-                if task_id in _STATE["subagents"]:
-                    return  # a sub-agent's own todo — never overwrite the primary checklist
-                checklist = _render_checklist(result)
-                if not checklist:
-                    return
-                _, findings = _split(_read())
-                _write(checklist, findings)
+                if task_id not in _STATE["subagents"]:
+                    checklist = _render_checklist(result)
+                    if checklist:  # never overwrite a real checklist with an empty one
+                        _STATE["checklist"] = checklist
+                        _flush()
+
+            # Any tool (e.g. a terminal `git clean`) may have removed the git-excluded file —
+            # restore it from memory immediately so a later read never sees it missing.
+            _heal()
     except Exception:
         pass  # mirroring must never break a run
 
