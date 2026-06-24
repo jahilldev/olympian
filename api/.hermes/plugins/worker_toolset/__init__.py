@@ -30,9 +30,8 @@ def _register_toolset() -> None:
         if get_toolset(_NAME) is None:
             create_custom_toolset(
                 _NAME,
-                "Olympian worker-phase orchestrator: read, search, terminal, todo and delegation — "
-                "no direct file writes (all edits go to subagents).",
-                tools=["read_file", "search_files"],
+                "Olympian worker-phase orchestrator: delegation + todo + terminal (tests/builds "
+                "only) — NO file read or write tools; all reading and editing happens in subagents.",
                 includes=["delegation", "todo", "terminal"],
             )
     except Exception:
