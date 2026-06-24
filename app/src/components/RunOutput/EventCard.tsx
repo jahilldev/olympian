@@ -81,13 +81,11 @@ function GenerationCard({ event, isSubagent }: { event: LangfuseEvent; isSubagen
         border: 'border-cyan-900/50',
         header: 'bg-cyan-950/50 text-cyan-200',
         section: 'border-cyan-900/30',
-        thinkLabel: 'text-cyan-900/80',
       }
     : {
         border: 'border-indigo-900/50',
         header: 'bg-indigo-950/50 text-indigo-200',
         section: 'border-indigo-900/30',
-        thinkLabel: 'text-indigo-900/80',
       };
 
   return (
@@ -162,11 +160,10 @@ function GenerationCard({ event, isSubagent }: { event: LangfuseEvent; isSubagen
             label="Thinking"
             preview={`${thinkingOutput.split('\n').length} lines`}
             borderClass={c.section}
-            labelClass={c.thinkLabel}
           />
           {thinkOpen && (
             <div class="border-t border-zinc-800/40 px-3 py-2.5 bg-zinc-950/70 max-h-64 overflow-y-auto">
-              <pre class="text-[11px] text-zinc-600 font-mono whitespace-pre-wrap leading-relaxed">
+              <pre class="text-[11px] text-zinc-400 font-mono whitespace-pre-wrap leading-relaxed">
                 {thinkingOutput}
               </pre>
             </div>
