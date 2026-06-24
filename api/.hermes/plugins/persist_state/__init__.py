@@ -90,7 +90,6 @@ def _write(checklist: str, findings: str) -> None:
     if len(findings) > _FINDINGS_BUDGET:
         findings = "_…older findings trimmed…_\n\n" + findings[-_FINDINGS_BUDGET:].lstrip()
     body = (
-        "# Olympian progress\n\n"
         f"{_CHECKLIST_HEADER}\n{checklist or '_(no checklist yet)_'}\n\n"
         f"{_FINDINGS_HEADER}\n{findings or '_(none yet)_'}\n"
     )
