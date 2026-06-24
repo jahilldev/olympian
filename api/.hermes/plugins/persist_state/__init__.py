@@ -194,6 +194,21 @@ def _summarise_delegation(result: Any) -> str:
     return text
 
 
+def _heading_label(goal: Any, cap: int = 100) -> str:
+    """A short one-line label for a Findings heading. The primary writes the whole task as a single
+    long line, so we take the first line, cut it at the first sentence/clause boundary if that is
+    short enough, then hard-cap on a word boundary."""
+    line = str(goal or "").strip().splitlines()
+    line = line[0].strip() if line else ""
+    for sep in (": ", ". "):
+        head = line.split(sep, 1)[0]
+        if 0 < len(head) <= cap:
+            return head
+    if len(line) > cap:
+        line = line[:cap].rsplit(" ", 1)[0].rstrip(" ,.;:") + "…"
+    return line
+
+
 def _is_dispatch_ack(result):
     """A background delegation's post-hook result is only a dispatch acknowledgement, not the
     subagent's report (that arrives asynchronously) — recognise it so we don't record it."""
@@ -271,11 +286,14 @@ def on_post_tool_call(
                 if not _is_dispatch_ack(result):
                     _STATE["delegations"] += 1
                     n = _STATE["delegations"]
-                    goal = ""
-                    if isinstance(args, dict):
-                        first = str(args.get("goal", "")).strip().splitlines()
-                        goal = first[0] if first else ""
-                    entry = (f"### {n}. {goal}".rstrip()) + "\n" + _summarise_delegation(result) + "\n"
+                    goal_full = str(args.get("goal", "")).strip() if isinstance(args, dict) else ""
+                    label = _heading_label(goal_full)
+                    # Short heading for readability; the full goal is kept as body so no context is
+                    # lost, then the subagent's report.
+                    entry = f"### {n}. {label}".rstrip() + "\n"
+                    if goal_full and goal_full != label:
+                        entry += f"**Goal:** {goal_full}\n\n"
+                    entry += _summarise_delegation(result) + "\n"
                     prior = _STATE["findings"] or ""
                     _STATE["findings"] = (prior + "\n\n" + entry) if prior else entry
                     _flush()
