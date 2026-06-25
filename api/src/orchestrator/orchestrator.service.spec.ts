@@ -627,6 +627,36 @@ describe('OrchestratorService dashboard actions', () => {
   });
 });
 
+describe('OrchestratorService workspace auth', () => {
+  it('authenticates GitHub jobs with the installation BigInt id, not the job FK', async () => {
+    const { service, workspace } = setup({
+      job: {
+        state: 'VERIFYING',
+        installationId: 'cmq_fk_cuid',
+        installation: { installationId: 42n },
+      },
+    });
+
+    await callPrivate(service, 'handleVerify', 'job1');
+
+    const { auth } = workspace.prepare.mock.calls[0][0] as {
+      auth: { kind: string; installationId: number; owner: string; repo: string };
+    };
+    expect(auth).toEqual({ kind: 'github-app', installationId: 42, owner: 'o', repo: 'r' });
+  });
+
+  it('uses an SSH remote for a dashboard job with a repoUrl', async () => {
+    const { service, workspace } = setup({
+      job: { state: 'VERIFYING', origin: 'DASHBOARD', repoUrl: 'git@github.com:o/r.git' },
+    });
+
+    await callPrivate(service, 'handleVerify', 'job1');
+
+    const { auth } = workspace.prepare.mock.calls[0][0] as { auth: { kind: string; url?: string } };
+    expect(auth).toEqual({ kind: 'ssh', url: 'git@github.com:o/r.git' });
+  });
+});
+
 describe('OrchestratorService.handlePlan (dashboard origin)', () => {
   it('skips the GitHub issue comment and posts a plan revision', async () => {
     const { service, prisma, github, jobs } = setup({

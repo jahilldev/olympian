@@ -736,11 +736,11 @@ export class OrchestratorService {
 
   /** Unified diff of the job branch vs its base — the dashboard's no-PR result view. */
   async diff(jobId: string): Promise<{ diff: string }> {
-    const { job } = await this.context(jobId);
+    const { job, installation } = await this.context(jobId);
 
     const ws = await this.workspace.prepare({
       jobId,
-      auth: this.remoteAuthFor(job),
+      auth: this.remoteAuthFor(job, installation),
       branchName: this.branchFor(job),
     });
 
@@ -807,7 +807,7 @@ export class OrchestratorService {
   // ── Stage handlers ─────────────────────────────────────────────────────────
 
   private async handlePlan(jobId: string): Promise<void> {
-    const { job, ref } = await this.context(jobId);
+    const { job, installation, ref } = await this.context(jobId);
 
     await this.jobs.transition(jobId, 'PLANNING', { reason: 'drafting plan', actor: 'AGENT' });
 
@@ -815,7 +815,7 @@ export class OrchestratorService {
 
     const ws = await this.workspace.prepare({
       jobId,
-      auth: this.remoteAuthFor(job),
+      auth: this.remoteAuthFor(job, installation),
       branchName,
     });
 
@@ -932,12 +932,9 @@ export class OrchestratorService {
     }
 
     const branchName = this.branchFor(job);
+    const auth = this.remoteAuthFor(job, installation);
 
-    const ws = await this.workspace.prepare({
-      jobId,
-      auth: this.remoteAuthFor(job),
-      branchName,
-    });
+    const ws = await this.workspace.prepare({ jobId, auth, branchName });
 
     if (!job.branchName) {
       await this.jobs.update(jobId, { branchName });
@@ -987,6 +984,7 @@ export class OrchestratorService {
     // here — that's the dedicated VERIFY stage; any failure (verify or review) routes to REVISE.
     await this.runWithCompletionLoop({
       job,
+      auth,
       phase: 'IMPLEMENT',
       ws,
       goal: plan,
@@ -1042,6 +1040,7 @@ export class OrchestratorService {
 
   private async runWithCompletionLoop(p: {
     job: Job;
+    auth: RemoteAuth;
     phase: 'IMPLEMENT' | 'REVISE';
     ws: { dir: string; branch: string; baseBranch: string };
     goal: string;
@@ -1095,7 +1094,7 @@ export class OrchestratorService {
         break;
       }
 
-      await this.pushBranch(p.job, p.ws.branch);
+      await this.pushBranch(p.job, p.auth, p.ws.branch);
 
       // Judge disabled entirely — proceed; VERIFY/REVIEW are the backstop.
       if (maxRetries <= 0) {
@@ -1143,7 +1142,7 @@ export class OrchestratorService {
    * every REVISE, so all post-implement failures funnel through REVISE.
    */
   private async handleVerify(jobId: string): Promise<void> {
-    const { job, ref } = await this.context(jobId);
+    const { job, installation, ref } = await this.context(jobId);
 
     if (job.state !== 'VERIFYING') {
       await this.jobs.transition(jobId, 'VERIFYING', { reason: 're-verifying', actor: 'AGENT' });
@@ -1151,7 +1150,7 @@ export class OrchestratorService {
 
     const ws = await this.workspace.prepare({
       jobId,
-      auth: this.remoteAuthFor(job),
+      auth: this.remoteAuthFor(job, installation),
       branchName: this.branchFor(job),
     });
 
@@ -1237,11 +1236,13 @@ export class OrchestratorService {
   }
 
   private async handleRevise(jobId: string): Promise<void> {
-    const { job } = await this.context(jobId);
+    const { job, installation } = await this.context(jobId);
+
+    const auth = this.remoteAuthFor(job, installation);
 
     const ws = await this.workspace.prepare({
       jobId,
-      auth: this.remoteAuthFor(job),
+      auth,
       branchName: this.branchFor(job),
     });
 
@@ -1345,6 +1346,7 @@ export class OrchestratorService {
 
     await this.runWithCompletionLoop({
       job,
+      auth,
       phase: 'REVISE',
       ws,
       goal,
@@ -1362,11 +1364,11 @@ export class OrchestratorService {
   }
 
   private async handleReview(jobId: string): Promise<void> {
-    const { job, ref } = await this.context(jobId);
+    const { job, installation, ref } = await this.context(jobId);
 
     const ws = await this.workspace.prepare({
       jobId,
-      auth: this.remoteAuthFor(job),
+      auth: this.remoteAuthFor(job, installation),
       branchName: this.branchFor(job),
     });
 
@@ -1563,7 +1565,7 @@ export class OrchestratorService {
   }
 
   private async handleOpenPr(jobId: string): Promise<void> {
-    const { job, ref } = await this.context(jobId);
+    const { job, installation, ref } = await this.context(jobId);
 
     // Guard: if a reviewer requested changes while this cycle was wrapping up, that feedback
     // arrived after the last work pass and hasn't been addressed — loop back to REVISE rather
@@ -1597,13 +1599,14 @@ export class OrchestratorService {
     }
 
     const branchName = this.branchFor(job);
+    const auth = this.remoteAuthFor(job, installation);
 
     // Dashboard jobs have no GitHub App, so there's no PR to open: push the branch over SSH
     // (or no-op for a scratch repo) and present the diff for Accept / Request changes in the UI.
     if (job.origin === 'DASHBOARD') {
       const headSha = await this.workspace.push({
         jobId,
-        auth: this.remoteAuthFor(job),
+        auth,
         branchName,
       });
 
@@ -1623,7 +1626,7 @@ export class OrchestratorService {
 
     const headSha = await this.workspace.push({
       jobId,
-      auth: this.remoteAuthFor(job),
+      auth,
       branchName,
       baseBranch: base,
     });
@@ -1742,15 +1745,23 @@ export class OrchestratorService {
     };
   }
 
-  /** How this job's workspace authenticates to its remote (drives clone/push). */
-  private remoteAuthFor(job: Job): RemoteAuth {
+  /**
+   * How this job's workspace authenticates to its remote (drives clone/push). The GitHub
+   * App installation id is the BigInt on the related RepoInstallation — NOT `Job.installationId`,
+   * which is the cuid FK to that row — so the installation record must be passed in.
+   */
+  private remoteAuthFor(job: Job, installation: RepoInstallation | null): RemoteAuth {
     if (job.origin === 'DASHBOARD') {
       return job.repoUrl ? { kind: 'ssh', url: job.repoUrl } : { kind: 'none' };
     }
 
+    if (!installation) {
+      throw new Error(`GitHub job ${job.id} has no installation record`);
+    }
+
     return {
       kind: 'github-app',
-      installationId: Number(job.installationId),
+      installationId: Number(installation.installationId),
       owner: job.repoOwner ?? '',
       repo: job.repoName ?? '',
     };
@@ -1779,11 +1790,11 @@ export class OrchestratorService {
    * during the implement/revise loop. A push failure is non-fatal — it's logged and the
    * stage continues; the branch is pushed for real (and gated) at OPEN_PR.
    */
-  private async pushBranch(job: Job, branchName: string): Promise<void> {
+  private async pushBranch(job: Job, auth: RemoteAuth, branchName: string): Promise<void> {
     try {
       const headSha = await this.workspace.push({
         jobId: job.id,
-        auth: this.remoteAuthFor(job),
+        auth,
         branchName,
       });
 
