@@ -30,17 +30,21 @@ model RepoInstallation {
 }
 
 model Job {
-  id             String           @id @default(cuid())
-  installation   RepoInstallation @relation(fields: [installationId], references: [id])
-  installationId String
-  repoOwner      String
-  repoName       String
-  repoFullName   String
-  issueNumber    Int
+  id             String            @id @default(cuid())
+  // GitHub-only fields — null for DASHBOARD-origin jobs (created from the UI).
+  installation   RepoInstallation? @relation(fields: [installationId], references: [id])
+  installationId String?
+  repoOwner      String?
+  repoName       String?
+  repoFullName   String?
+  issueNumber    Int?
+  // issueTitle / issueBody double as the generic title / requirements body for DASHBOARD jobs.
   issueTitle     String
   issueBody      String
-  triggerLabel   String
-  state          String           @default("TRIAGED") // JobState union
+  triggerLabel   String?
+  origin         String            @default("GITHUB") // JobOrigin union: 'GITHUB' | 'DASHBOARD'
+  repoUrl        String?           // SSH remote for DASHBOARD jobs (git@host:path or ssh://…); null = scratch workspace
+  state          String            @default("TRIAGED") // JobState union
   branchName     String?
   prNumber       Int?
   headSha        String?
@@ -121,11 +125,14 @@ model PrRevisionFeedback {
   @@index([jobId])
 }
 
-// Audit of every Hermes CLI invocation.
+// Audit of every Hermes CLI invocation. Most runs belong to a Job; CHAT-phase runs
+// belong to a ChatSession instead, so both foreign keys are optional.
 model AgentRun {
-  id         String   @id @default(cuid())
-  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  jobId      String
+  id         String       @id @default(cuid())
+  job        Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId      String?
+  session    ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId  String?
   phase      String   // AgentPhase union
   command    String
   cwd        String
@@ -141,6 +148,31 @@ model AgentRun {
   createdAt  DateTime @default(now())
 
   @@index([jobId])
+  @@index([sessionId])
+}
+
+// An interactive Hermes chat session (not a delivery job). Reuses HermesAgentService
+// and the Langfuse→SSE stream, but bypasses the job queue and the plan/verify/review loop.
+model ChatSession {
+  id        String        @id @default(cuid())
+  title     String
+  repoUrl   String?       // optional working repo (SSH) for the session
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+  runs      AgentRun[]
+}
+
+model ChatMessage {
+  id         String      @id @default(cuid())
+  session    ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId  String
+  role       String      // 'user' | 'assistant'
+  content    String
+  agentRunId String?     // links an assistant message to its AgentRun (for the SSE stream)
+  createdAt  DateTime    @default(now())
+
+  @@index([sessionId])
 }
 
 model ReviewPass {

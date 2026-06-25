@@ -68,6 +68,9 @@ export const envSchema = z.object({
   GIT_AUTHOR_NAME: z.string().default('Hermes Agent'),
   GIT_AUTHOR_EMAIL: z.string().default('hermes@users.noreply.github.com'),
   BRANCH_PREFIX: z.string().default('hermes/issue-'),
+  // Private SSH key used to clone/push dashboard jobs over SSH. Optional — when unset,
+  // dashboard jobs can still run against a scratch (no-repo) workspace.
+  DASHBOARD_SSH_KEY_PATH: z.string().optional(),
 
   // sandbox
   SANDBOX_MODE: z.enum(['none', 'default']).default('default'),

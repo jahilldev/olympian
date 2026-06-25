@@ -143,7 +143,7 @@ export class HermesAgentService implements OnModuleInit {
       provider,
       toolsets: opts.toolsets,
       skills: opts.skills,
-      jobId: opts.jobId,
+      jobId: opts.jobId ?? opts.sessionId,
       publishPorts: opts.phase === 'REVIEW' && !!process.env.CAMOFOX_URL,
     });
 
@@ -151,7 +151,8 @@ export class HermesAgentService implements OnModuleInit {
 
     const run = await this.prisma.agentRun.create({
       data: {
-        jobId: opts.jobId,
+        jobId: opts.jobId ?? null,
+        sessionId: opts.sessionId ?? null,
         phase: opts.phase,
         command: commandLine,
         cwd: opts.cwd,
@@ -159,6 +160,8 @@ export class HermesAgentService implements OnModuleInit {
         status: 'RUNNING',
       },
     });
+
+    opts.onStart?.(run.id);
 
     // Inject the run ID as an OTLP resource attribute so the trace receiver can
     // correlate incoming spans to this specific AgentRun record.

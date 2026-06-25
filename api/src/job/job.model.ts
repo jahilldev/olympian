@@ -88,8 +88,10 @@ export interface ActiveTaskDto {
 
 export interface JobSummaryDto {
   id: string;
-  repoFullName: string;
-  issueNumber: number;
+  origin: string;
+  repoFullName: string | null;
+  repoUrl: string | null;
+  issueNumber: number | null;
   issueTitle: string;
   state: string;
   confidence: number | null;
@@ -116,6 +118,8 @@ export interface JobDetailDto extends JobSummaryDto {
 
 // --- domain types ---
 
+export type JobOrigin = 'GITHUB' | 'DASHBOARD';
+
 export interface CreateJobInput {
   installationId: string;
   repoOwner: string;
@@ -124,4 +128,12 @@ export interface CreateJobInput {
   issueTitle: string;
   issueBody: string;
   triggerLabel: string;
+}
+
+/** A job created from the dashboard UI rather than a labelled GitHub issue. */
+export interface CreateDashboardJobInput {
+  title: string;
+  requirements: string;
+  /** Optional SSH remote (git@host:path or ssh://…); null = scratch (greenfield) workspace. */
+  repoUrl?: string;
 }

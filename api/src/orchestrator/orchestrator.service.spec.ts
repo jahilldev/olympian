@@ -71,7 +71,12 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
 
   const prisma = {
     job: { findUnique: resolved(job), findFirst: resolved(null), update: resolved(job) },
-    planRevision: { findFirst: resolved({ content: 'the plan' }), updateMany: resolved(undefined) },
+    planRevision: {
+      findFirst: resolved({ content: 'the plan' }),
+      updateMany: resolved(undefined),
+      create: resolved(undefined),
+    },
+    planFeedback: { findMany: resolved([] as unknown[]), create: resolved(undefined) },
     prRevisionFeedback: {
       findMany: resolved([] as unknown[]),
       create: resolved(undefined),
@@ -99,6 +104,7 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     transition: resolved(job),
     update: resolved(job),
     incrementAttempts: resolved(1),
+    createDashboard: resolved(job),
   };
 
   const queue = { enqueue: resolved(undefined), cancelForJob: resolved(undefined) };
@@ -114,9 +120,11 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     runVerify: resolved({ ok: true, output: '' }),
     commitAll: resolved('sha1'),
     branchChangedFiles: resolved([] as unknown[]),
+    branchDiff: resolved('diff --git a/x b/x'),
     downloadAttachments: resolved([] as unknown[]),
     dir: returns('/tmp/olympian-test-job1'),
     push: resolved('sha1'),
+    cleanup: resolved(undefined),
   };
 
   const review = {
@@ -518,5 +526,147 @@ describe('OrchestratorService.retryJob', () => {
     expect(result.retried).toBe(false);
     expect(queue.enqueue).not.toHaveBeenCalled();
     expect(jobs.transition).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrchestratorService dashboard actions', () => {
+  it('createDashboardJob creates a job and enqueues PLAN', async () => {
+    const { service, jobs, queue } = setup();
+
+    const res = await service.createDashboardJob({ title: 't', requirements: 'r' });
+
+    expect(jobs.createDashboard).toHaveBeenCalled();
+    expect(res).toEqual({ id: 'job1' });
+    expect(enqueuedKinds(queue)).toEqual(['PLAN']);
+  });
+
+  it('submitPlanFeedback supersedes the plan and re-plans when awaiting approval', async () => {
+    const { service, prisma, jobs, queue } = setup({ job: { state: 'AWAITING_PLAN_APPROVAL' } });
+
+    const res = await service.submitPlanFeedback('job1', 'dashboard', 'change X');
+
+    expect(res.ok).toBe(true);
+    expect(prisma.planFeedback.create).toHaveBeenCalled();
+    expect(prisma.planRevision.updateMany).toHaveBeenCalledWith({
+      where: { jobId: 'job1', status: 'PROPOSED' },
+      data: { status: 'SUPERSEDED' },
+    });
+    expect(transitionedTo(jobs)).toContain('PLANNING');
+    expect(enqueuedKinds(queue)).toEqual(['PLAN']);
+  });
+
+  it('submitPlanFeedback refuses when the job is not awaiting plan approval', async () => {
+    const { service, queue, jobs } = setup({ job: { state: 'IMPLEMENTING' } });
+
+    const res = await service.submitPlanFeedback('job1', 'dashboard', 'x');
+
+    expect(res.ok).toBe(false);
+    expect(queue.enqueue).not.toHaveBeenCalled();
+    expect(jobs.transition).not.toHaveBeenCalled();
+  });
+
+  it('acceptResult transitions to DONE and cleans up the workspace', async () => {
+    const { service, jobs, workspace } = setup({ job: { state: 'AWAITING_PR_APPROVAL' } });
+
+    const res = await service.acceptResult('job1', 'the dashboard');
+
+    expect(res.ok).toBe(true);
+    expect(transitionedTo(jobs)).toContain('DONE');
+    expect(workspace.cleanup).toHaveBeenCalledWith('job1');
+  });
+
+  it('acceptResult refuses when not awaiting result approval', async () => {
+    const { service, jobs } = setup({ job: { state: 'IMPLEMENTING' } });
+
+    expect((await service.acceptResult('job1', 'x')).ok).toBe(false);
+    expect(jobs.transition).not.toHaveBeenCalled();
+  });
+
+  it('requestChanges records feedback and restarts IMPLEMENT', async () => {
+    const { service, prisma, jobs, queue } = setup({ job: { state: 'AWAITING_PR_APPROVAL' } });
+
+    const res = await service.requestChanges('job1', 'dashboard', 'fix Y');
+
+    expect(res.ok).toBe(true);
+    expect(prisma.prRevisionFeedback.create).toHaveBeenCalled();
+    expect(transitionedTo(jobs)).toContain('IMPLEMENTING');
+    expect(enqueuedKinds(queue)).toEqual(['IMPLEMENT']);
+  });
+
+  it('setRepo updates the repo and discards the workspace while editable', async () => {
+    const { service, jobs, workspace } = setup({
+      job: { origin: 'DASHBOARD', state: 'AWAITING_PLAN_APPROVAL' },
+    });
+
+    const res = await service.setRepo('job1', 'git@github.com:o/r.git');
+
+    expect(res.ok).toBe(true);
+    expect(jobs.update).toHaveBeenCalledWith('job1', { repoUrl: 'git@github.com:o/r.git' });
+    expect(workspace.cleanup).toHaveBeenCalledWith('job1');
+  });
+
+  it('setRepo refuses once past plan approval', async () => {
+    const { service } = setup({ job: { origin: 'DASHBOARD', state: 'IMPLEMENTING' } });
+
+    expect((await service.setRepo('job1', 'git@h:o/r.git')).ok).toBe(false);
+  });
+
+  it('setRepo refuses on GitHub-origin jobs', async () => {
+    const { service } = setup({ job: { origin: 'GITHUB', state: 'TRIAGED' } });
+
+    expect((await service.setRepo('job1', 'git@h:o/r.git')).ok).toBe(false);
+  });
+
+  it('diff returns the branch diff', async () => {
+    const { service, workspace } = setup({ job: { origin: 'DASHBOARD' } });
+
+    const res = await service.diff('job1');
+
+    expect(workspace.branchDiff).toHaveBeenCalled();
+    expect(res).toEqual({ diff: 'diff --git a/x b/x' });
+  });
+});
+
+describe('OrchestratorService.handlePlan (dashboard origin)', () => {
+  it('skips the GitHub issue comment and posts a plan revision', async () => {
+    const { service, prisma, github, jobs } = setup({
+      job: {
+        origin: 'DASHBOARD',
+        issueNumber: null,
+        installation: null,
+        installationId: null,
+        repoOwner: null,
+        repoName: null,
+        repoFullName: null,
+        repoUrl: null,
+        state: 'PLANNING',
+        branchName: null,
+      },
+    });
+
+    await callPrivate(service, 'handlePlan', 'job1');
+
+    expect(github.createIssueComment).not.toHaveBeenCalled();
+    expect(prisma.planRevision.create).toHaveBeenCalled();
+    expect(transitionedTo(jobs)).toContain('AWAITING_PLAN_APPROVAL');
+  });
+});
+
+describe('OrchestratorService.handleOpenPr (dashboard origin)', () => {
+  it('pushes the branch and awaits result approval without opening a PR', async () => {
+    const { service, workspace, jobs, github } = setup({
+      job: {
+        origin: 'DASHBOARD',
+        repoUrl: 'git@github.com:o/r.git',
+        state: 'OPENING_PR',
+        prNumber: null,
+      },
+    });
+
+    await callPrivate(service, 'handleOpenPr', 'job1');
+
+    expect(workspace.push).toHaveBeenCalled();
+    expect(github.getDefaultBranch).not.toHaveBeenCalled();
+    expect(transitionedTo(jobs)).toContain('AWAITING_PR_APPROVAL');
   });
 });

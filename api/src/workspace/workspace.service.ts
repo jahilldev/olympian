@@ -8,14 +8,17 @@ import { buildVerifySpec, spawnProcess } from '../agent/agent.utility.js';
 import { GithubService } from '../github/github.service.js';
 import { type AttachmentRef } from '../github/github.model.js';
 import {
+  SCRATCH_BASE_BRANCH,
   type DiffSummary,
   type DownloadedAttachment,
+  type RemoteAuth,
   type Workspace,
   type WorkspacePrepareInput,
 } from './workspace.model.js';
 import {
   authenticatedRemoteUrl,
   changedFilesFromStatus,
+  sshGitCommand,
   workspaceDir,
 } from './workspace.utility.js';
 
@@ -37,11 +40,15 @@ export class WorkspaceService {
   async prepare(input: WorkspacePrepareInput): Promise<Workspace> {
     const root = this.config.get('WORKSPACE_ROOT');
     const dir = workspaceDir(root, input.jobId);
-    const token = await this.app.getInstallationToken(input.installationId);
-    const remote = authenticatedRemoteUrl(input.owner, input.repo, token);
+
+    if (input.auth.kind === 'none') {
+      return this.prepareScratch(dir, input.jobId, input.branchName);
+    }
+
+    const { remote, env } = await this.remoteFor(input.auth);
 
     if (existsSync(`${dir}/.git`)) {
-      const git = simpleGit(dir);
+      const git = simpleGit(dir).env(env);
 
       await git.remote(['set-url', 'origin', remote]);
       await git.fetch(['origin']);
@@ -60,11 +67,11 @@ export class WorkspaceService {
 
     await mkdir(root, { recursive: true });
 
-    const git = simpleGit();
+    const git = simpleGit().env(env);
 
     await git.clone(remote, dir, ['--depth', '1', '--no-single-branch']);
 
-    const repoGit = simpleGit(dir);
+    const repoGit = simpleGit(dir).env(env);
 
     await this.configureIdentity(repoGit);
 
@@ -74,11 +81,61 @@ export class WorkspaceService {
 
     await this.writeLocalExcludes(dir);
 
-    this.logger.log(
-      `[job ${input.jobId}] cloned ${input.owner}/${input.repo} -> ${dir} (${input.branchName} from ${base})`,
-    );
+    this.logger.log(`[job ${input.jobId}] cloned -> ${dir} (${input.branchName} from ${base})`);
 
     return { dir, branch: input.branchName, baseBranch: base };
+  }
+
+  /**
+   * Prepares a greenfield (no-repo) workspace: `git init` with an empty initial commit on
+   * a base branch so the job branch has something to diff against. Idempotent across attempts.
+   */
+  private async prepareScratch(dir: string, jobId: string, branchName: string): Promise<Workspace> {
+    if (existsSync(`${dir}/.git`)) {
+      const git = simpleGit(dir);
+
+      await this.configureIdentity(git);
+      await git.checkout(branchName).catch(async () => {
+        await git.checkoutLocalBranch(branchName);
+      });
+      await this.writeLocalExcludes(dir);
+
+      return { dir, branch: branchName, baseBranch: SCRATCH_BASE_BRANCH };
+    }
+
+    await mkdir(dir, { recursive: true });
+
+    const git = simpleGit(dir);
+
+    await git.init();
+    await this.configureIdentity(git);
+    await git.raw(['commit', '--allow-empty', '-m', 'chore: initialise workspace']);
+    await git.raw(['branch', '-M', SCRATCH_BASE_BRANCH]);
+    await git.checkoutLocalBranch(branchName);
+    await this.writeLocalExcludes(dir);
+
+    this.logger.log(`[job ${jobId}] initialised scratch workspace -> ${dir} (${branchName})`);
+
+    return { dir, branch: branchName, baseBranch: SCRATCH_BASE_BRANCH };
+  }
+
+  /** Resolves the remote URL and git env (SSH command) for an authenticated remote. */
+  private async remoteFor(
+    auth: Exclude<RemoteAuth, { kind: 'none' }>,
+  ): Promise<{ remote: string; env: NodeJS.ProcessEnv }> {
+    if (auth.kind === 'ssh') {
+      return {
+        remote: auth.url,
+        env: {
+          ...process.env,
+          GIT_SSH_COMMAND: sshGitCommand(this.config.get('DASHBOARD_SSH_KEY_PATH')),
+        },
+      };
+    }
+
+    const token = await this.app.getInstallationToken(auth.installationId);
+
+    return { remote: authenticatedRemoteUrl(auth.owner, auth.repo, token), env: process.env };
   }
 
   /**
@@ -134,21 +191,41 @@ export class WorkspaceService {
     return (await git.revparse(['HEAD'])).trim();
   }
 
-  /** Push the job branch, refreshing the remote token first (tokens expire ~1h). */
+  /**
+   * Push the job branch. For `github-app` the remote token is refreshed first (tokens
+   * expire ~1h); for `ssh` the configured deploy key is used; for `none` (scratch) there
+   * is no remote, so this is a no-op that just returns the current HEAD sha.
+   */
   async push(input: WorkspacePrepareInput): Promise<string> {
-    const root = this.config.get('WORKSPACE_ROOT');
-    const dir = workspaceDir(root, input.jobId);
+    const dir = workspaceDir(this.config.get('WORKSPACE_ROOT'), input.jobId);
     const git = simpleGit(dir);
-    const token = await this.app.getInstallationToken(input.installationId);
 
-    await git.remote(['set-url', 'origin', authenticatedRemoteUrl(input.owner, input.repo, token)]);
-    await git.push(['-u', 'origin', input.branchName]);
+    if (input.auth.kind === 'none') {
+      return (await git.revparse(['HEAD'])).trim();
+    }
 
-    const sha = (await git.revparse(['HEAD'])).trim();
+    const { remote, env } = await this.remoteFor(input.auth);
+    const g = git.env(env);
+
+    await g.remote(['set-url', 'origin', remote]);
+    await g.push(['-u', 'origin', input.branchName]);
+
+    const sha = (await g.revparse(['HEAD'])).trim();
 
     this.logger.log(`[job ${input.jobId}] pushed ${input.branchName} @ ${sha}`);
 
     return sha;
+  }
+
+  /** Unified diff of the branch vs its base (committed changes) — for the dashboard result view. */
+  async branchDiff(dir: string, baseBranch: string): Promise<string> {
+    const git = simpleGit(dir);
+
+    try {
+      return await git.diff([`${baseBranch}...HEAD`]);
+    } catch {
+      return '';
+    }
   }
 
   /** Files changed on the branch relative to its base (committed changes). */

@@ -6,6 +6,7 @@ export const AGENT_PHASES = [
   'SUMMARY',
   'VERIFY',
   'JUDGE',
+  'CHAT',
 ] as const;
 export type AgentPhase = (typeof AGENT_PHASES)[number];
 
@@ -33,7 +34,10 @@ export interface AgentRunOutputDto {
 export const STDOUT_CAP = 200_000;
 
 export interface AgentRunOptions {
-  jobId: string;
+  /** Owning job, for delivery-pipeline runs. Omitted (with `sessionId` set) for CHAT runs. */
+  jobId?: string;
+  /** Owning chat session, for CHAT-phase runs. Mutually exclusive with `jobId`. */
+  sessionId?: string;
   phase: AgentPhase;
   /** Absolute working directory the agent runs in (its repo worktree). */
   cwd: string;
@@ -55,6 +59,13 @@ export interface AgentRunOptions {
    * complete. Lets the recorded status and metric reflect the true outcome.
    */
   validate?: (stdout: string) => string | null;
+  /**
+   * Invoked with the AgentRun id as soon as the run row is created (before the agent
+   * process finishes). Lets a caller hand the id to a live SSE subscriber while the run
+   * proceeds in the background — used by chat, where the HTTP response returns the runId
+   * immediately.
+   */
+  onStart?: (runId: string) => void;
 }
 
 export interface AgentRunResult {

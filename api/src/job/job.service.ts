@@ -5,6 +5,7 @@ import { MetricsService } from '../metrics/metrics.service.js';
 import {
   type ActiveRunDto,
   type ActiveTaskDto,
+  type CreateDashboardJobInput,
   type CreateJobInput,
   type FeedbackDto,
   type JobDetailDto,
@@ -49,6 +50,25 @@ export class JobService {
 
     this.metrics.recordTransition(null, 'TRIAGED');
     this.logger.log(`Created job ${job.id} for ${fullName}#${input.issueNumber}`);
+
+    return job;
+  }
+
+  /** Create a DASHBOARD-origin job from the UI. GitHub fields stay null. */
+  async createDashboard(input: CreateDashboardJobInput): Promise<Job> {
+    const job = await this.prisma.job.create({
+      data: {
+        origin: 'DASHBOARD',
+        repoUrl: input.repoUrl ?? null,
+        issueTitle: input.title,
+        issueBody: input.requirements,
+        state: 'TRIAGED',
+        transitions: { create: { fromState: null, toState: 'TRIAGED', actor: 'HUMAN' } },
+      },
+    });
+
+    this.metrics.recordTransition(null, 'TRIAGED');
+    this.logger.log(`Created dashboard job ${job.id}: ${input.title}`);
 
     return job;
   }
@@ -155,7 +175,9 @@ export class JobService {
       const activeTask = job.tasks[0] ?? null;
       return {
         id: job.id,
+        origin: job.origin,
         repoFullName: job.repoFullName,
+        repoUrl: job.repoUrl,
         issueNumber: job.issueNumber,
         issueTitle: job.issueTitle,
         state: job.state,
@@ -239,7 +261,9 @@ export class JobService {
 
     return {
       id: job.id,
+      origin: job.origin,
       repoFullName: job.repoFullName,
+      repoUrl: job.repoUrl,
       issueNumber: job.issueNumber,
       issueTitle: job.issueTitle,
       issueBody: job.issueBody,

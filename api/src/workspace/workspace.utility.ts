@@ -10,6 +10,17 @@ export function authenticatedRemoteUrl(owner: string, repo: string, token: strin
   return `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
 }
 
+/**
+ * The `GIT_SSH_COMMAND` for SSH clone/push. Uses the configured deploy key when set and
+ * `StrictHostKeyChecking=accept-new` so a first-contact host is trusted and recorded in
+ * the persistent known_hosts rather than blocking on an interactive prompt.
+ */
+export function sshGitCommand(keyPath?: string): string {
+  const base = 'ssh -o StrictHostKeyChecking=accept-new';
+
+  return keyPath ? `${base} -i ${keyPath} -o IdentitiesOnly=yes` : base;
+}
+
 /** Files touched in the working tree, from a simple-git StatusResult. */
 export function changedFilesFromStatus(status: {
   created: string[];

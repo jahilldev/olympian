@@ -7,5 +7,6 @@ export type AgentPhaseLabel =
   | 'REVISE'
   | 'SUMMARY'
   | 'VERIFY'
-  | 'JUDGE';
+  | 'JUDGE'
+  | 'CHAT';
 export type AgentRunStatusLabel = 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT';

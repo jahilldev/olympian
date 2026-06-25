@@ -9,6 +9,7 @@ import { HealthModule } from './health/health.module.js';
 import { WorkerModule } from './worker/worker.module.js';
 import { WebhookModule } from './webhook/webhook.module.js';
 import { LangfuseModule } from './langfuse/langfuse.module.js';
+import { ChatModule } from './chat/chat.module.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { LangfuseModule } from './langfuse/langfuse.module.js';
     WebhookModule,
     WorkerModule,
     LangfuseModule,
+    ChatModule,
   ],
 })
 export class AppModule {}
