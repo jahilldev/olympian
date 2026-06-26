@@ -54,7 +54,7 @@ export default function RunOutput() {
   if (!meta) {
     return (
       <div class="flex flex-col h-full overflow-hidden">
-        <header class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+        <header class="flex items-center gap-3 px-4 h-14 border-b border-zinc-800 shrink-0">
           <button
             class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
             onClick={() => navigate(`/jobs/${jobId}`)}

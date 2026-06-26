@@ -56,7 +56,7 @@ export default function ChatList() {
 
   return (
     <div class="flex flex-col h-full overflow-hidden">
-      <header class="shrink-0 flex items-center gap-3 px-4 sm:px-6 py-3.5 border-b border-zinc-800">
+      <header class="shrink-0 flex items-center gap-3 px-4 sm:px-6 h-14 border-b border-zinc-800">
         <button
           class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           onClick={() => navigate('/')}

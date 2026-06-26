@@ -216,7 +216,7 @@ export default function JobList() {
   return (
     <div class="flex flex-col h-full">
       {/* Header */}
-      <header class="flex items-center gap-3 px-4 sm:px-6 py-3.5 border-b border-zinc-800 shrink-0">
+      <header class="flex items-center gap-3 px-4 sm:px-6 h-14 border-b border-zinc-800 shrink-0">
         <span class="text-base font-mono font-semibold tracking-tight text-zinc-100">Olympian</span>
         {jobs !== null && (
           <span class="flex items-center gap-1.5 text-xs font-mono text-zinc-500">

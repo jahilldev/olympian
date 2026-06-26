@@ -58,7 +58,7 @@ export default function JudgeOutput() {
 
   return (
     <div class="flex flex-col h-full overflow-hidden">
-      <header class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950">
+      <header class="shrink-0 flex items-center gap-2 px-4 h-14 border-b border-zinc-800 bg-zinc-950">
         <button
           class="shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors text-xs"
           onClick={() => navigate(`/jobs/${jobId}`)}
