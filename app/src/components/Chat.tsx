@@ -221,14 +221,14 @@ export default function Chat() {
             session.messages.map((m) =>
               m.role === 'user' ? (
                 <div key={m.id} class="flex justify-end">
-                  <div class="max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm text-white whitespace-pre-wrap">
+                  <div class="max-w-[85%] rounded-2xl rounded-br-sm border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-100 whitespace-pre-wrap">
                     {m.content}
                   </div>
                 </div>
               ) : (
                 <div key={m.id} class="flex flex-col gap-2">
                   {m.agentRunId && activity[m.agentRunId]?.length ? (
-                    <details open class="space-y-2">
+                    <details class="space-y-2">
                       <summary class="cursor-pointer select-none text-xs text-zinc-500 hover:text-zinc-400">
                         Activity · {activity[m.agentRunId].length} steps
                       </summary>
@@ -297,7 +297,7 @@ export default function Chat() {
           <button
             type="submit"
             disabled={sending || !!activeRunId || input.trim().length === 0}
-            class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+            class="rounded-xl bg-hermes-400 px-4 py-2.5 text-sm font-medium text-zinc-950 hover:bg-hermes-500 disabled:opacity-50 transition-colors"
           >
             Send
           </button>

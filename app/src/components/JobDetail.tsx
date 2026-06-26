@@ -272,7 +272,7 @@ export default function JobDetail() {
                   <button
                     disabled={actionPending}
                     onClick={() => act('approve')}
-                    class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                    class="rounded-lg bg-hermes-400 px-3 py-1.5 text-xs font-medium text-zinc-950 hover:bg-hermes-500 disabled:opacity-50 transition-colors"
                   >
                     {actionPending ? 'Approving…' : 'Approve plan'}
                   </button>
@@ -282,7 +282,7 @@ export default function JobDetail() {
                     <button
                       disabled={actionPending}
                       onClick={() => act('retry')}
-                      class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                      class="rounded-lg bg-hermes-400 px-3 py-1.5 text-xs font-medium text-zinc-950 hover:bg-hermes-500 disabled:opacity-50 transition-colors"
                     >
                       {actionPending ? 'Working…' : 'Retry'}
                     </button>

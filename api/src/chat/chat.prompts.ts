@@ -33,7 +33,7 @@ export function buildChatPrompt(p: {
 export function buildTitlePrompt(firstMessage: string): string {
   return [
     `Generate a short, descriptive title for a chat conversation that opens with the message below.`,
-    `Rules:\n- Output ONLY the title — no quotes, no markdown, no trailing punctuation, no preamble.\n- 3 to 6 words, Title Case.\n- Do NOT use any tools; just reply with the title.`,
+    `Rules:\n- Output ONLY the title — no quotes, no markdown, no trailing punctuation, no preamble.\n- 4 to 8 words, Title Case.\n- Do NOT use any tools; just reply with the title.`,
     `--- FIRST MESSAGE ---\n${firstMessage}\n--- END ---`,
   ].join('\n\n');
 }

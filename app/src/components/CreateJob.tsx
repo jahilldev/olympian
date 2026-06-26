@@ -136,7 +136,7 @@ export default function CreateJob() {
             <button
               type="submit"
               disabled={!canSubmit}
-              class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+              class="rounded-lg bg-hermes-400 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-hermes-500 disabled:opacity-50 transition-colors"
             >
               {submitting ? 'Creating…' : 'Create & plan'}
             </button>

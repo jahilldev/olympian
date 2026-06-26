@@ -68,7 +68,7 @@ export default function ChatList() {
         <button
           disabled={creating}
           onClick={() => void newChat()}
-          class="ml-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+          class="ml-auto rounded-lg bg-hermes-400 px-3 py-1.5 text-xs font-medium text-zinc-950 hover:bg-hermes-500 disabled:opacity-50 transition-colors"
         >
           {creating ? 'Starting…' : 'New chat'}
         </button>
