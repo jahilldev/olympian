@@ -5,6 +5,7 @@ import type { AppConfigService } from '../config/config.service.js';
 import type { HermesAgentService } from '../agent/agent.service.js';
 import type { WorkspaceService } from '../workspace/workspace.service.js';
 import type { LangfuseService } from '../langfuse/langfuse.service.js';
+import { cleanTitle } from './chat.utility.js';
 
 const resolved = (value: unknown) => jest.fn((..._args: unknown[]) => Promise.resolve(value));
 
@@ -31,6 +32,7 @@ function setup(overrides: { session?: Record<string, unknown> | null } = {}) {
     chatMessage: {
       create: resolved(undefined),
       findMany: resolved([{ role: 'user', content: 'hello' }]),
+      count: resolved(1),
     },
     agentEvent: { findMany: resolved([] as unknown[]), createMany: resolved(undefined) },
   };
@@ -130,5 +132,30 @@ describe('ChatService', () => {
     const activity = await service.getActivity('sess1');
 
     expect(activity).toEqual({ 'run-a': [ev] });
+  });
+});
+
+describe('cleanTitle', () => {
+  it('strips quotes, markdown, a Title: prefix and trailing punctuation', () => {
+    expect(cleanTitle('"Refactor the Auth Module."')).toBe('Refactor the Auth Module');
+    expect(cleanTitle('Title: **Dark Mode Toggle**')).toBe('Dark Mode Toggle');
+    expect(cleanTitle('### Fix Flaky Tests')).toBe('Fix Flaky Tests');
+  });
+
+  it('takes the first non-empty line and collapses whitespace', () => {
+    expect(cleanTitle('\n\n  Cache   Invalidation Strategy \nmore prose')).toBe(
+      'Cache Invalidation Strategy',
+    );
+  });
+
+  it('returns empty string when nothing usable remains', () => {
+    expect(cleanTitle('   \n  ')).toBe('');
+  });
+
+  it('caps very long output on a word boundary', () => {
+    const long = `${'word '.repeat(40)}`.trim();
+    const out = cleanTitle(long);
+    expect(out.length).toBeLessThanOrEqual(80);
+    expect(out.endsWith('word')).toBe(true);
   });
 });

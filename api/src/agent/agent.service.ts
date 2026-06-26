@@ -219,7 +219,11 @@ export class HermesAgentService implements OnModuleInit {
       },
     });
 
-    await this.persistEvents(run.id);
+    // Only runs owned by a job or chat session surface their events anywhere; ownerless
+    // utility runs (e.g. TITLE generation) skip persistence to avoid orphan AgentEvent rows.
+    if (opts.jobId || opts.sessionId) {
+      await this.persistEvents(run.id);
+    }
     this.langfuse.complete(run.id);
     this.metrics.recordAgentRun(opts.phase, status, raw.durationMs);
 

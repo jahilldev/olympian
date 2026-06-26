@@ -25,3 +25,15 @@ export function buildChatPrompt(p: {
     `Respond to the latest user message above. Output only your reply in GitHub-flavored Markdown — no preamble, no sign-off.`,
   ].join('\n\n');
 }
+
+/**
+ * Prompt for auto-titling a chat from its first user message. Demands ONLY the title text so
+ * the (tool-less) run's stdout can be used near-verbatim after a light cleanup.
+ */
+export function buildTitlePrompt(firstMessage: string): string {
+  return [
+    `Generate a short, descriptive title for a chat conversation that opens with the message below.`,
+    `Rules:\n- Output ONLY the title — no quotes, no markdown, no trailing punctuation, no preamble.\n- 3 to 6 words, Title Case.\n- Do NOT use any tools; just reply with the title.`,
+    `--- FIRST MESSAGE ---\n${firstMessage}\n--- END ---`,
+  ].join('\n\n');
+}

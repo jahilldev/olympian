@@ -12,8 +12,8 @@ import {
   type ChatSessionDetailDto,
   type ChatSessionSummaryDto,
 } from './chat.model.js';
-import { buildChatPrompt } from './chat.prompts.js';
-import { eventsByRun, toMessageDto } from './chat.utility.js';
+import { buildChatPrompt, buildTitlePrompt } from './chat.prompts.js';
+import { cleanTitle, eventsByRun, toMessageDto } from './chat.utility.js';
 
 /**
  * Owns interactive chat sessions. Reuses HermesAgentService (CHAT phase) and the Langfuse
@@ -131,6 +131,8 @@ export class ChatService {
       throw new NotFoundException(`Chat session ${sessionId} not found`);
     }
 
+    const priorCount = await this.prisma.chatMessage.count({ where: { sessionId } });
+
     await this.prisma.chatMessage.create({ data: { sessionId, role: 'user', content } });
     await this.touch(sessionId);
 
@@ -145,6 +147,11 @@ export class ChatService {
       auth: this.authFor(session),
       branchName: `chat-${sessionId.slice(0, 8)}`,
     });
+
+    // First message of an untitled session → auto-generate a title in the background.
+    if (priorCount === 0 && session.title === DEFAULT_CHAT_TITLE) {
+      void this.generateTitle(sessionId, ws.dir, content);
+    }
 
     const prompt = buildChatPrompt({ repoUrl: session.repoUrl, history });
 
@@ -190,6 +197,42 @@ export class ChatService {
 
       // The run's activity events are persisted centrally by HermesAgentService.run().
       await this.touch(sessionId);
+    } finally {
+      this.release();
+    }
+  }
+
+  /**
+   * Best-effort auto-title from the first user message via a short, tool-less agent run on the
+   * auxiliary model (falling back to the primary when no auxiliary is configured). Runs under the
+   * concurrency semaphore and is unowned (no jobId/sessionId), so it never shows as chat activity
+   * or as the session's active run. A failure or empty result leaves the default title in place.
+   */
+  private async generateTitle(sessionId: string, cwd: string, firstMessage: string): Promise<void> {
+    await this.acquire();
+
+    try {
+      const res = await this.agent.run({
+        phase: 'TITLE',
+        cwd,
+        prompt: buildTitlePrompt(firstMessage),
+        model: this.config.get('HERMES_AUXILIARY_MODEL') || this.config.get('HERMES_PRIMARY_MODEL'),
+        provider:
+          this.config.get('HERMES_AUXILIARY_PROVIDER') ||
+          this.config.get('HERMES_PRIMARY_PROVIDER'),
+      });
+
+      const title = res.status === 'SUCCEEDED' ? cleanTitle(res.stdout) : '';
+
+      // Only overwrite if still the default — a user/explicit title set meanwhile wins.
+      if (title.length > 0) {
+        await this.prisma.chatSession.updateMany({
+          where: { id: sessionId, title: DEFAULT_CHAT_TITLE },
+          data: { title },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`chat title generation failed: ${(e as Error).message}`);
     } finally {
       this.release();
     }

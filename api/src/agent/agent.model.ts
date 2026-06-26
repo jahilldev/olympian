@@ -7,6 +7,7 @@ export const AGENT_PHASES = [
   'VERIFY',
   'JUDGE',
   'CHAT',
+  'TITLE',
 ] as const;
 export type AgentPhase = (typeof AGENT_PHASES)[number];
 
