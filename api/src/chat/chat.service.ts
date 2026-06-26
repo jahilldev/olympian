@@ -63,9 +63,16 @@ export class ChatService {
       throw new NotFoundException(`Chat session ${id} not found`);
     }
 
+    const activeRun = await this.prisma.agentRun.findFirst({
+      where: { sessionId: id, status: 'RUNNING' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
     return {
       ...this.toSummary(session, session.messages.length),
       messages: session.messages.map(toMessageDto),
+      activeRunId: activeRun?.id ?? null,
     };
   }
 

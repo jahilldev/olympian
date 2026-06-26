@@ -26,6 +26,9 @@ export interface ChatSessionSummaryDto {
 
 export interface ChatSessionDetailDto extends ChatSessionSummaryDto {
   messages: ChatMessageDto[];
+  /** A CHAT run still in flight for this session (its assistant message isn't persisted yet),
+   *  so the UI can reattach to its live SSE stream after a reload. null when idle. */
+  activeRunId: string | null;
 }
 
 // --- request DTOs ---

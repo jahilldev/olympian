@@ -67,6 +67,12 @@ export default function Chat() {
     return () => clearInterval(timer);
   }, [refresh, loadActivity, activeRunId]);
 
+  // Reattach to an in-flight run after a reload: the server reports a RUNNING run for the
+  // session (its assistant message isn't persisted yet), so resume streaming it live.
+  useEffect(() => {
+    if (session?.activeRunId) setActiveRunId((cur) => cur ?? session.activeRunId);
+  }, [session?.activeRunId]);
+
   // Live stream the active run's agent activity via the shared SSE pipeline.
   useEffect(() => {
     if (!activeRunId) return;
@@ -191,14 +197,11 @@ export default function Chat() {
               ) : (
                 <div key={m.id} class="flex flex-col gap-2">
                   {m.agentRunId && activity[m.agentRunId]?.length ? (
-                    <details
-                      open
-                      class="rounded-2xl rounded-bl-sm border border-zinc-800 bg-zinc-900/50 px-4 py-2"
-                    >
+                    <details open class="space-y-2">
                       <summary class="cursor-pointer select-none text-xs text-zinc-500 hover:text-zinc-400">
                         Activity · {activity[m.agentRunId].length} steps
                       </summary>
-                      <div class="mt-3 space-y-3 font-mono text-sm">
+                      <div class="space-y-3 font-mono text-sm">
                         {activity[m.agentRunId].map((ev, i) => (
                           <EventCard key={i} event={ev} />
                         ))}
@@ -213,9 +216,9 @@ export default function Chat() {
             )
           )}
 
-          {/* Live activity for the in-flight assistant turn */}
+          {/* Live activity for the in-flight assistant turn — tiles render bare, no bubble. */}
           {activeRunId && (
-            <div class="rounded-2xl rounded-bl-sm bg-zinc-900 border border-zinc-800 px-4 py-3 font-mono text-sm space-y-3">
+            <div class="font-mono text-sm space-y-3">
               <p class="flex items-center gap-2 text-cyan-400 text-xs">
                 <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
                 Hermes is working…
