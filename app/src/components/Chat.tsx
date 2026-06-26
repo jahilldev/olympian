@@ -15,7 +15,15 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [liveEvents, setLiveEvents] = useState<LangfuseEvent[]>([]);
+
+  // Each assistant turn's agent activity (event cards), keyed by runId, so it stays on the
+  // turn instead of vanishing after the reply. Hydrated on load from the server's retained
+  // buffers (GET …/activity) and topped up live as runs complete.
+  const [activity, setActivity] = useState<Record<string, LangfuseEvent[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const sortEvents = (evs: LangfuseEvent[]): LangfuseEvent[] =>
+    [...evs].sort((a, b) => (a.timestamp === b.timestamp ? 0 : a.timestamp < b.timestamp ? -1 : 1));
 
   const refresh = useCallback(async () => {
     try {
@@ -30,37 +38,65 @@ export default function Chat() {
     }
   }, [id]);
 
+  // Hydrate retained per-turn activity (server keeps run buffers ~1h), merging under any
+  // events already captured live this session.
+  const loadActivity = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/chats/${id}/activity`);
+      if (!res.ok) return;
+      const map = (await res.json()) as Record<string, LangfuseEvent[]>;
+      setActivity((prev) => {
+        const next = { ...prev };
+        for (const [runId, evs] of Object.entries(map)) {
+          if (!next[runId]?.length) next[runId] = sortEvents(evs);
+        }
+        return next;
+      });
+    } catch {
+      // non-fatal — activity is decorative
+    }
+  }, [id]);
+
   useEffect(() => {
     void refresh();
+    void loadActivity();
     // Poll while idle so a completed assistant message appears; the SSE stream covers live activity.
     const timer = setInterval(() => {
       if (!activeRunId) void refresh();
     }, 3_000);
     return () => clearInterval(timer);
-  }, [refresh, activeRunId]);
+  }, [refresh, loadActivity, activeRunId]);
 
   // Live stream the active run's agent activity via the shared SSE pipeline.
   useEffect(() => {
     if (!activeRunId) return;
-    const es = new EventSource(`/stream/runs/${activeRunId}`);
+
+    const runId = activeRunId;
+    const es = new EventSource(`/stream/runs/${runId}`);
+
+    // Stash this run's events under its runId so they persist on the assistant message, then
+    // clear the live panel and pull in the now-persisted assistant reply.
+    const finish = () => {
+      es.close();
+      setLiveEvents((curr) => {
+        setActivity((a) => ({ ...a, [runId]: sortEvents(curr) }));
+        return [];
+      });
+      setActiveRunId(null);
+      void refresh();
+    };
+
     es.onmessage = (e) => {
       const payload = JSON.parse(e.data as string) as StreamPayload;
       if (payload.type === 'history') setLiveEvents(payload.events);
       else if (payload.type === 'event') setLiveEvents((prev) => [...prev, payload.event]);
-      else if (payload.type === 'done' || payload.type === 'error') {
-        es.close();
-        setActiveRunId(null);
-        setLiveEvents([]);
-        void refresh();
-      }
+      else if (payload.type === 'done' || payload.type === 'error') finish();
     };
+
     es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) {
-        setActiveRunId(null);
-        setLiveEvents([]);
-        void refresh();
-      }
+      if (es.readyState === EventSource.CLOSED) finish();
     };
+
     return () => es.close();
   }, [activeRunId, refresh]);
 
@@ -92,6 +128,7 @@ export default function Chat() {
       }
       const { runId } = (await res.json()) as { runId: string };
       setInput('');
+      setLiveEvents([]); // don't carry the prior turn's cards into the new run
       await refresh(); // show the just-sent user message
       setActiveRunId(runId);
     } catch {
@@ -105,8 +142,11 @@ export default function Chat() {
     return (
       <div class="flex flex-col items-center justify-center h-full text-zinc-500 gap-3">
         <p class="text-base">Chat not found</p>
-        <button class="text-sm text-indigo-400 hover:text-indigo-300" onClick={() => navigate('/')}>
-          Back to all jobs
+        <button
+          class="text-sm text-indigo-400 hover:text-indigo-300"
+          onClick={() => navigate('/chats')}
+        >
+          Back to chats
         </button>
       </div>
     );
@@ -117,7 +157,7 @@ export default function Chat() {
       <header class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950">
         <button
           class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/chats')}
         >
           ← Back
         </button>
@@ -149,7 +189,22 @@ export default function Chat() {
                   </div>
                 </div>
               ) : (
-                <div key={m.id} class="flex flex-col gap-1">
+                <div key={m.id} class="flex flex-col gap-2">
+                  {m.agentRunId && activity[m.agentRunId]?.length ? (
+                    <details
+                      open
+                      class="rounded-2xl rounded-bl-sm border border-zinc-800 bg-zinc-900/50 px-4 py-2"
+                    >
+                      <summary class="cursor-pointer select-none text-xs text-zinc-500 hover:text-zinc-400">
+                        Activity · {activity[m.agentRunId].length} steps
+                      </summary>
+                      <div class="mt-3 space-y-3 font-mono text-sm">
+                        {activity[m.agentRunId].map((ev, i) => (
+                          <EventCard key={i} event={ev} />
+                        ))}
+                      </div>
+                    </details>
+                  ) : null}
                   <div class="rounded-2xl rounded-bl-sm bg-zinc-900 border border-zinc-800 px-4 py-3">
                     <Markdown text={m.content} />
                   </div>
@@ -173,10 +228,7 @@ export default function Chat() {
         </div>
       </div>
 
-      <form
-        class="shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 py-3"
-        onSubmit={send}
-      >
+      <form class="shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 py-3" onSubmit={send}>
         <div class="max-w-3xl mx-auto flex items-end gap-2">
           <textarea
             value={input}

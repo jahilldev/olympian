@@ -148,27 +148,7 @@ export default function JobList() {
   const [error, setError] = useState(false);
   const [installable, setInstallable] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [creatingChat, setCreatingChat] = useState(false);
   const installPrompt = useRef<BeforeInstallPromptEvent | null>(null);
-
-  async function startChat() {
-    setCreatingChat(true);
-    try {
-      const res = await fetch('/api/chats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (res.ok) {
-        const { id } = (await res.json()) as { id: string };
-        navigate(`/chats/${id}`);
-        return;
-      }
-    } catch {
-      // fall through
-    }
-    setCreatingChat(false);
-  }
 
   useEffect(() => {
     // Don't show the overlay when already running as an installed PWA.
@@ -254,11 +234,10 @@ export default function JobList() {
             Create
           </button>
           <button
-            disabled={creatingChat}
-            onClick={() => void startChat()}
-            class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+            onClick={() => navigate('/chats')}
+            class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
           >
-            {creatingChat ? 'Starting…' : 'Chat'}
+            Chat
           </button>
         </div>
       </header>

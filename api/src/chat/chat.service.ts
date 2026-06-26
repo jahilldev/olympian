@@ -5,6 +5,8 @@ import { AppConfigService } from '../config/config.service.js';
 import { HermesAgentService } from '../agent/agent.service.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { type RemoteAuth } from '../workspace/workspace.model.js';
+import { LangfuseService } from '../langfuse/langfuse.service.js';
+import { type LangfuseEvent } from '../langfuse/langfuse.model.js';
 import {
   DEFAULT_CHAT_TITLE,
   type ChatSessionDetailDto,
@@ -31,6 +33,7 @@ export class ChatService {
     private readonly config: AppConfigService,
     private readonly agent: HermesAgentService,
     private readonly workspace: WorkspaceService,
+    private readonly langfuse: LangfuseService,
   ) {}
 
   async createSession(input: { title?: string; repoUrl?: string }): Promise<{ id: string }> {
@@ -64,6 +67,33 @@ export class ChatService {
       ...this.toSummary(session, session.messages.length),
       messages: session.messages.map(toMessageDto),
     };
+  }
+
+  /**
+   * Retained agent activity (event cards) per assistant turn, keyed by runId — so the UI can
+   * re-render a session's history on reload. Empty for runs whose buffer has since expired.
+   */
+  async getActivity(sessionId: string): Promise<Record<string, LangfuseEvent[]>> {
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { sessionId, role: 'assistant', agentRunId: { not: null } },
+      select: { agentRunId: true },
+    });
+
+    const out: Record<string, LangfuseEvent[]> = {};
+
+    for (const m of messages) {
+      if (!m.agentRunId) {
+        continue;
+      }
+
+      const events = this.langfuse.getBuffer(m.agentRunId);
+
+      if (events.length > 0) {
+        out[m.agentRunId] = events;
+      }
+    }
+
+    return out;
   }
 
   /**

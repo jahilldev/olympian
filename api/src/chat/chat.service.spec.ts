@@ -4,6 +4,7 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfigService } from '../config/config.service.js';
 import type { HermesAgentService } from '../agent/agent.service.js';
 import type { WorkspaceService } from '../workspace/workspace.service.js';
+import type { LangfuseService } from '../langfuse/langfuse.service.js';
 
 const resolved = (value: unknown) => jest.fn((..._args: unknown[]) => Promise.resolve(value));
 
@@ -54,14 +55,17 @@ function setup(overrides: { session?: Record<string, unknown> | null } = {}) {
     prepare: resolved({ dir: '/tmp/chat-sess1', branch: 'chat-sess1', baseBranch: 'main' }),
   };
 
+  const langfuse = { getBuffer: jest.fn((..._args: unknown[]) => [] as unknown[]) };
+
   const service = new ChatService(
     prisma as unknown as PrismaService,
     config as unknown as AppConfigService,
     agent as unknown as HermesAgentService,
     workspace as unknown as WorkspaceService,
+    langfuse as unknown as LangfuseService,
   );
 
-  return { service, prisma, agent, workspace };
+  return { service, prisma, agent, workspace, langfuse };
 }
 
 describe('ChatService', () => {

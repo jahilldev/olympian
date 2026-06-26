@@ -87,8 +87,10 @@ export class LangfuseController {
     }
 
     if (run.status !== 'RUNNING') {
+      // The run finished, but its event buffer is retained for a while — replay it so a
+      // late/reloaded subscriber still sees the activity, then close.
       return of(
-        encode({ type: 'history', events: [] }),
+        encode({ type: 'history', events: this.langfuse.getBuffer(runId) }),
         encode({
           type: 'done',
           status: run.status,

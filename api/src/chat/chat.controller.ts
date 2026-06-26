@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Header, HttpCode, Param, Post } from '@nestjs/common';
+import { type LangfuseEvent } from '../langfuse/langfuse.model.js';
 import { ChatService } from './chat.service.js';
 import {
   CreateChatDto,
@@ -27,6 +28,12 @@ export class ChatController {
   @Header('Cache-Control', 'no-store')
   get(@Param('id') id: string): Promise<ChatSessionDetailDto> {
     return this.chat.getSession(id);
+  }
+
+  @Get(':id/activity')
+  @Header('Cache-Control', 'no-store')
+  activity(@Param('id') id: string): Promise<Record<string, LangfuseEvent[]>> {
+    return this.chat.getActivity(id);
   }
 
   @Post(':id/messages')

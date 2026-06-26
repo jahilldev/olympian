@@ -31,7 +31,7 @@ export function attachInterface(server: ReturnType<typeof express>): void {
       if (/^\/create\/?$/.test(p)) {
         return res.sendFile(join(distPath, 'create', 'index.html'));
       }
-      if (/^\/chats\/[^/]/.test(p)) {
+      if (/^\/chats(\/[^/]+)?\/?$/.test(p)) {
         return res.sendFile(join(distPath, 'chats', 'index.html'));
       }
       if (/^\/jobs\/[^/]+\/runs\/[^/]/.test(p)) {
