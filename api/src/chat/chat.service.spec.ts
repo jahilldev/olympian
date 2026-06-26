@@ -100,4 +100,18 @@ describe('ChatService', () => {
 
     await expect(service.sendMessage('missing', 'hi')).rejects.toThrow();
   });
+
+  it('getActivity returns retained run buffers keyed by runId', async () => {
+    const { service, prisma, langfuse } = setup();
+    prisma.chatMessage.findMany.mockResolvedValue([
+      { agentRunId: 'run-a' },
+      { agentRunId: 'run-b' },
+    ]);
+    const ev = { type: 'event', timestamp: 't', body: {} };
+    langfuse.getBuffer.mockImplementation((runId: unknown) => (runId === 'run-a' ? [ev] : []));
+
+    const activity = await service.getActivity('sess1');
+
+    expect(activity).toEqual({ 'run-a': [ev] }); // run-b has no retained buffer → omitted
+  });
 });
