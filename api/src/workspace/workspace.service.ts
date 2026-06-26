@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, rm, appendFile, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
-import { simpleGit, type SimpleGit } from 'simple-git';
+import { simpleGit, type SimpleGit, type SimpleGitOptions } from 'simple-git';
 import { AppConfigService } from '../config/config.service.js';
 import { buildVerifySpec, spawnProcess } from '../agent/agent.utility.js';
 import { GithubService } from '../github/github.service.js';
@@ -45,10 +45,10 @@ export class WorkspaceService {
       return this.prepareScratch(dir, input.jobId, input.branchName);
     }
 
-    const { remote, env } = await this.remoteFor(input.auth);
+    const { remote, options } = await this.remoteFor(input.auth);
 
     if (existsSync(`${dir}/.git`)) {
-      const git = simpleGit(dir).env(env);
+      const git = simpleGit(dir, options);
 
       await git.remote(['set-url', 'origin', remote]);
       await git.fetch(['origin']);
@@ -67,11 +67,11 @@ export class WorkspaceService {
 
     await mkdir(root, { recursive: true });
 
-    const git = simpleGit().env(env);
+    const git = simpleGit(root, options);
 
     await git.clone(remote, dir, ['--depth', '1', '--no-single-branch']);
 
-    const repoGit = simpleGit(dir).env(env);
+    const repoGit = simpleGit(dir, options);
 
     await this.configureIdentity(repoGit);
 
@@ -119,23 +119,36 @@ export class WorkspaceService {
     return { dir, branch: branchName, baseBranch: SCRATCH_BASE_BRANCH };
   }
 
-  /** Resolves the remote URL and git env (SSH command) for an authenticated remote. */
+  /** Resolves the remote URL and per-instance git options for an authenticated remote. */
   private async remoteFor(
     auth: Exclude<RemoteAuth, { kind: 'none' }>,
-  ): Promise<{ remote: string; env: NodeJS.ProcessEnv }> {
+  ): Promise<{ remote: string; options: Partial<SimpleGitOptions> }> {
     if (auth.kind === 'ssh') {
+      const keyPath = this.config.get('GIT_SSH_KEY_PATH');
+
+      // No dedicated deploy key configured: use the host's own SSH setup (agent,
+      // ~/.ssh/config, default keys) exactly as a normal `git clone git@…` would — no
+      // overrides, no env handed to git.
+      if (!keyPath) {
+        return { remote: auth.url, options: {} };
+      }
+
+      // A deploy key IS configured: point git at it via `-c core.sshCommand` (a git arg,
+      // not the process env — handing the whole env to git makes simple-git's
+      // block-unsafe-operations plugin reject the run when EDITOR/PAGER/etc are set). The
+      // matching `unsafe.allowUnsafeSshCommand` flag permits this operator-set override.
       return {
         remote: auth.url,
-        env: {
-          ...process.env,
-          GIT_SSH_COMMAND: sshGitCommand(this.config.get('DASHBOARD_SSH_KEY_PATH')),
+        options: {
+          config: [`core.sshCommand=${sshGitCommand(keyPath)}`],
+          unsafe: { allowUnsafeSshCommand: true },
         },
       };
     }
 
     const token = await this.app.getInstallationToken(auth.installationId);
 
-    return { remote: authenticatedRemoteUrl(auth.owner, auth.repo, token), env: process.env };
+    return { remote: authenticatedRemoteUrl(auth.owner, auth.repo, token), options: {} };
   }
 
   /**
@@ -204,8 +217,8 @@ export class WorkspaceService {
       return (await git.revparse(['HEAD'])).trim();
     }
 
-    const { remote, env } = await this.remoteFor(input.auth);
-    const g = git.env(env);
+    const { remote, options } = await this.remoteFor(input.auth);
+    const g = simpleGit(dir, options);
 
     await g.remote(['set-url', 'origin', remote]);
     await g.push(['-u', 'origin', input.branchName]);

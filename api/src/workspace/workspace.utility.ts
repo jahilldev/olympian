@@ -11,14 +11,14 @@ export function authenticatedRemoteUrl(owner: string, repo: string, token: strin
 }
 
 /**
- * The `GIT_SSH_COMMAND` for SSH clone/push. Uses the configured deploy key when set and
- * `StrictHostKeyChecking=accept-new` so a first-contact host is trusted and recorded in
- * the persistent known_hosts rather than blocking on an interactive prompt.
+ * The `core.sshCommand` for SSH clone/push when a dedicated deploy key is configured:
+ * use that key (and only that key) so the orchestrator isn't reliant on whatever the host
+ * agent happens to hold. `StrictHostKeyChecking=accept-new` trusts a first-contact host and
+ * records it in the persistent known_hosts rather than blocking on an interactive prompt.
+ * When no key is configured the caller skips this entirely and lets git use the host's SSH.
  */
-export function sshGitCommand(keyPath?: string): string {
-  const base = 'ssh -o StrictHostKeyChecking=accept-new';
-
-  return keyPath ? `${base} -i ${keyPath} -o IdentitiesOnly=yes` : base;
+export function sshGitCommand(keyPath: string): string {
+  return `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`;
 }
 
 /** Files touched in the working tree, from a simple-git StatusResult. */
