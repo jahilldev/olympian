@@ -13,7 +13,7 @@ import {
   type ChatSessionSummaryDto,
 } from './chat.model.js';
 import { buildChatPrompt } from './chat.prompts.js';
-import { eventInsertRows, eventsByRun, toMessageDto } from './chat.utility.js';
+import { eventsByRun, toMessageDto } from './chat.utility.js';
 
 /**
  * Owns interactive chat sessions. Reuses HermesAgentService (CHAT phase) and the Langfuse
@@ -120,7 +120,11 @@ export class ChatService {
    * runId as soon as the run row exists so the UI can open the SSE stream; the assistant
    * message is persisted from the run's output when it completes.
    */
-  async sendMessage(sessionId: string, content: string): Promise<{ runId: string }> {
+  async sendMessage(
+    sessionId: string,
+    content: string,
+    opts: { model?: string; provider?: string } = {},
+  ): Promise<{ runId: string }> {
     const session = await this.prisma.chatSession.findUnique({ where: { id: sessionId } });
 
     if (!session) {
@@ -145,7 +149,7 @@ export class ChatService {
     const prompt = buildChatPrompt({ repoUrl: session.repoUrl, history });
 
     const runId = await new Promise<string>((resolve, reject) => {
-      void this.dispatchRun(sessionId, ws.dir, prompt, resolve).catch((e: unknown) => {
+      void this.dispatchRun(sessionId, ws.dir, prompt, resolve, opts).catch((e: unknown) => {
         this.logger.error(`chat run dispatch failed: ${(e as Error).message}`);
         reject(e instanceof Error ? e : new Error(String(e)));
       });
@@ -160,11 +164,20 @@ export class ChatService {
     cwd: string,
     prompt: string,
     onStart: (runId: string) => void,
+    opts: { model?: string; provider?: string } = {},
   ): Promise<void> {
     await this.acquire();
 
     try {
-      const res = await this.agent.run({ sessionId, phase: 'CHAT', cwd, prompt, onStart });
+      const res = await this.agent.run({
+        sessionId,
+        phase: 'CHAT',
+        cwd,
+        prompt,
+        onStart,
+        model: opts.model,
+        provider: opts.provider,
+      });
 
       const content =
         res.status === 'SUCCEEDED' && res.stdout.trim().length > 0
@@ -175,14 +188,7 @@ export class ChatService {
         data: { sessionId, role: 'assistant', content, agentRunId: res.runId },
       });
 
-      // Persist the run's activity events (full bodies) so the cards survive a restart and
-      // render on any device — not just the tab that watched them stream live.
-      const events = this.langfuse.getBuffer(res.runId);
-
-      if (events.length > 0) {
-        await this.prisma.agentEvent.createMany({ data: eventInsertRows(res.runId, events) });
-      }
-
+      // The run's activity events are persisted centrally by HermesAgentService.run().
       await this.touch(sessionId);
     } finally {
       this.release();

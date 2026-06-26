@@ -50,6 +50,15 @@ export class SendMessageDto {
   @IsString()
   @MinLength(1)
   content!: string;
+
+  /** Optional model/provider override for this turn (from the UI's model selector). */
+  @IsOptional()
+  @IsString()
+  model?: string;
+
+  @IsOptional()
+  @IsString()
+  provider?: string;
 }
 
 /** Default title for a session created with no explicit title. */

@@ -78,3 +78,40 @@ export const envSchema = z.object({
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** A configured model the UI can select (e.g. for chat). Only emitted when its model env is set. */
+export interface ModelInfo {
+  key: string;
+  label: string;
+  model: string;
+  provider: string | null;
+}
+
+/** The configurable model "roles" and the env vars backing each, surfaced as selectable models. */
+export const MODEL_ROLES: { key: string; label: string; model: keyof Env; provider: keyof Env }[] =
+  [
+    {
+      key: 'primary',
+      label: 'Primary',
+      model: 'HERMES_PRIMARY_MODEL',
+      provider: 'HERMES_PRIMARY_PROVIDER',
+    },
+    {
+      key: 'review',
+      label: 'Review',
+      model: 'HERMES_REVIEW_MODEL',
+      provider: 'HERMES_REVIEW_PROVIDER',
+    },
+    {
+      key: 'auxiliary',
+      label: 'Auxiliary',
+      model: 'HERMES_AUXILIARY_MODEL',
+      provider: 'HERMES_AUXILIARY_PROVIDER',
+    },
+    {
+      key: 'judge',
+      label: 'Judge',
+      model: 'HERMES_JUDGE_MODEL',
+      provider: 'HERMES_JUDGE_PROVIDER',
+    },
+  ];

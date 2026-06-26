@@ -14,6 +14,7 @@ import {
 } from './agent.model.js';
 import {
   buildAgentSpec,
+  eventInsertRows,
   spawnProcess,
   prepareHermesMemoryPaths,
   generateHermesConfig,
@@ -218,6 +219,7 @@ export class HermesAgentService implements OnModuleInit {
       },
     });
 
+    await this.persistEvents(run.id);
     this.langfuse.complete(run.id);
     this.metrics.recordAgentRun(opts.phase, status, raw.durationMs);
 
@@ -235,6 +237,23 @@ export class HermesAgentService implements OnModuleInit {
       stderr,
       durationMs: raw.durationMs,
     };
+  }
+
+  /**
+   * Persist the run's activity events (full bodies) to AgentEvent so they survive a restart
+   * and can be re-rendered on any device. Best-effort — a failure here never fails the run.
+   * Reads the retained Langfuse buffer, so call before complete() drops the live subject.
+   */
+  private async persistEvents(runId: string): Promise<void> {
+    try {
+      const events = this.langfuse.getBuffer(runId);
+
+      if (events.length > 0) {
+        await this.prisma.agentEvent.createMany({ data: eventInsertRows(runId, events) });
+      }
+    } catch (e) {
+      this.logger.warn(`failed to persist events for run ${runId}: ${(e as Error).message}`);
+    }
   }
 
   /**

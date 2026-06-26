@@ -39,6 +39,6 @@ export class ChatController {
   @Post(':id/messages')
   @HttpCode(202)
   sendMessage(@Param('id') id: string, @Body() body: SendMessageDto): Promise<{ runId: string }> {
-    return this.chat.sendMessage(id, body.content);
+    return this.chat.sendMessage(id, body.content, { model: body.model, provider: body.provider });
   }
 }

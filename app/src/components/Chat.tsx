@@ -6,6 +6,13 @@ import { shortRepoUrl } from '../utils/job.ts';
 import Markdown from './Markdown.tsx';
 import { EventCard } from './RunOutput/EventCard.tsx';
 
+interface ModelOption {
+  key: string;
+  label: string;
+  model: string;
+  provider: string | null;
+}
+
 export default function Chat() {
   const id = window.location.pathname.split('/')[2] ?? '';
   const [session, setSession] = useState<ChatSessionDetailDto | null>(null);
@@ -15,6 +22,8 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [liveEvents, setLiveEvents] = useState<LangfuseEvent[]>([]);
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [modelKey, setModelKey] = useState('');
 
   // Each assistant turn's agent activity (event cards), keyed by runId, so it stays on the
   // turn instead of vanishing after the reply. Hydrated on load from the server's retained
@@ -66,6 +75,24 @@ export default function Chat() {
     }, 3_000);
     return () => clearInterval(timer);
   }, [refresh, loadActivity, activeRunId]);
+
+  // Load the configured, selectable models once; default to the first (Primary when present).
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/config')
+      .then((r) => (r.ok ? (r.json() as Promise<{ models?: ModelOption[] }>) : Promise.reject()))
+      .then(({ models: list }) => {
+        if (cancelled || !list?.length) return;
+        setModels(list);
+        setModelKey((cur) => cur || list[0].key);
+      })
+      .catch(() => {
+        // no selector when config is unavailable
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Reattach to an in-flight run after a reload: the server reports a RUNNING run for the
   // session (its assistant message isn't persisted yet), so resume streaming it live.
@@ -121,10 +148,14 @@ export default function Chat() {
     setSending(true);
     setError(null);
     try {
+      const chosen = models.find((m) => m.key === modelKey);
       const res = await fetch(`/api/chats/${id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          ...(chosen ? { model: chosen.model, provider: chosen.provider ?? undefined } : {}),
+        }),
       });
       if (!res.ok) {
         const b = (await res.json().catch(() => ({}))) as { message?: string | string[] };
@@ -232,6 +263,22 @@ export default function Chat() {
       </div>
 
       <form class="shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 py-3" onSubmit={send}>
+        {models.length > 0 && (
+          <div class="max-w-3xl mx-auto flex items-center gap-2 pb-2">
+            <label class="text-xs text-zinc-500">Model</label>
+            <select
+              value={modelKey}
+              onChange={(e) => setModelKey((e.target as HTMLSelectElement).value)}
+              class="rounded-lg bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-indigo-600"
+            >
+              {models.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label} · {m.model}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div class="max-w-3xl mx-auto flex items-end gap-2">
           <textarea
             value={input}

@@ -29,17 +29,3 @@ export function eventsByRun(
 
   return out;
 }
-
-/** Maps live Langfuse events to AgentEvent insert rows for a run (full body preserved). */
-export function eventInsertRows(
-  runId: string,
-  events: LangfuseEvent[],
-): { runId: string; seq: number; type: string; timestamp: string; body: string }[] {
-  return events.map((e, i) => ({
-    runId,
-    seq: i,
-    type: e.type,
-    timestamp: e.timestamp,
-    body: JSON.stringify(e.body),
-  }));
-}
