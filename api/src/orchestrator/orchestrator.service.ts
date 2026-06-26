@@ -2,7 +2,7 @@ import { rm, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
-import { type Job, type QueueTask, type RepoInstallation } from '@prisma/client';
+import { type JobRecords, type QueueTask, type RepoInstallation } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/config.service.js';
 import { JobService } from '../job/job.service.js';
@@ -156,7 +156,9 @@ export class OrchestratorService {
     // issue number — so fall back to a prNumber lookup when the issue lookup misses.
     const job =
       (await this.jobs.findByRepoIssue(repoFullName, evt.issueNumber)) ??
-      (await this.prisma.job.findFirst({ where: { repoFullName, prNumber: evt.issueNumber } }));
+      (await this.prisma.jobRecords.findFirst({
+        where: { repoFullName, prNumber: evt.issueNumber },
+      }));
 
     if (!job) {
       return;
@@ -183,7 +185,7 @@ export class OrchestratorService {
           orderBy: { createdAt: 'desc' },
           select: { attempts: true, maxAttempts: true, lastError: true },
         }),
-        this.prisma.pullRequestRef.findUnique({
+        this.prisma.pullRequest.findUnique({
           where: { jobId: job.id },
           select: { prNumber: true },
         }),
@@ -282,7 +284,7 @@ export class OrchestratorService {
         ? `${command.text}${strippedBody ? `\n\n${strippedBody}` : ''}`
         : strippedBody || evt.body;
 
-      await this.prisma.prRevisionFeedback.create({
+      await this.prisma.pullRequestFeedback.create({
         data: { jobId: job.id, author: evt.author, body: feedbackBody },
       });
 
@@ -351,7 +353,7 @@ export class OrchestratorService {
 
     const repoFullName = `${evt.owner}/${evt.repo}`;
 
-    const job = await this.prisma.job.findFirst({
+    const job = await this.prisma.jobRecords.findFirst({
       where: { repoFullName, prNumber: evt.prNumber },
     });
 
@@ -377,7 +379,7 @@ export class OrchestratorService {
         return;
       }
 
-      await this.prisma.pullRequestRef.updateMany({
+      await this.prisma.pullRequest.updateMany({
         where: { jobId: job.id },
         data: { state: 'open' },
       });
@@ -397,7 +399,7 @@ export class OrchestratorService {
     if (evt.state === 'changes_requested' || evt.state === 'commented') {
       // Always record the feedback so it's never lost, even mid-cycle. The implement/revise
       // stages pick up PR feedback created since the last implement run.
-      await this.prisma.prRevisionFeedback.create({
+      await this.prisma.pullRequestFeedback.create({
         data: { jobId: job.id, author: evt.author, body: evt.body },
       });
 
@@ -437,7 +439,7 @@ export class OrchestratorService {
 
     const repoFullName = `${evt.owner}/${evt.repo}`;
 
-    const job = await this.prisma.job.findFirst({
+    const job = await this.prisma.jobRecords.findFirst({
       where: { repoFullName, prNumber: evt.prNumber },
     });
 
@@ -459,7 +461,7 @@ export class OrchestratorService {
       return;
     }
 
-    await this.prisma.prRevisionFeedback.create({
+    await this.prisma.pullRequestFeedback.create({
       data: { jobId: job.id, author: evt.author, body: evt.body, path: evt.path, line: evt.line },
     });
   }
@@ -690,7 +692,7 @@ export class OrchestratorService {
       return { ok: false, reason: `job is ${job.state}, not awaiting result approval` };
     }
 
-    await this.prisma.prRevisionFeedback.create({ data: { jobId, author: by, body } });
+    await this.prisma.pullRequestFeedback.create({ data: { jobId, author: by, body } });
 
     await this.jobs.transition(jobId, 'IMPLEMENTING', {
       reason: `changes requested by ${by}`,
@@ -949,7 +951,7 @@ export class OrchestratorService {
     // "request changes" stores feedback without a PR number. Older GitHub jobs with no PR
     // yet have nothing to fold in.
     if (job.prNumber || job.origin === 'DASHBOARD') {
-      const prRevisions = await this.prisma.prRevisionFeedback.findMany({
+      const prRevisions = await this.prisma.pullRequestFeedback.findMany({
         where: { jobId },
         orderBy: { createdAt: 'asc' },
       });
@@ -1039,7 +1041,7 @@ export class OrchestratorService {
   }
 
   private async runWithCompletionLoop(p: {
-    job: Job;
+    job: JobRecords;
     auth: RemoteAuth;
     phase: 'IMPLEMENT' | 'REVISE';
     ws: { dir: string; branch: string; baseBranch: string };
@@ -1263,7 +1265,7 @@ export class OrchestratorService {
         take: 2,
         select: { issues: true },
       }),
-      this.prisma.prRevisionFeedback.findMany({
+      this.prisma.pullRequestFeedback.findMany({
         where: {
           jobId,
           ...(lastImplementRun ? { createdAt: { gt: lastImplementRun.createdAt } } : {}),
@@ -1408,7 +1410,7 @@ export class OrchestratorService {
       select: { createdAt: true },
     });
 
-    const prFeedback = await this.prisma.prRevisionFeedback.findMany({
+    const prFeedback = await this.prisma.pullRequestFeedback.findMany({
       where: {
         jobId,
         ...(lastImplementRunForReview
@@ -1576,7 +1578,7 @@ export class OrchestratorService {
       select: { createdAt: true },
     });
 
-    const unaddressedFeedback = await this.prisma.prRevisionFeedback.count({
+    const unaddressedFeedback = await this.prisma.pullRequestFeedback.count({
       where: {
         jobId,
         ...(lastWorkRun ? { createdAt: { gt: lastWorkRun.createdAt } } : {}),
@@ -1681,7 +1683,7 @@ export class OrchestratorService {
         body,
       });
 
-      await this.prisma.pullRequestRef.create({
+      await this.prisma.pullRequest.create({
         data: {
           jobId,
           prNumber: pr.number,
@@ -1700,7 +1702,7 @@ export class OrchestratorService {
         `Opened draft PR #${pr.number} for review: ${pr.url}`,
       );
     } else {
-      await this.prisma.pullRequestRef.updateMany({ where: { jobId }, data: { headSha } });
+      await this.prisma.pullRequest.updateMany({ where: { jobId }, data: { headSha } });
 
       await this.safeComment(
         ref,
@@ -1719,8 +1721,8 @@ export class OrchestratorService {
 
   private async context(
     jobId: string,
-  ): Promise<{ job: Job; installation: RepoInstallation | null; ref: RepoRef | null }> {
-    const job = await this.prisma.job.findUnique({
+  ): Promise<{ job: JobRecords; installation: RepoInstallation | null; ref: RepoRef | null }> {
+    const job = await this.prisma.jobRecords.findUnique({
       where: { id: jobId },
       include: { installation: true },
     });
@@ -1733,7 +1735,7 @@ export class OrchestratorService {
   }
 
   /** RepoRef for GitHub-origin jobs; null for dashboard jobs (no installation to act through). */
-  private refFor(job: Job, installation: RepoInstallation | null): RepoRef | null {
+  private refFor(job: JobRecords, installation: RepoInstallation | null): RepoRef | null {
     if (!installation || !job.repoOwner || !job.repoName) {
       return null;
     }
@@ -1750,7 +1752,7 @@ export class OrchestratorService {
    * App installation id is the BigInt on the related RepoInstallation — NOT `Job.installationId`,
    * which is the cuid FK to that row — so the installation record must be passed in.
    */
-  private remoteAuthFor(job: Job, installation: RepoInstallation | null): RemoteAuth {
+  private remoteAuthFor(job: JobRecords, installation: RepoInstallation | null): RemoteAuth {
     if (job.origin === 'DASHBOARD') {
       return job.repoUrl ? { kind: 'ssh', url: job.repoUrl } : { kind: 'none' };
     }
@@ -1768,7 +1770,7 @@ export class OrchestratorService {
   }
 
   /** Branch name for a job — GitHub jobs key off the issue number, dashboard jobs off the id. */
-  private branchFor(job: Job): string {
+  private branchFor(job: JobRecords): string {
     if (job.branchName) {
       return job.branchName;
     }
@@ -1781,7 +1783,7 @@ export class OrchestratorService {
   }
 
   /** Human/agent-facing repo label for prompts — falls back gracefully for dashboard jobs. */
-  private repoLabel(job: Job): string {
+  private repoLabel(job: JobRecords): string {
     return job.repoFullName ?? job.repoUrl ?? 'the working repository';
   }
 
@@ -1790,7 +1792,7 @@ export class OrchestratorService {
    * during the implement/revise loop. A push failure is non-fatal — it's logged and the
    * stage continues; the branch is pushed for real (and gated) at OPEN_PR.
    */
-  private async pushBranch(job: Job, auth: RemoteAuth, branchName: string): Promise<void> {
+  private async pushBranch(job: JobRecords, auth: RemoteAuth, branchName: string): Promise<void> {
     try {
       const headSha = await this.workspace.push({
         jobId: job.id,
@@ -1829,7 +1831,7 @@ export class OrchestratorService {
    * re-triggers discovery — so a greenfield project that adds a test runner mid-job is
    * picked up on a later cycle rather than running ungated forever.
    */
-  private async verifyCommandFor(job: Job, dir: string): Promise<string | null> {
+  private async verifyCommandFor(job: JobRecords, dir: string): Promise<string | null> {
     if (job.verifyCommand && job.verifyCommand.trim() !== '') {
       return job.verifyCommand;
     }

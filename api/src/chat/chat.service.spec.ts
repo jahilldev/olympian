@@ -32,6 +32,7 @@ function setup(overrides: { session?: Record<string, unknown> | null } = {}) {
       create: resolved(undefined),
       findMany: resolved([{ role: 'user', content: 'hello' }]),
     },
+    agentEvent: { findMany: resolved([] as unknown[]), createMany: resolved(undefined) },
   };
 
   const config = { get: jest.fn((k: string) => (k === 'WORKER_CONCURRENCY' ? 2 : undefined)) };
@@ -101,17 +102,33 @@ describe('ChatService', () => {
     await expect(service.sendMessage('missing', 'hi')).rejects.toThrow();
   });
 
-  it('getActivity returns retained run buffers keyed by runId', async () => {
-    const { service, prisma, langfuse } = setup();
-    prisma.chatMessage.findMany.mockResolvedValue([
-      { agentRunId: 'run-a' },
-      { agentRunId: 'run-b' },
+  it('getActivity rebuilds events from the persisted AgentEvent rows', async () => {
+    const { service, prisma } = setup();
+    prisma.chatMessage.findMany.mockResolvedValue([{ agentRunId: 'run-a' }]);
+    prisma.agentEvent.findMany.mockResolvedValue([
+      { runId: 'run-a', type: 'event', timestamp: 't1', body: '{"thinking":"hmm"}' },
+      { runId: 'run-a', type: 'event', timestamp: 't2', body: '{"output":"done"}' },
     ]);
+
+    const activity = await service.getActivity('sess1');
+
+    expect(activity).toEqual({
+      'run-a': [
+        { type: 'event', timestamp: 't1', body: { thinking: 'hmm' } },
+        { type: 'event', timestamp: 't2', body: { output: 'done' } },
+      ],
+    });
+  });
+
+  it('getActivity falls back to the live buffer when a run has no persisted rows', async () => {
+    const { service, prisma, langfuse } = setup();
+    prisma.chatMessage.findMany.mockResolvedValue([{ agentRunId: 'run-a' }]);
+    prisma.agentEvent.findMany.mockResolvedValue([]);
     const ev = { type: 'event', timestamp: 't', body: {} };
     langfuse.getBuffer.mockImplementation((runId: unknown) => (runId === 'run-a' ? [ev] : []));
 
     const activity = await service.getActivity('sess1');
 
-    expect(activity).toEqual({ 'run-a': [ev] }); // run-b has no retained buffer → omitted
+    expect(activity).toEqual({ 'run-a': [ev] });
   });
 });

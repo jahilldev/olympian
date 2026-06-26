@@ -13,7 +13,7 @@ import {
   type ChatSessionSummaryDto,
 } from './chat.model.js';
 import { buildChatPrompt } from './chat.prompts.js';
-import { toMessageDto } from './chat.utility.js';
+import { eventInsertRows, eventsByRun, toMessageDto } from './chat.utility.js';
 
 /**
  * Owns interactive chat sessions. Reuses HermesAgentService (CHAT phase) and the Langfuse
@@ -86,17 +86,29 @@ export class ChatService {
       select: { agentRunId: true },
     });
 
-    const out: Record<string, LangfuseEvent[]> = {};
+    const runIds = messages.map((m) => m.agentRunId).filter((r): r is string => !!r);
 
-    for (const m of messages) {
-      if (!m.agentRunId) {
-        continue;
-      }
+    if (runIds.length === 0) {
+      return {};
+    }
 
-      const events = this.langfuse.getBuffer(m.agentRunId);
+    // Durable source: events persisted to AgentEvent when each run completed.
+    const rows = await this.prisma.agentEvent.findMany({
+      where: { runId: { in: runIds } },
+      orderBy: [{ runId: 'asc' }, { seq: 'asc' }],
+      select: { runId: true, type: true, timestamp: true, body: true },
+    });
 
-      if (events.length > 0) {
-        out[m.agentRunId] = events;
+    const out = eventsByRun(rows);
+
+    // Fall back to the live in-memory buffer for any run not yet persisted (e.g. a run that
+    // completed in this same process before its rows were written, or pre-migration sessions).
+    for (const runId of runIds) {
+      if (!out[runId]?.length) {
+        const buffered = this.langfuse.getBuffer(runId);
+        if (buffered.length > 0) {
+          out[runId] = buffered;
+        }
       }
     }
 
@@ -162,6 +174,14 @@ export class ChatService {
       await this.prisma.chatMessage.create({
         data: { sessionId, role: 'assistant', content, agentRunId: res.runId },
       });
+
+      // Persist the run's activity events (full bodies) so the cards survive a restart and
+      // render on any device — not just the tab that watched them stream live.
+      const events = this.langfuse.getBuffer(res.runId);
+
+      if (events.length > 0) {
+        await this.prisma.agentEvent.createMany({ data: eventInsertRows(res.runId, events) });
+      }
 
       await this.touch(sessionId);
     } finally {

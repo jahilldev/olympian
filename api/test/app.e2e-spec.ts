@@ -185,7 +185,7 @@ describe('Hermes orchestration pipeline (e2e)', () => {
 
   const jobState = async () =>
     (
-      await prisma.job.findUnique({
+      await prisma.jobRecords.findUnique({
         where: { repoFullName_issueNumber: { repoFullName: 'acme/widgets', issueNumber: 1 } },
       })
     )?.state;
