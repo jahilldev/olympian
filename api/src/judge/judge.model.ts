@@ -23,7 +23,8 @@ export interface JudgeAssessInput extends JudgePromptContext {
 export interface JudgeVerdict {
   /** True when every part of the goal is evidenced in the committed changes (or genuinely blocked). */
   passed: boolean;
-  /** When not passed, a specific, actionable list of what remains — fed verbatim to the next agent. */
+  /** When not passed, a specific, actionable list of what remains — fed to the next agent (with its
+   * heading hierarchy re-leveled to nest cleanly under the prompt). Stored verbatim for humans. */
   critique: string;
 }
 

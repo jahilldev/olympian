@@ -21,6 +21,65 @@ export function parseJudgeVerdict(stdout: string): JudgeVerdict | null {
   return { passed, critique: extractCritique(stdout) };
 }
 
+const HEADING_RE = /^[ \t]*(#{1,6})[ \t]+(.+?)[ \t]*#*$/;
+
+/**
+ * Re-bases the headings in the judge's freeform critique so the shallowest sits at `base` —
+ * keeping the critique's own relative hierarchy but nesting it cleanly beneath the surrounding
+ * prompt sections instead of colliding with them. Headings inside fenced code blocks are left
+ * untouched. Mirrors the persist_state plugin's _relevel_headings so injected agent text behaves
+ * consistently across the system. Returns the text unchanged when it has no headings.
+ */
+export function relevelCritique(text: string, base = 3): string {
+  const lines = text.split('\n');
+
+  const levels: number[] = [];
+  let inFence = false;
+  for (const line of lines) {
+    const s = line.trimStart();
+    if (s.startsWith('```') || s.startsWith('~~~')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      continue;
+    }
+    const m = HEADING_RE.exec(line);
+    if (m) {
+      levels.push(m[1].length);
+    }
+  }
+
+  if (levels.length === 0) {
+    return text;
+  }
+
+  const shift = base - Math.min(...levels);
+  if (shift === 0) {
+    return text;
+  }
+
+  inFence = false;
+  return lines
+    .map((line) => {
+      const s = line.trimStart();
+      if (s.startsWith('```') || s.startsWith('~~~')) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) {
+        return line;
+      }
+      const m = HEADING_RE.exec(line);
+      if (!m) {
+        return line;
+      }
+      const level = Math.max(1, Math.min(6, m[1].length + shift));
+      return `${'#'.repeat(level)} ${m[2].trim()}`;
+    })
+    .join('\n');
+}
+
 /**
  * The critique is everything after the JSON verdict block. We strip the fenced ```json {...} ```
  * block (or a bare {...} object as a fallback) and an optional leading "Critique" heading,

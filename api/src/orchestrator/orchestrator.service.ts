@@ -27,6 +27,7 @@ import { buildVerifyPrompt } from '../verify/verify.prompts.js';
 import { parseVerifyCommand } from '../verify/verify.utility.js';
 import { VerifyService } from '../verify/verify.service.js';
 import { JudgeService } from '../judge/judge.service.js';
+import { relevelCritique } from '../judge/judge.utility.js';
 import { buildSummaryPrompt } from '../summary/summary.prompts.js';
 import { buildPrBody } from '../summary/summary.utility.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
@@ -1129,7 +1130,9 @@ export class OrchestratorService {
         break;
       }
 
-      critique = verdict.critique;
+      // Re-level the judge's critique headings so they nest under the next prompt's sections
+      // instead of colliding with them; the verbatim critique stays in the run's stdout.
+      critique = relevelCritique(verdict.critique);
 
       this.logger.log(
         `[job ${p.job.id}] ${p.phase} judged incomplete (attempt ${attempt}); continuing with judge critique`,

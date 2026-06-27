@@ -1,4 +1,4 @@
-import { parseJudgeVerdict } from './judge.utility.js';
+import { parseJudgeVerdict, relevelCritique } from './judge.utility.js';
 
 describe('parseJudgeVerdict', () => {
   it('parses a passed verdict (JSON block only)', () => {
@@ -47,5 +47,34 @@ describe('parseJudgeVerdict', () => {
     expect(parseJudgeVerdict('```json\n{"foo": 1}\n```')).toBeNull();
     expect(parseJudgeVerdict('{"passed":"yes"}')).toBeNull();
     expect(parseJudgeVerdict('no verdict here')).toBeNull();
+  });
+});
+
+describe('relevelCritique', () => {
+  it('shifts headings so the shallowest sits at the base, preserving relative depth', () => {
+    expect(relevelCritique('## Tests\nbody\n### Edge cases\nmore', 3)).toBe(
+      '### Tests\nbody\n#### Edge cases\nmore',
+    );
+  });
+
+  it('leaves headings inside fenced code blocks untouched', () => {
+    const input = '## Fix\n```sh\n# this is a shell comment, not a heading\n```\n### Then';
+    expect(relevelCritique(input, 3)).toBe(
+      '### Fix\n```sh\n# this is a shell comment, not a heading\n```\n#### Then',
+    );
+  });
+
+  it('returns the text unchanged when it has no headings', () => {
+    const input = '- item one\n- item two\n```ts\nconst x = 1;\n```';
+    expect(relevelCritique(input, 3)).toBe(input);
+  });
+
+  it('is a no-op when the shallowest heading is already at the base', () => {
+    const input = '### Already\n#### Deeper';
+    expect(relevelCritique(input, 3)).toBe(input);
+  });
+
+  it('clamps shifted levels at h6', () => {
+    expect(relevelCritique('##### Deep\n###### Deeper', 3)).toBe('### Deep\n#### Deeper');
   });
 });

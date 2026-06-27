@@ -20,7 +20,7 @@ export function buildJudgePrompt(ctx: JudgePromptContext): string {
 
 ## Critique
 
-Under that heading, if not passed, write a concise, specific, actionable checklist of exactly what still needs doing — name files, functions, and the concrete remaining steps. This is plain markdown, so code fences, quotes and lists are all fine and need no escaping; it is handed verbatim to the next agent as its to-do list. If passed, instead write a short summary of what you found. Keep the JSON block exactly as shown — \`passed\` is the only field, and the critique never goes inside it.`,
+Under that heading, if not passed, write a concise, specific, actionable checklist of exactly what still needs doing — name files, functions, and the concrete remaining steps. This is plain markdown handed to the next agent as its to-do list, so code fences, quotes and lists are all fine and need no escaping (the verdict above is the only JSON). Use nested headings/sub-bullets freely to group the work — the orchestrator re-levels your heading depths to fit the next prompt, so just keep the structure internally consistent. If passed, instead write a short summary of what you found. Keep the JSON block exactly as shown — \`passed\` is the only field, and the critique never goes inside it.`,
   ]
     .filter(Boolean)
     .join('\n\n');
