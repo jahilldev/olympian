@@ -53,6 +53,11 @@ export const envSchema = z.object({
   // anyway. 0 disables the judge loop entirely.
   MAX_COMPLETION_RETRIES: intFromString(2),
   MAX_REVIEW_PASSES: intFromString(5),
+  // Soft cap on lines returned to the IMPLEMENT/REVISE *primary* from a single file read; over
+  // this, the read is truncated with a "delegate the survey" note (sub-agents are uncapped). Keeps
+  // the orchestrator from bloating its context by reading large files itself. Forwarded into the
+  // agent container and read by the worker_guard plugin.
+  PRIMARY_READ_MAX_LINES: intFromString(300),
   COMMAND_PREFIX: z.string().default('/hermes'),
 
   // queue / worker

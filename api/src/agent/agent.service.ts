@@ -170,6 +170,8 @@ export class HermesAgentService implements OnModuleInit {
     // merged into every span's resource, making session.id=<runId> visible in
     // the binary protobuf payload without requiring any agent-side changes.
     const sessionAttr = `session.id=${run.id}`;
+    // Read by the worker_guard plugin to cap the IMPLEMENT/REVISE primary's per-read line count.
+    const primaryReadMaxLines = String(this.config.get('PRIMARY_READ_MAX_LINES'));
     const imageArg = this.config.get('DOCKER_AGENT_IMAGE');
     const imageIdx = spec.args.indexOf(imageArg);
 
@@ -180,12 +182,14 @@ export class HermesAgentService implements OnModuleInit {
       // .olympian/PROGRESS.md for IMPLEMENT/REVISE and never lets a REVIEW/VERIFY/JUDGE agent
       // (which share the same workspace) write over the working memory.
       spec.args.splice(imageIdx, 0, '--env', `OLYMPIAN_PHASE=${opts.phase}`);
+      spec.args.splice(imageIdx, 0, '--env', `PRIMARY_READ_MAX_LINES=${primaryReadMaxLines}`);
     } else if (spec.env) {
       const env = spec.env as Record<string, string>;
       const existing = env.OTEL_RESOURCE_ATTRIBUTES;
 
       env.OTEL_RESOURCE_ATTRIBUTES = existing ? `${existing},${sessionAttr}` : sessionAttr;
       env.OLYMPIAN_PHASE = opts.phase;
+      env.PRIMARY_READ_MAX_LINES = primaryReadMaxLines;
     }
 
     this.logger.log(`[job ${opts.jobId}] agent ${opts.phase} starting: ${commandLine}`);

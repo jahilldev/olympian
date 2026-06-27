@@ -16,6 +16,7 @@ function relativeTime(iso: string): string {
 export default function ChatList() {
   const [sessions, setSessions] = useState<ChatSessionSummaryDto[] | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +55,21 @@ export default function ChatList() {
     setCreating(false);
   }
 
+  async function deleteChat(id: string) {
+    if (!confirm('Delete this chat and all of its messages? This cannot be undone.')) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSessions((prev) => prev?.filter((s) => s.id !== id) ?? prev);
+      }
+    } catch {
+      // leave the row in place; the next poll will reconcile
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div class="flex flex-col h-full overflow-hidden">
       <header class="shrink-0 flex items-center gap-3 px-4 sm:px-6 h-14 border-b border-zinc-800">
@@ -85,35 +101,62 @@ export default function ChatList() {
           </p>
         ) : (
           sessions.map((s) => (
-            <button
+            <div
               key={s.id}
-              onClick={() => navigate(`/chats/${s.id}`)}
-              class="w-full text-left border-b border-zinc-800/60 px-4 sm:px-6 py-4 hover:bg-zinc-900/60 transition-colors flex items-center gap-3"
+              class="group border-b border-zinc-800/60 hover:bg-zinc-900/60 transition-colors flex items-center"
             >
-              <div class="flex-1 min-w-0 space-y-1">
-                <p class="text-sm font-medium text-zinc-100 truncate">{s.title}</p>
-                <div class="flex items-center gap-2 text-xs text-zinc-500">
-                  <span>
-                    {s.messageCount} {s.messageCount === 1 ? 'message' : 'messages'}
-                  </span>
-                  {s.repoUrl && (
-                    <span class="font-mono text-zinc-600 truncate">{shortRepoUrl(s.repoUrl)}</span>
-                  )}
-                  <span class="ml-auto whitespace-nowrap">{relativeTime(s.updatedAt)}</span>
-                </div>
-              </div>
-              <svg
-                class="w-4 h-4 text-zinc-700 shrink-0"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+              <button
+                onClick={() => navigate(`/chats/${s.id}`)}
+                class="flex-1 min-w-0 text-left pl-4 sm:pl-6 py-4 flex items-center gap-3"
               >
-                <path d="M6 4l4 4-4 4" />
-              </svg>
-            </button>
+                <div class="flex-1 min-w-0 space-y-1">
+                  <p class="text-sm font-medium text-zinc-100 truncate">{s.title}</p>
+                  <div class="flex items-center gap-2 text-xs text-zinc-500">
+                    <span>
+                      {s.messageCount} {s.messageCount === 1 ? 'message' : 'messages'}
+                    </span>
+                    {s.repoUrl && (
+                      <span class="font-mono text-zinc-600 truncate">{shortRepoUrl(s.repoUrl)}</span>
+                    )}
+                    <span class="ml-auto whitespace-nowrap">{relativeTime(s.updatedAt)}</span>
+                  </div>
+                </div>
+                <svg
+                  class="w-4 h-4 text-zinc-700 shrink-0"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M6 4l4 4-4 4" />
+                </svg>
+              </button>
+              <button
+                disabled={deletingId === s.id}
+                onClick={() => void deleteChat(s.id)}
+                aria-label="Delete chat"
+                title="Delete chat"
+                class="shrink-0 self-stretch px-3 sm:px-4 text-zinc-600 hover:text-red-400 disabled:opacity-40 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity"
+              >
+                {deletingId === s.id ? (
+                  <span class="block w-4 h-4 border-2 border-zinc-700 border-t-red-400 rounded-full animate-spin" />
+                ) : (
+                  <svg
+                    class="w-4 h-4"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M2.5 4h11M6 4V2.5h4V4M5 4l.5 9a1 1 0 001 1h3a1 1 0 001-1l.5-9M6.5 7v4M9.5 7v4" />
+                  </svg>
+                )}
+              </button>
+            </div>
           ))
         )}
       </div>

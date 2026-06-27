@@ -53,6 +53,23 @@ export class ChatService {
     return sessions.map((s) => this.toSummary(s, s._count.messages));
   }
 
+  /**
+   * Permanently remove a session and everything it owns. The schema cascades the delete to the
+   * session's messages, agent runs, and their events, so a single delete is sufficient.
+   */
+  async deleteSession(id: string): Promise<void> {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Chat session ${id} not found`);
+    }
+
+    await this.prisma.chatSession.delete({ where: { id } });
+  }
+
   async getSession(id: string): Promise<ChatSessionDetailDto> {
     const session = await this.prisma.chatSession.findUnique({
       where: { id },

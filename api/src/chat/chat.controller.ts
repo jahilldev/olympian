@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, Post } from '@nestjs/common';
 import { type LangfuseEvent } from '../langfuse/langfuse.model.js';
 import { ChatService } from './chat.service.js';
 import {
@@ -40,5 +40,11 @@ export class ChatController {
   @HttpCode(202)
   sendMessage(@Param('id') id: string, @Body() body: SendMessageDto): Promise<{ runId: string }> {
     return this.chat.sendMessage(id, body.content, { model: body.model, provider: body.provider });
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(@Param('id') id: string): Promise<void> {
+    await this.chat.deleteSession(id);
   }
 }
