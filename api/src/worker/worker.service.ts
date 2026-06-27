@@ -33,13 +33,18 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     if (!this.config.get('WORKER_ENABLED')) {
       this.logger.warn('Worker disabled (WORKER_ENABLED=false)');
+
       return;
     }
-    this.agent.killOrphanedContainers();
+    // Kill leftover agent containers BEFORE reclaiming tasks, so a re-run can't race a still-alive
+    // orphan from the dead process in the same workspace.
+    await this.agent.killOrphanedContainers();
     await this.queue.reclaimOrphaned();
+
     this.logger.log(
       `Worker ${WORKER_ID} starting (concurrency ${this.config.get('WORKER_CONCURRENCY')})`,
     );
+
     void this.loop();
   }
 
@@ -54,6 +59,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     if (this.stopped) {
       return;
     }
+
     try {
       await this.tick();
     } catch (e) {
@@ -67,7 +73,9 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
 
   private async tick(): Promise<void> {
     await this.refreshMetrics();
+
     const exhausted = await this.queue.expireExhaustedStale();
+
     for (const task of exhausted) {
       await this.orchestrator
         .onTaskExhausted(task.jobId, task.lastError ?? 'stale lock with no retries remaining')
@@ -75,13 +83,18 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
           this.logger.error(`failed to escalate exhausted stale task: ${(err as Error).message}`),
         );
     }
+
     const capacity = this.config.get('WORKER_CONCURRENCY') - this.inflight;
+
     if (capacity <= 0) {
       return;
     }
+
     const tasks = await this.queue.claimBatch(WORKER_ID, capacity);
+
     for (const task of tasks) {
       this.inflight += 1;
+
       void this.process(task).finally(() => {
         this.inflight -= 1;
       });
@@ -90,17 +103,21 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
 
   private async process(task: QueueTask): Promise<void> {
     this.logger.log(`Processing task ${task.id} (${task.kind}) for job ${task.jobId}`);
+
     const heartbeatMs = Math.floor(this.config.get('QUEUE_LOCK_TTL_MS') / 3);
+
     const heartbeat = setInterval(
       () => void this.queue.refreshLock(task.id, WORKER_ID),
       heartbeatMs,
     );
+
     try {
       await this.orchestrator.processTask(task);
       await this.queue.complete(task.id);
     } catch (e) {
       const message = (e as Error).message ?? String(e);
       const willRetry = await this.queue.fail(task.id, message);
+
       if (!willRetry) {
         await this.orchestrator
           .onTaskExhausted(task.jobId, message)
@@ -118,6 +135,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
       this.jobs.countsByState(),
       this.queue.depthByStatus(),
     ]);
+
     this.metrics.setJobsByState(jobCounts);
     this.metrics.setQueueDepth(queueCounts);
   }

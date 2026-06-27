@@ -48,8 +48,21 @@ _WRITE_CMDS = {
     "patch", "chmod", "chown",
 }
 # A redirect operator with its target: optional leading fd (or &), > or >>, then the target token.
-_REDIR = re.compile(r"(?:\d*|&)\s*>>?\s*(\S+)")
+# The target stops at shell separators (; | & ) < >) so a trailing operator isn't swallowed —
+# otherwise `2>/dev/null;` captures `/dev/null;` and the /dev/null exemption misses.
+_REDIR = re.compile(r"(?:\d*|&)\s*>>?\s*([^\s;|&)<>]+)")
 _SEGMENTS = re.compile(r"\|\||&&|;|\|")
+# A whole single- or double-quoted span (handles backslash-escaped quotes inside).
+_QUOTED = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
+
+
+def _strip_quoted(cmd: str) -> str:
+    """Replace quoted spans with a single placeholder token so their CONTENTS can't be misread as
+    shell operators or commands — e.g. an echoed ``-->`` arrow looking like a ``>`` redirect, a
+    quoted ``;`` mis-splitting segments, or the word ``rm`` inside a message. The placeholder is a
+    non-space token, so a real redirect to a quoted target (``> "out.txt"``) still presents a
+    target and is still caught as a write."""
+    return _QUOTED.sub("Q", cmd)
 
 _LOCK = threading.Lock()
 _STATE: dict[str, Any] = {
@@ -110,6 +123,8 @@ def _is_file_write_command(cmd: Optional[str]) -> bool:
     cmd = (cmd or "").strip()
     if not cmd:
         return False
+    # Neutralise quoted content first — only unquoted text can be a real redirect/command.
+    cmd = _strip_quoted(cmd)
     return _has_write_redirect(cmd) or _has_write_command(cmd)
 
 

@@ -120,6 +120,7 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     runVerify: resolved({ ok: true, output: '' }),
     commitAll: resolved('sha1'),
     branchChangedFiles: resolved([] as unknown[]),
+    hasCommitsAhead: resolved(false),
     branchDiff: resolved('diff --git a/x b/x'),
     downloadAttachments: resolved([] as unknown[]),
     dir: returns('/tmp/olympian-test-job1'),
@@ -352,6 +353,20 @@ describe('OrchestratorService.handleRevise', () => {
       expect.stringContaining('no file changes'),
     );
     expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('proceeds (no throw) when a pass makes no changes but the branch already has commits', async () => {
+    // Resume-after-restart case: the prior pass committed the work, so a re-run that finds nothing
+    // to do must NOT be failed — it advances to VERIFY (the real gate) instead.
+    const { service, agent, workspace, queue, jobs } = setup({ job: { state: 'REVISING' } });
+    workspace.commitAll.mockResolvedValue(null);
+    workspace.hasCommitsAhead.mockResolvedValue(true);
+
+    await callPrivate(service, 'handleRevise', 'job1');
+
+    expect(agent.markRunFailed).not.toHaveBeenCalled();
+    expect(transitionedTo(jobs)).toContain('VERIFYING');
+    expect(enqueuedKinds(queue)).toEqual(['VERIFY']);
   });
 });
 

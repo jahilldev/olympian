@@ -95,29 +95,43 @@ export class HermesAgentService implements OnModuleInit {
     });
   }
 
-  killOrphanedContainers(): void {
+  /**
+   * Force-remove any leftover agent containers from a previous process. Awaited on worker startup
+   * BEFORE tasks are reclaimed/claimed, so a re-run for the same job can't race a still-running
+   * orphan in the same workspace (the docker daemon keeps a container alive after the orchestrator
+   * that spawned it dies). Resolves once the removal completes (or immediately when there's
+   * nothing to kill / sandboxing is off). Best-effort — never rejects.
+   */
+  killOrphanedContainers(): Promise<void> {
     if (this.config.get('SANDBOX_MODE') !== 'default') {
-      return;
+      return Promise.resolve();
     }
-    const list = spawn('docker', ['ps', '-q', '--filter', 'name=olympian-'], {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    let ids = '';
-    list.stdout.on('data', (d: Buffer) => {
-      ids += d.toString();
-    });
-    list.on('close', () => {
-      const containerIds = ids
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (containerIds.length === 0) {
-        return;
-      }
-      this.logger.warn(
-        `Killing ${containerIds.length} orphaned container(s): ${containerIds.join(', ')}`,
-      );
-      spawn('docker', ['rm', '-f', ...containerIds], { stdio: 'ignore' }).unref();
+
+    return new Promise<void>((resolve) => {
+      const list = spawn('docker', ['ps', '-q', '--filter', 'name=olympian-'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      let ids = '';
+      list.stdout.on('data', (d: Buffer) => {
+        ids += d.toString();
+      });
+      list.on('error', () => resolve());
+      list.on('close', () => {
+        const containerIds = ids
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (containerIds.length === 0) {
+          resolve();
+          return;
+        }
+        this.logger.warn(
+          `Killing ${containerIds.length} orphaned container(s): ${containerIds.join(', ')}`,
+        );
+        const rm = spawn('docker', ['rm', '-f', ...containerIds], { stdio: 'ignore' });
+        rm.on('error', () => resolve());
+        rm.on('close', () => resolve());
+      });
     });
   }
 

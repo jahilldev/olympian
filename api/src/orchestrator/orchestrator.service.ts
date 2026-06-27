@@ -1082,16 +1082,24 @@ export class OrchestratorService {
       const sha = await this.workspace.commitAll(p.ws.dir, p.commitMessage(attempt));
 
       if (sha === null) {
-        if (attempt === 1) {
-          // A clean exit that edited nothing is not a success, however long its output.
+        // No new edits this pass. That's only a real failure when the branch ALSO has no committed
+        // work at all (the agent genuinely produced nothing). If the branch already has commits
+        // ahead of base, the work exists — typically because an earlier pass committed it and this
+        // pass is a resume after a restart (the orchestrator restarted mid-loop, so handleX re-ran
+        // from attempt 1 over an already-committed branch). Treat that as "nothing left to do" and
+        // proceed to the real gates (VERIFY/REVIEW), rather than failing the job for a phantom no-op.
+        const hasWork = await this.workspace.hasCommitsAhead(p.ws.dir, p.ws.baseBranch);
+
+        if (attempt === 1 && !hasWork) {
+          // A clean exit that edited nothing, on a branch with no work at all, is not a success.
           await this.agent.markRunFailed(res.runId, p.noChangesError);
 
           throw new Error(p.noChangesError);
         }
 
-        // A continuation that changed nothing — the agent considers itself done. Accept and proceed.
         this.logger.log(
-          `[job ${p.job.id}] ${p.phase} continuation ${attempt} made no further changes; proceeding`,
+          `[job ${p.job.id}] ${p.phase} pass ${attempt} made no further changes` +
+            `${hasWork ? ' (branch already has committed work — proceeding)' : ''}`,
         );
 
         break;
