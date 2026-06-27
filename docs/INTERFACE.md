@@ -190,14 +190,14 @@ type RemoteAuth =
 ```
 
 - `prepare`: `github-app` → today's HTTPS+token clone; `ssh` → clone `url` with
-  `GIT_SSH_COMMAND="ssh -i $DASHBOARD_SSH_KEY_PATH -o StrictHostKeyChecking=accept-new"`;
+  `GIT_SSH_COMMAND="ssh -i $GIT_SSH_KEY_PATH -o StrictHostKeyChecking=accept-new"`;
   `none` → `git init` + empty initial commit + create branch.
 - `push`: `github-app` → today's path; `ssh` → `git push` with the same `GIT_SSH_COMMAND`;
   `none` → no-op.
 - The orchestrator picks the auth from `job.origin` + `job.repoUrl`. The in-container verify
   (`runVerify`) and commit logic are unchanged.
 
-New config: `DASHBOARD_SSH_KEY_PATH` (private key with access to the user's repos).
+New config: `GIT_SSH_KEY_PATH` (optional dedicated key; unset = use the host's own SSH).
 
 ### 5.5 Result view (no-PR delivery)
 
@@ -297,7 +297,7 @@ so the static build emits their shells. Client routing in each component reads
 
 - Endpoints stay **unauthenticated** (localhost), matching the current UI. If exposed, gate
   `/api/*` behind a token/IP guard (already flagged in §11 of the old spec).
-- **SSH key** (`DASHBOARD_SSH_KEY_PATH`) is powerful — it can push to any repo it's
+- **SSH key** (`GIT_SSH_KEY_PATH`) is powerful — it can push to any repo it's
   authorised for. Mount it read-only; never expose it to the agent container (git runs on
   the orchestrator host/`workspace.service`, not inside the agent sandbox — keep it that
   way). Use `StrictHostKeyChecking=accept-new` with a persistent `known_hosts`.
@@ -326,7 +326,7 @@ so the static build emits their shells. Client routing in each component reads
 1. Schema: `Job.origin`, `Job.repoUrl`, nullable GitHub fields; migrate.
 2. Orchestrator: extract `approvePlan` / `submitPlanFeedback` / `acceptResult` /
    `requestChanges`; make `handlePlan` / `handleOpenPr` origin-aware.
-3. Workspace: `RemoteAuth` union (github-app / ssh / none); `DASHBOARD_SSH_KEY_PATH`.
+3. Workspace: `RemoteAuth` union (github-app / ssh / none); `GIT_SSH_KEY_PATH`.
 4. Endpoints: create job, plan feedback/approve, accept/changes, repo PATCH, diff.
 5. Orchestrator service tests for the new methods + origin branches (extend the existing
    `orchestrator.service.spec.ts` harness).

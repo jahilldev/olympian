@@ -18,48 +18,52 @@ datasource db {
 
 // A GitHub App installation on an account; scopes which repos/labels we act on.
 model RepoInstallation {
-  id             String   @id @default(cuid())
-  installationId BigInt   @unique
+  id             String       @id @default(cuid())
+  installationId BigInt       @unique
   accountLogin   String
-  accountType    String   // "User" | "Organization"
-  triggerLabel   String?  // overrides the global TRIGGER_LABEL when set
-  suspended      Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  jobs           Job[]
+  accountType    String // "User" | "Organization"
+  triggerLabel   String? // overrides the global TRIGGER_LABEL when set
+  suspended      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  jobs           JobRecords[]
 }
 
-model Job {
-  id             String           @id @default(cuid())
-  installation   RepoInstallation @relation(fields: [installationId], references: [id])
-  installationId String
-  repoOwner      String
-  repoName       String
-  repoFullName   String
-  issueNumber    Int
+model JobRecords {
+  id             String            @id @default(cuid())
+  // GitHub-only fields — null for DASHBOARD-origin jobs (created from the UI).
+  installation   RepoInstallation? @relation(fields: [installationId], references: [id])
+  installationId String?
+  repoOwner      String?
+  repoName       String?
+  repoFullName   String?
+  issueNumber    Int?
+  // issueTitle / issueBody double as the generic title / requirements body for DASHBOARD jobs.
   issueTitle     String
   issueBody      String
-  triggerLabel   String
-  state          String           @default("TRIAGED") // JobState union
+  triggerLabel   String?
+  origin         String            @default("GITHUB") // JobOrigin union: 'GITHUB' | 'DASHBOARD'
+  repoUrl        String? // SSH remote for DASHBOARD jobs (git@host:path or ssh://…); null = scratch workspace
+  state          String            @default("TRIAGED") // JobState union
   branchName     String?
   prNumber       Int?
   headSha        String?
-  confidence     Int?             // latest review confidence (0-100)
-  verifyCommand  String?          // agent-discovered tests/build command; null/"" = none found yet (re-discovered until a real command appears)
-  reviewCycle    Int              @default(0) // incremented each time handleImplement completes
-  attempts       Int              @default(0)
+  confidence     Int? // latest review confidence (0-100)
+  verifyCommand  String? // agent-discovered tests/build command; null/"" = none found yet (re-discovered until a real command appears)
+  reviewCycle    Int               @default(0) // incremented each time handleImplement completes
+  attempts       Int               @default(0)
   error          String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   transitions JobStateTransition[]
   plans       PlanRevision[]
   feedback    PlanFeedback[]
-  prFeedback  PrRevisionFeedback[]
+  prFeedback  PullRequestFeedback[]
   runs        AgentRun[]
   reviews     ReviewPass[]
   verifyRuns  VerifyRun[]
-  pr          PullRequestRef?
+  pr          PullRequest?
   tasks       QueueTask[]
 
   @@unique([repoFullName, issueNumber])
@@ -68,93 +72,140 @@ model Job {
 }
 
 model JobStateTransition {
-  id        String   @id @default(cuid())
-  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id        String     @id @default(cuid())
+  job       JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId     String
-  fromState String?  // JobState union
-  toState   String   // JobState union
+  fromState String? // JobState union
+  toState   String // JobState union
   reason    String?
-  actor     String   @default("SYSTEM") // Actor union
-  createdAt DateTime @default(now())
+  actor     String     @default("SYSTEM") // Actor union
+  createdAt DateTime   @default(now())
 
   @@index([jobId])
 }
 
 model PlanRevision {
-  id              String   @id @default(cuid())
-  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id              String     @id @default(cuid())
+  job             JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId           String
   revision        Int
   content         String
-  status          String   @default("PROPOSED") // PlanRevisionStatus union
+  status          String     @default("PROPOSED") // PlanRevisionStatus union
   githubCommentId BigInt?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime   @default(now())
 
   @@unique([jobId, revision])
   @@index([jobId])
 }
 
 model PlanFeedback {
-  id              String   @id @default(cuid())
-  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id              String     @id @default(cuid())
+  job             JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId           String
   author          String
   body            String
   githubCommentId BigInt?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime   @default(now())
 
   @@index([jobId])
 }
 
 // Feedback submitted via /hermes revise on a PR thread. Persisted across retry
 // cycles so the agent always incorporates it, even if posted while a run was active.
-model PrRevisionFeedback {
-  id        String   @id @default(cuid())
-  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+model PullRequestFeedback {
+  id        String     @id @default(cuid())
+  job       JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId     String
   author    String
   body      String
-  path      String?  // file path for inline review comments
-  line      Int?     // line number for inline review comments
-  createdAt DateTime @default(now())
+  path      String? // file path for inline review comments
+  line      Int? // line number for inline review comments
+  createdAt DateTime   @default(now())
 
   @@index([jobId])
 }
 
-// Audit of every Hermes CLI invocation.
+// Audit of every Hermes CLI invocation. Most runs belong to a job; CHAT-phase runs
+// belong to a ChatSession instead, so both foreign keys are optional.
 model AgentRun {
-  id         String   @id @default(cuid())
-  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  jobId      String
-  phase      String   // AgentPhase union
-  command    String
-  cwd        String
-  model      String?
-  status     String   @default("RUNNING") // AgentRunStatus union
-  exitCode   Int?
-  stdout     String?  // truncated
-  stderr     String?  // truncated
-  durationMs Int?
+  id          String       @id @default(cuid())
+  job         JobRecords?  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId       String?
+  session     ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId   String?
+  phase       String // AgentPhase union
+  command     String
+  cwd         String
+  model       String?
+  status      String       @default("RUNNING") // AgentRunStatus union
+  exitCode    Int?
+  stdout      String? // truncated
+  stderr      String? // truncated
+  durationMs  Int?
   // For JUDGE-phase runs: the completion judge's verdict (did the work pass?). null otherwise.
   // The critique itself lives in stdout, like every other run's output.
   judgePassed Boolean?
-  createdAt  DateTime @default(now())
+  createdAt   DateTime     @default(now())
+
+  events AgentEvent[]
 
   @@index([jobId])
+  @@index([sessionId])
+}
+
+// Persisted Langfuse activity events for a run, one row per event. Kept in its own table
+// (not a column on AgentRun) so the high-volume event data never bloats the run rows.
+// Persisted for CHAT runs so a session's event tiles survive a server restart and render on
+// any device — the live in-memory buffer is process-local and short-lived.
+model AgentEvent {
+  id        String   @id @default(cuid())
+  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId     String
+  seq       Int // arrival order, for a stable sort alongside `timestamp`
+  type      String
+  timestamp String // the event's ISO timestamp (sorts correctly as text)
+  body      String // serialized JSON of the event body
+  createdAt DateTime @default(now())
+
+  @@index([runId])
+}
+
+// An interactive Hermes chat session (not a delivery job). Reuses HermesAgentService
+// and the Langfuse→SSE stream, but bypasses the job queue and the plan/verify/review loop.
+model ChatSession {
+  id        String        @id @default(cuid())
+  title     String
+  repoUrl   String? // optional working repo (SSH) for the session
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+  runs      AgentRun[]
+}
+
+model ChatMessage {
+  id         String      @id @default(cuid())
+  session    ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId  String
+  role       String // 'user' | 'assistant'
+  content    String
+  agentRunId String? // links an assistant message to its AgentRun (for the SSE stream)
+  createdAt  DateTime    @default(now())
+
+  @@index([sessionId])
 }
 
 model ReviewPass {
-  id         String   @id @default(cuid())
-  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id         String     @id @default(cuid())
+  job        JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId      String
-  cycle      Int      @default(1) // which implementation round (matches Job.reviewCycle)
-  passNumber Int      // pass within this cycle
-  confidence Int      // advisory only — the gate is the rubric + verify, not this number
-  verdict    String   // ReviewVerdict union
-  dimensions String?  // serialized JSON rubric: { correctness, tests, planCoverage, security }
+  cycle      Int        @default(1) // which implementation round (matches JobRecords.reviewCycle)
+  passNumber Int // pass within this cycle
+  confidence Int // advisory only — the gate is the rubric + verify, not this number
+  verdict    String // ReviewVerdict union
+  dimensions String? // serialized JSON rubric: { correctness, tests, planCoverage, security }
   verifyOk   Boolean? // orchestrator-run VERIFY_COMMAND result; null when no command is configured
-  issues     String   // serialized JSON: [{ severity, title, detail, file? }]
-  createdAt  DateTime @default(now())
+  issues     String // serialized JSON: [{ severity, title, detail, file? }]
+  createdAt  DateTime   @default(now())
 
   @@unique([jobId, cycle, passNumber])
   @@index([jobId])
@@ -164,31 +215,31 @@ model ReviewPass {
 // run as its own pipeline stage after IMPLEMENT and after every REVISE. A failure
 // routes the job to REVISE; a pass advances it to self-review.
 model VerifyRun {
-  id         String   @id @default(cuid())
-  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id         String     @id @default(cuid())
+  job        JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId      String
-  cycle      Int      // implementation round (matches Job.reviewCycle)
-  attempt    Int      // verify attempt within this cycle
+  cycle      Int // implementation round (matches JobRecords.reviewCycle)
+  attempt    Int // verify attempt within this cycle
   command    String
   ok         Boolean
   output     String // truncated combined stdout/stderr
   durationMs Int
-  createdAt  DateTime @default(now())
+  createdAt  DateTime   @default(now())
 
   @@index([jobId])
 }
 
-model PullRequestRef {
-  id        String   @id @default(cuid())
-  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  jobId     String   @unique
+model PullRequest {
+  id        String     @id @default(cuid())
+  job       JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId     String     @unique
   prNumber  Int
   url       String
-  state     String   // "open" | "closed" | "merged"
-  isDraft   Boolean  @default(true)
+  state     String // "open" | "closed" | "merged"
+  isDraft   Boolean    @default(true)
   headSha   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
 
 // Idempotency record for GitHub webhook deliveries.
@@ -197,7 +248,7 @@ model WebhookEvent {
   deliveryId  String    @unique
   event       String
   action      String?
-  payload     String    // serialized JSON
+  payload     String // serialized JSON
   processedAt DateTime?
   createdAt   DateTime  @default(now())
 
@@ -207,20 +258,20 @@ model WebhookEvent {
 // Durable, file-backed work queue. Claimed via an atomic UPDATE ... RETURNING
 // (atomic in SQLite); WAL + busy_timeout keep concurrent claimers safe.
 model QueueTask {
-  id          String    @id @default(cuid())
-  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id          String     @id @default(cuid())
+  job         JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId       String
-  kind        String    // TaskKind union
-  status      String    @default("PENDING") // TaskStatus union
-  priority    Int       @default(0)
-  runAt       DateTime  @default(now())
-  attempts    Int       @default(0)
-  maxAttempts Int       @default(3)
+  kind        String // TaskKind union
+  status      String     @default("PENDING") // TaskStatus union
+  priority    Int        @default(0)
+  runAt       DateTime   @default(now())
+  attempts    Int        @default(0)
+  maxAttempts Int        @default(3)
   lockedAt    DateTime?
   lockedBy    String?
   lastError   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@index([status, runAt])
   @@index([jobId])

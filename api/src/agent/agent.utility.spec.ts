@@ -5,6 +5,7 @@ import { parse as parseYaml } from 'yaml';
 import {
   buildAgentSpec,
   buildVerifySpec,
+  eventInsertRows,
   extractJsonBlock,
   generateHermesConfig,
   incompleteOutputReason,
@@ -197,5 +198,29 @@ describe('generateHermesConfig auxiliary model', () => {
     expect(aux.compression.model).toBeUndefined();
     expect(aux.compression.provider).toBeUndefined();
     expect(typeof aux.compression.timeout).toBe('number');
+  });
+});
+
+describe('eventInsertRows', () => {
+  it('maps events to ordered rows with the full body serialized verbatim', () => {
+    const rows = eventInsertRows('run1', [
+      { type: 'event', timestamp: 't1', body: { thinking: 'a' } },
+      { type: 'event', timestamp: 't2', body: { output: 'b', nested: { x: 1 } } },
+    ]);
+
+    expect(rows).toEqual([
+      { runId: 'run1', seq: 0, type: 'event', timestamp: 't1', body: '{"thinking":"a"}' },
+      {
+        runId: 'run1',
+        seq: 1,
+        type: 'event',
+        timestamp: 't2',
+        body: '{"output":"b","nested":{"x":1}}',
+      },
+    ]);
+  });
+
+  it('returns no rows for an empty event list', () => {
+    expect(eventInsertRows('run1', [])).toEqual([]);
   });
 });

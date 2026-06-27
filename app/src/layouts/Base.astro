@@ -2,11 +2,13 @@
 export interface Props { title?: string }
 const { title = 'Olympian' } = Astro.props;
 ---
+
 <!doctype html>
 <html lang="en" class="bg-zinc-950 text-zinc-100 h-full">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
     <title>{title}</title>
 
     <!-- PWA manifest & theme -->
@@ -32,7 +34,7 @@ const { title = 'Olympian' } = Astro.props;
       }
     </script>
   </head>
-  <body class="h-full">
+  <body class="h-full bg-zinc-950">
     <slot />
   </body>
 </html>

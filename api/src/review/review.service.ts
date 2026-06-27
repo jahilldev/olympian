@@ -37,7 +37,10 @@ export class ReviewService {
       update: fields,
     });
 
-    await this.prisma.job.update({ where: { id: jobId }, data: { confidence: result.confidence } });
+    await this.prisma.jobRecords.update({
+      where: { id: jobId },
+      data: { confidence: result.confidence },
+    });
   }
 
   meetsThreshold(result: ReviewResult): boolean {

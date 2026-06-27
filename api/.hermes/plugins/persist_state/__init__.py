@@ -33,6 +33,9 @@ _CHECKLIST_HEADER = "## Checklist"
 _FINDINGS_HEADER = "## Findings"
 _FINDINGS_BUDGET = 50_000  # max chars kept in Findings (drop oldest beyond this)
 _ENTRY_CAP = 12_000  # max chars of any single subagent report (holds a thorough survey whole)
+_TRIM_MARKER = "_…older findings trimmed…_"
+# Matches the start of each Findings entry ("### 12. …") so trimming drops whole entries.
+_ENTRY_START_RE = _re.compile(r"(?m)^### \d+\.")
 
 _LOCK = threading.Lock()
 _STATE: dict[str, Any] = {
@@ -86,10 +89,35 @@ def _split(text: str) -> tuple[str, str]:
     return checklist, findings
 
 
-def _write(checklist: str, findings: str) -> None:
+def _trim_findings(findings: str) -> str:
+    """Cap Findings at _FINDINGS_BUDGET by dropping the OLDEST WHOLE entries (### N. blocks),
+    never slicing mid-entry — a half-cut code block fed back to the agent is worse than missing
+    history. Keeps as many newest entries as fit, with a marker noting older ones were dropped."""
     findings = findings.strip()
-    if len(findings) > _FINDINGS_BUDGET:
-        findings = "_…older findings trimmed…_\n\n" + findings[-_FINDINGS_BUDGET:].lstrip()
+    if len(findings) <= _FINDINGS_BUDGET:
+        return findings
+
+    marker = f"{_TRIM_MARKER}\n\n"
+    budget = _FINDINGS_BUDGET - len(marker)
+    starts = [m.start() for m in _ENTRY_START_RE.finditer(findings)]
+
+    # No recognisable entry boundaries — fall back to a hard tail slice (best effort).
+    if not starts:
+        return marker + findings[-budget:].lstrip()
+
+    # Earliest entry whose tail fits the budget; always keep at least the last entry
+    # (each is capped at ~_ENTRY_CAP, so the newest entry alone comfortably fits).
+    kept = starts[-1]
+    for s in starts:
+        if len(findings) - s <= budget:
+            kept = s
+            break
+
+    return marker + findings[kept:].lstrip()
+
+
+def _write(checklist: str, findings: str) -> None:
+    findings = _trim_findings(findings)
     body = (
         f"{_CHECKLIST_HEADER}\n{checklist or '_(no checklist yet)_'}\n\n"
         f"{_FINDINGS_HEADER}\n{findings or '_(none yet)_'}\n"

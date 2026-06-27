@@ -1,3 +1,40 @@
+import { IsOptional, IsString, Matches, MinLength, ValidateIf } from 'class-validator';
+
+// SSH remote forms accepted for dashboard jobs: scp-style (git@host:path) or ssh:// URL.
+export const SSH_REMOTE_REGEX = /^(?:[^@\s]+@[^:\s]+:.+|ssh:\/\/.+)$/;
+const SSH_MESSAGE = 'repoUrl must be an SSH remote (git@host:path or ssh://…)';
+
+/** Body for `POST /api/jobs` — create a dashboard job. */
+export class CreateDashboardJobDto {
+  @IsString()
+  @MinLength(1)
+  title!: string;
+
+  @IsString()
+  @MinLength(1)
+  requirements!: string;
+
+  @IsOptional()
+  @ValidateIf((o: CreateDashboardJobDto) => !!o.repoUrl)
+  @Matches(SSH_REMOTE_REGEX, { message: SSH_MESSAGE })
+  repoUrl?: string;
+}
+
+/** Body for the plan-feedback and request-changes endpoints. */
+export class FeedbackBodyDto {
+  @IsString()
+  @MinLength(1)
+  body!: string;
+}
+
+/** Body for `PATCH /api/jobs/:id/repo` — set or clear (empty → scratch) the working repo. */
+export class SetRepoDto {
+  @IsOptional()
+  @ValidateIf((o: SetRepoDto) => !!o.repoUrl)
+  @Matches(SSH_REMOTE_REGEX, { message: SSH_MESSAGE })
+  repoUrl?: string;
+}
+
 export interface IssueLabeledEvent {
   installationId: number;
   accountLogin: string;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import type { JobSummaryDto } from '@olympian/api/job/job.model.js';
 import { navigate } from '../utils/navigate.ts';
+import { jobSourceLabel } from '../utils/job.ts';
 import JobCard from './JobCard.tsx';
 import StateBadge from './StateBadge.tsx';
 
@@ -32,9 +33,7 @@ function MobileJobCard({ job }: { job: JobSummaryDto }) {
         <p class="text-sm font-medium text-zinc-100 leading-snug truncate">{title}</p>
         <div class="flex items-center gap-2 text-xs flex-wrap">
           <StateBadge state={job.state} />
-          <span class="font-mono text-zinc-600">
-            {job.repoFullName} #{job.issueNumber}
-          </span>
+          <span class="font-mono text-zinc-600">{jobSourceLabel(job)}</span>
           {job.activeRun && (
             <span class="flex items-center gap-1 text-green-400">
               <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
@@ -217,7 +216,7 @@ export default function JobList() {
   return (
     <div class="flex flex-col h-full">
       {/* Header */}
-      <header class="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-zinc-800 shrink-0">
+      <header class="flex items-center gap-3 px-4 sm:px-6 h-14 border-b border-zinc-800 shrink-0">
         <span class="text-base font-mono font-semibold tracking-tight text-zinc-100">Olympian</span>
         {jobs !== null && (
           <span class="flex items-center gap-1.5 text-xs font-mono text-zinc-500">
@@ -227,6 +226,20 @@ export default function JobList() {
             {activeCount > 0 ? `${activeCount} active` : 'idle'}
           </span>
         )}
+        <div class="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => navigate('/create')}
+            class="rounded-lg bg-hermes-400 px-3 py-1.5 text-xs font-medium text-zinc-950 hover:bg-hermes-500 transition-colors"
+          >
+            Create
+          </button>
+          <button
+            onClick={() => navigate('/chats')}
+            class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
+          >
+            Chat
+          </button>
+        </div>
       </header>
 
       {installable && !dismissed && (

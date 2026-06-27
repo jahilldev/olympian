@@ -1,10 +1,11 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { type Job, type Prisma } from '@prisma/client';
+import { type JobRecords, type Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
 import {
   type ActiveRunDto,
   type ActiveTaskDto,
+  type CreateDashboardJobInput,
   type CreateJobInput,
   type FeedbackDto,
   type JobDetailDto,
@@ -29,10 +30,10 @@ export class JobService {
     private readonly metrics: MetricsService,
   ) {}
 
-  async create(input: CreateJobInput): Promise<Job> {
+  async create(input: CreateJobInput): Promise<JobRecords> {
     const fullName = repoFullName(input.repoOwner, input.repoName);
 
-    const job = await this.prisma.job.create({
+    const job = await this.prisma.jobRecords.create({
       data: {
         installationId: input.installationId,
         repoOwner: input.repoOwner,
@@ -53,11 +54,30 @@ export class JobService {
     return job;
   }
 
-  findById(id: string): Promise<Job | null> {
-    return this.prisma.job.findUnique({ where: { id } });
+  /** Create a DASHBOARD-origin job from the UI. GitHub fields stay null. */
+  async createDashboard(input: CreateDashboardJobInput): Promise<JobRecords> {
+    const job = await this.prisma.jobRecords.create({
+      data: {
+        origin: 'DASHBOARD',
+        repoUrl: input.repoUrl ?? null,
+        issueTitle: input.title,
+        issueBody: input.requirements,
+        state: 'TRIAGED',
+        transitions: { create: { fromState: null, toState: 'TRIAGED', actor: 'HUMAN' } },
+      },
+    });
+
+    this.metrics.recordTransition(null, 'TRIAGED');
+    this.logger.log(`Created dashboard job ${job.id}: ${input.title}`);
+
+    return job;
   }
 
-  async getById(id: string): Promise<Job> {
+  findById(id: string): Promise<JobRecords | null> {
+    return this.prisma.jobRecords.findUnique({ where: { id } });
+  }
+
+  async getById(id: string): Promise<JobRecords> {
     const job = await this.findById(id);
 
     if (!job) {
@@ -67,14 +87,14 @@ export class JobService {
     return job;
   }
 
-  findByRepoIssue(repoFull: string, issueNumber: number): Promise<Job | null> {
-    return this.prisma.job.findUnique({
+  findByRepoIssue(repoFull: string, issueNumber: number): Promise<JobRecords | null> {
+    return this.prisma.jobRecords.findUnique({
       where: { repoFullName_issueNumber: { repoFullName: repoFull, issueNumber } },
     });
   }
 
   /** Validated state transition with an audit record. Throws on an illegal move. */
-  async transition(jobId: string, to: JobState, opts: TransitionOptions = {}): Promise<Job> {
+  async transition(jobId: string, to: JobState, opts: TransitionOptions = {}): Promise<JobRecords> {
     const job = await this.getById(jobId);
     const from = job.state as JobState;
 
@@ -86,7 +106,7 @@ export class JobService {
       throw new ConflictException(`Illegal job transition ${from} -> ${to} (job ${jobId})`);
     }
 
-    const updated = await this.prisma.job.update({
+    const updated = await this.prisma.jobRecords.update({
       where: { id: jobId },
       data: {
         state: to,
@@ -107,18 +127,22 @@ export class JobService {
     return updated;
   }
 
-  async fail(jobId: string, message: string, actor: 'AGENT' | 'SYSTEM' = 'SYSTEM'): Promise<Job> {
-    await this.prisma.job.update({ where: { id: jobId }, data: { error: message } });
+  async fail(
+    jobId: string,
+    message: string,
+    actor: 'AGENT' | 'SYSTEM' = 'SYSTEM',
+  ): Promise<JobRecords> {
+    await this.prisma.jobRecords.update({ where: { id: jobId }, data: { error: message } });
 
     return this.transition(jobId, 'FAILED', { reason: message.slice(0, 500), actor });
   }
 
-  update(jobId: string, data: Prisma.JobUpdateInput): Promise<Job> {
-    return this.prisma.job.update({ where: { id: jobId }, data });
+  update(jobId: string, data: Prisma.JobRecordsUpdateInput): Promise<JobRecords> {
+    return this.prisma.jobRecords.update({ where: { id: jobId }, data });
   }
 
   async incrementAttempts(jobId: string): Promise<number> {
-    const job = await this.prisma.job.update({
+    const job = await this.prisma.jobRecords.update({
       where: { id: jobId },
       data: { attempts: { increment: 1 } },
     });
@@ -127,21 +151,21 @@ export class JobService {
   }
 
   /** Oldest not-yet-started job for a repo — used to pick up the next issue. */
-  nextTriagedJob(repoFull: string): Promise<Job | null> {
-    return this.prisma.job.findFirst({
+  nextTriagedJob(repoFull: string): Promise<JobRecords | null> {
+    return this.prisma.jobRecords.findFirst({
       where: { repoFullName: repoFull, state: 'TRIAGED' },
       orderBy: { createdAt: 'asc' },
     });
   }
 
   async countsByState(): Promise<Record<string, number>> {
-    const rows = await this.prisma.job.groupBy({ by: ['state'], _count: { _all: true } });
+    const rows = await this.prisma.jobRecords.groupBy({ by: ['state'], _count: { _all: true } });
 
     return Object.fromEntries(rows.map((r) => [r.state, r._count._all]));
   }
 
   async listForUi(): Promise<JobSummaryDto[]> {
-    const jobs = await this.prisma.job.findMany({
+    const jobs = await this.prisma.jobRecords.findMany({
       orderBy: { updatedAt: 'desc' },
       include: {
         runs: { where: { status: 'RUNNING' }, take: 1, orderBy: { createdAt: 'desc' } },
@@ -155,7 +179,9 @@ export class JobService {
       const activeTask = job.tasks[0] ?? null;
       return {
         id: job.id,
+        origin: job.origin,
         repoFullName: job.repoFullName,
+        repoUrl: job.repoUrl,
         issueNumber: job.issueNumber,
         issueTitle: job.issueTitle,
         state: job.state,
@@ -182,7 +208,7 @@ export class JobService {
   }
 
   async getDetailForUi(id: string): Promise<JobDetailDto> {
-    const job = await this.prisma.job.findUnique({
+    const job = await this.prisma.jobRecords.findUnique({
       where: { id },
       include: {
         transitions: { orderBy: { createdAt: 'asc' } },
@@ -239,7 +265,9 @@ export class JobService {
 
     return {
       id: job.id,
+      origin: job.origin,
       repoFullName: job.repoFullName,
+      repoUrl: job.repoUrl,
       issueNumber: job.issueNumber,
       issueTitle: job.issueTitle,
       issueBody: job.issueBody,

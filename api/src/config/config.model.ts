@@ -68,6 +68,9 @@ export const envSchema = z.object({
   GIT_AUTHOR_NAME: z.string().default('Hermes Agent'),
   GIT_AUTHOR_EMAIL: z.string().default('hermes@users.noreply.github.com'),
   BRANCH_PREFIX: z.string().default('hermes/issue-'),
+  // Optional dedicated SSH deploy key for cloning/pushing dashboard jobs over SSH. When
+  // unset, git uses the host's own SSH setup (agent, ~/.ssh/config, default keys).
+  GIT_SSH_KEY_PATH: z.string().optional(),
 
   // sandbox
   SANDBOX_MODE: z.enum(['none', 'default']).default('default'),
@@ -75,3 +78,40 @@ export const envSchema = z.object({
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** A configured model the UI can select (e.g. for chat). Only emitted when its model env is set. */
+export interface ModelInfo {
+  key: string;
+  label: string;
+  model: string;
+  provider: string | null;
+}
+
+/** The configurable model "roles" and the env vars backing each, surfaced as selectable models. */
+export const MODEL_ROLES: { key: string; label: string; model: keyof Env; provider: keyof Env }[] =
+  [
+    {
+      key: 'primary',
+      label: 'Primary',
+      model: 'HERMES_PRIMARY_MODEL',
+      provider: 'HERMES_PRIMARY_PROVIDER',
+    },
+    {
+      key: 'review',
+      label: 'Review',
+      model: 'HERMES_REVIEW_MODEL',
+      provider: 'HERMES_REVIEW_PROVIDER',
+    },
+    {
+      key: 'auxiliary',
+      label: 'Auxiliary',
+      model: 'HERMES_AUXILIARY_MODEL',
+      provider: 'HERMES_AUXILIARY_PROVIDER',
+    },
+    {
+      key: 'judge',
+      label: 'Judge',
+      model: 'HERMES_JUDGE_MODEL',
+      provider: 'HERMES_JUDGE_PROVIDER',
+    },
+  ];

@@ -11,6 +11,7 @@ export class ConfigController {
       contextLength: this.config.get('HERMES_CONTEXT_LENGTH'),
       compressionThreshold: this.config.get('HERMES_COMPRESS_THRESHOLD'),
       auxiliaryModel: this.config.get('HERMES_AUXILIARY_MODEL') || null,
+      models: this.config.availableModels(),
     };
   }
 }

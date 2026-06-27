@@ -14,6 +14,7 @@ import {
 } from './agent.model.js';
 import {
   buildAgentSpec,
+  eventInsertRows,
   spawnProcess,
   prepareHermesMemoryPaths,
   generateHermesConfig,
@@ -143,7 +144,7 @@ export class HermesAgentService implements OnModuleInit {
       provider,
       toolsets: opts.toolsets,
       skills: opts.skills,
-      jobId: opts.jobId,
+      jobId: opts.jobId ?? opts.sessionId,
       publishPorts: opts.phase === 'REVIEW' && !!process.env.CAMOFOX_URL,
     });
 
@@ -151,7 +152,8 @@ export class HermesAgentService implements OnModuleInit {
 
     const run = await this.prisma.agentRun.create({
       data: {
-        jobId: opts.jobId,
+        jobId: opts.jobId ?? null,
+        sessionId: opts.sessionId ?? null,
         phase: opts.phase,
         command: commandLine,
         cwd: opts.cwd,
@@ -159,6 +161,8 @@ export class HermesAgentService implements OnModuleInit {
         status: 'RUNNING',
       },
     });
+
+    opts.onStart?.(run.id);
 
     // Inject the run ID as an OTLP resource attribute so the trace receiver can
     // correlate incoming spans to this specific AgentRun record.
@@ -215,6 +219,11 @@ export class HermesAgentService implements OnModuleInit {
       },
     });
 
+    // Only runs owned by a job or chat session surface their events anywhere; ownerless
+    // utility runs (e.g. TITLE generation) skip persistence to avoid orphan AgentEvent rows.
+    if (opts.jobId || opts.sessionId) {
+      await this.persistEvents(run.id);
+    }
     this.langfuse.complete(run.id);
     this.metrics.recordAgentRun(opts.phase, status, raw.durationMs);
 
@@ -232,6 +241,23 @@ export class HermesAgentService implements OnModuleInit {
       stderr,
       durationMs: raw.durationMs,
     };
+  }
+
+  /**
+   * Persist the run's activity events (full bodies) to AgentEvent so they survive a restart
+   * and can be re-rendered on any device. Best-effort — a failure here never fails the run.
+   * Reads the retained Langfuse buffer, so call before complete() drops the live subject.
+   */
+  private async persistEvents(runId: string): Promise<void> {
+    try {
+      const events = this.langfuse.getBuffer(runId);
+
+      if (events.length > 0) {
+        await this.prisma.agentEvent.createMany({ data: eventInsertRows(runId, events) });
+      }
+    } catch (e) {
+      this.logger.warn(`failed to persist events for run ${runId}: ${(e as Error).message}`);
+    }
   }
 
   /**

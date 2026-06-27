@@ -2,20 +2,23 @@ import { existsSync } from 'node:fs';
 import { mkdir, rm, appendFile, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
-import { simpleGit, type SimpleGit } from 'simple-git';
+import { simpleGit, type SimpleGit, type SimpleGitOptions } from 'simple-git';
 import { AppConfigService } from '../config/config.service.js';
 import { buildVerifySpec, spawnProcess } from '../agent/agent.utility.js';
 import { GithubService } from '../github/github.service.js';
 import { type AttachmentRef } from '../github/github.model.js';
 import {
+  SCRATCH_BASE_BRANCH,
   type DiffSummary,
   type DownloadedAttachment,
+  type RemoteAuth,
   type Workspace,
   type WorkspacePrepareInput,
 } from './workspace.model.js';
 import {
   authenticatedRemoteUrl,
   changedFilesFromStatus,
+  sshGitCommand,
   workspaceDir,
 } from './workspace.utility.js';
 
@@ -37,11 +40,15 @@ export class WorkspaceService {
   async prepare(input: WorkspacePrepareInput): Promise<Workspace> {
     const root = this.config.get('WORKSPACE_ROOT');
     const dir = workspaceDir(root, input.jobId);
-    const token = await this.app.getInstallationToken(input.installationId);
-    const remote = authenticatedRemoteUrl(input.owner, input.repo, token);
+
+    if (input.auth.kind === 'none') {
+      return this.prepareScratch(dir, input.jobId, input.branchName);
+    }
+
+    const { remote, options } = await this.remoteFor(input.auth);
 
     if (existsSync(`${dir}/.git`)) {
-      const git = simpleGit(dir);
+      const git = simpleGit(dir, options);
 
       await git.remote(['set-url', 'origin', remote]);
       await git.fetch(['origin']);
@@ -60,11 +67,11 @@ export class WorkspaceService {
 
     await mkdir(root, { recursive: true });
 
-    const git = simpleGit();
+    const git = simpleGit(root, options);
 
     await git.clone(remote, dir, ['--depth', '1', '--no-single-branch']);
 
-    const repoGit = simpleGit(dir);
+    const repoGit = simpleGit(dir, options);
 
     await this.configureIdentity(repoGit);
 
@@ -74,11 +81,74 @@ export class WorkspaceService {
 
     await this.writeLocalExcludes(dir);
 
-    this.logger.log(
-      `[job ${input.jobId}] cloned ${input.owner}/${input.repo} -> ${dir} (${input.branchName} from ${base})`,
-    );
+    this.logger.log(`[job ${input.jobId}] cloned -> ${dir} (${input.branchName} from ${base})`);
 
     return { dir, branch: input.branchName, baseBranch: base };
+  }
+
+  /**
+   * Prepares a greenfield (no-repo) workspace: `git init` with an empty initial commit on
+   * a base branch so the job branch has something to diff against. Idempotent across attempts.
+   */
+  private async prepareScratch(dir: string, jobId: string, branchName: string): Promise<Workspace> {
+    if (existsSync(`${dir}/.git`)) {
+      const git = simpleGit(dir);
+
+      await this.configureIdentity(git);
+      await git.checkout(branchName).catch(async () => {
+        await git.checkoutLocalBranch(branchName);
+      });
+      await this.writeLocalExcludes(dir);
+
+      return { dir, branch: branchName, baseBranch: SCRATCH_BASE_BRANCH };
+    }
+
+    await mkdir(dir, { recursive: true });
+
+    const git = simpleGit(dir);
+
+    await git.init();
+    await this.configureIdentity(git);
+    await git.raw(['commit', '--allow-empty', '-m', 'chore: initialise workspace']);
+    await git.raw(['branch', '-M', SCRATCH_BASE_BRANCH]);
+    await git.checkoutLocalBranch(branchName);
+    await this.writeLocalExcludes(dir);
+
+    this.logger.log(`[job ${jobId}] initialised scratch workspace -> ${dir} (${branchName})`);
+
+    return { dir, branch: branchName, baseBranch: SCRATCH_BASE_BRANCH };
+  }
+
+  /** Resolves the remote URL and per-instance git options for an authenticated remote. */
+  private async remoteFor(
+    auth: Exclude<RemoteAuth, { kind: 'none' }>,
+  ): Promise<{ remote: string; options: Partial<SimpleGitOptions> }> {
+    if (auth.kind === 'ssh') {
+      const keyPath = this.config.get('GIT_SSH_KEY_PATH');
+
+      // No dedicated deploy key configured: use the host's own SSH setup (agent,
+      // ~/.ssh/config, default keys) exactly as a normal `git clone git@…` would — no
+      // overrides, no env handed to git.
+      if (!keyPath) {
+        return { remote: auth.url, options: {} };
+      }
+
+      // A deploy key IS configured: point git at it via `-c core.sshCommand` (a git arg,
+      // not the process env — handing the whole env to git makes simple-git's
+      // block-unsafe-operations plugin reject the run when EDITOR/PAGER/etc are set). The
+      // matching `unsafe.allowUnsafeSshCommand` flag permits this operator-set override.
+      return {
+        remote: auth.url,
+        options: {
+          config: [`core.sshCommand=${sshGitCommand(keyPath)}`],
+          unsafe: { allowUnsafeSshCommand: true },
+        },
+      };
+    }
+
+    const token = await this.app.getInstallationToken(auth.installationId);
+
+    return { remote: authenticatedRemoteUrl(auth.owner, auth.repo, token), options: {} };
   }
 
   /**
@@ -134,21 +204,41 @@ export class WorkspaceService {
     return (await git.revparse(['HEAD'])).trim();
   }
 
-  /** Push the job branch, refreshing the remote token first (tokens expire ~1h). */
+  /**
+   * Push the job branch. For `github-app` the remote token is refreshed first (tokens
+   * expire ~1h); for `ssh` the configured deploy key is used; for `none` (scratch) there
+   * is no remote, so this is a no-op that just returns the current HEAD sha.
+   */
   async push(input: WorkspacePrepareInput): Promise<string> {
-    const root = this.config.get('WORKSPACE_ROOT');
-    const dir = workspaceDir(root, input.jobId);
+    const dir = workspaceDir(this.config.get('WORKSPACE_ROOT'), input.jobId);
     const git = simpleGit(dir);
-    const token = await this.app.getInstallationToken(input.installationId);
 
-    await git.remote(['set-url', 'origin', authenticatedRemoteUrl(input.owner, input.repo, token)]);
-    await git.push(['-u', 'origin', input.branchName]);
+    if (input.auth.kind === 'none') {
+      return (await git.revparse(['HEAD'])).trim();
+    }
 
-    const sha = (await git.revparse(['HEAD'])).trim();
+    const { remote, options } = await this.remoteFor(input.auth);
+    const g = simpleGit(dir, options);
+
+    await g.remote(['set-url', 'origin', remote]);
+    await g.push(['-u', 'origin', input.branchName]);
+
+    const sha = (await g.revparse(['HEAD'])).trim();
 
     this.logger.log(`[job ${input.jobId}] pushed ${input.branchName} @ ${sha}`);
 
     return sha;
+  }
+
+  /** Unified diff of the branch vs its base (committed changes) — for the dashboard result view. */
+  async branchDiff(dir: string, baseBranch: string): Promise<string> {
+    const git = simpleGit(dir);
+
+    try {
+      return await git.diff([`${baseBranch}...HEAD`]);
+    } catch {
+      return '';
+    }
   }
 
   /** Files changed on the branch relative to its base (committed changes). */

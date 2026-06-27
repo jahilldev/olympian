@@ -1,0 +1,161 @@
+import { jest } from '@jest/globals';
+import { ChatService } from './chat.service.js';
+import type { PrismaService } from '../prisma/prisma.service.js';
+import type { AppConfigService } from '../config/config.service.js';
+import type { HermesAgentService } from '../agent/agent.service.js';
+import type { WorkspaceService } from '../workspace/workspace.service.js';
+import type { LangfuseService } from '../langfuse/langfuse.service.js';
+import { cleanTitle } from './chat.utility.js';
+
+const resolved = (value: unknown) => jest.fn((..._args: unknown[]) => Promise.resolve(value));
+
+function setup(overrides: { session?: Record<string, unknown> | null } = {}) {
+  const session =
+    overrides.session === null
+      ? null
+      : {
+          id: 'sess1',
+          title: 'Chat',
+          repoUrl: null,
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+          ...overrides.session,
+        };
+
+  const prisma = {
+    chatSession: {
+      create: resolved({ id: 'sess1' }),
+      findUnique: resolved(session),
+      findMany: resolved([]),
+      update: resolved(session),
+    },
+    chatMessage: {
+      create: resolved(undefined),
+      findMany: resolved([{ role: 'user', content: 'hello' }]),
+      count: resolved(1),
+    },
+    agentEvent: { findMany: resolved([] as unknown[]), createMany: resolved(undefined) },
+  };
+
+  const config = { get: jest.fn((k: string) => (k === 'WORKER_CONCURRENCY' ? 2 : undefined)) };
+
+  // agent.run invokes onStart with the new run id, then resolves like a finished run.
+  const agent = {
+    run: jest.fn((opts: { onStart?: (id: string) => void }) => {
+      opts.onStart?.('run-chat-1');
+      return Promise.resolve({
+        runId: 'run-chat-1',
+        status: 'SUCCEEDED',
+        stdout: 'Hi there!',
+        stderr: '',
+        exitCode: 0,
+        durationMs: 5,
+      });
+    }),
+  };
+
+  const workspace = {
+    prepare: resolved({ dir: '/tmp/chat-sess1', branch: 'chat-sess1', baseBranch: 'main' }),
+  };
+
+  const langfuse = { getBuffer: jest.fn((..._args: unknown[]) => [] as unknown[]) };
+
+  const service = new ChatService(
+    prisma as unknown as PrismaService,
+    config as unknown as AppConfigService,
+    agent as unknown as HermesAgentService,
+    workspace as unknown as WorkspaceService,
+    langfuse as unknown as LangfuseService,
+  );
+
+  return { service, prisma, agent, workspace, langfuse };
+}
+
+describe('ChatService', () => {
+  it('createSession defaults the title and returns the id', async () => {
+    const { service, prisma } = setup();
+
+    const res = await service.createSession({});
+
+    expect(res).toEqual({ id: 'sess1' });
+    expect(prisma.chatSession.create).toHaveBeenCalled();
+  });
+
+  it('sendMessage persists the user message, runs the agent, and returns the runId', async () => {
+    const { service, prisma, agent, workspace } = setup();
+
+    const res = await service.sendMessage('sess1', 'hello');
+
+    expect(res).toEqual({ runId: 'run-chat-1' });
+    expect(prisma.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ role: 'user', content: 'hello' }),
+      }),
+    );
+    expect(workspace.prepare).toHaveBeenCalled();
+    expect(agent.run).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'sess1', phase: 'CHAT' }),
+    );
+  });
+
+  it('sendMessage throws when the session does not exist', async () => {
+    const { service } = setup({ session: null });
+
+    await expect(service.sendMessage('missing', 'hi')).rejects.toThrow();
+  });
+
+  it('getActivity rebuilds events from the persisted AgentEvent rows', async () => {
+    const { service, prisma } = setup();
+    prisma.chatMessage.findMany.mockResolvedValue([{ agentRunId: 'run-a' }]);
+    prisma.agentEvent.findMany.mockResolvedValue([
+      { runId: 'run-a', type: 'event', timestamp: 't1', body: '{"thinking":"hmm"}' },
+      { runId: 'run-a', type: 'event', timestamp: 't2', body: '{"output":"done"}' },
+    ]);
+
+    const activity = await service.getActivity('sess1');
+
+    expect(activity).toEqual({
+      'run-a': [
+        { type: 'event', timestamp: 't1', body: { thinking: 'hmm' } },
+        { type: 'event', timestamp: 't2', body: { output: 'done' } },
+      ],
+    });
+  });
+
+  it('getActivity falls back to the live buffer when a run has no persisted rows', async () => {
+    const { service, prisma, langfuse } = setup();
+    prisma.chatMessage.findMany.mockResolvedValue([{ agentRunId: 'run-a' }]);
+    prisma.agentEvent.findMany.mockResolvedValue([]);
+    const ev = { type: 'event', timestamp: 't', body: {} };
+    langfuse.getBuffer.mockImplementation((runId: unknown) => (runId === 'run-a' ? [ev] : []));
+
+    const activity = await service.getActivity('sess1');
+
+    expect(activity).toEqual({ 'run-a': [ev] });
+  });
+});
+
+describe('cleanTitle', () => {
+  it('strips quotes, markdown, a Title: prefix and trailing punctuation', () => {
+    expect(cleanTitle('"Refactor the Auth Module."')).toBe('Refactor the Auth Module');
+    expect(cleanTitle('Title: **Dark Mode Toggle**')).toBe('Dark Mode Toggle');
+    expect(cleanTitle('### Fix Flaky Tests')).toBe('Fix Flaky Tests');
+  });
+
+  it('takes the first non-empty line and collapses whitespace', () => {
+    expect(cleanTitle('\n\n  Cache   Invalidation Strategy \nmore prose')).toBe(
+      'Cache Invalidation Strategy',
+    );
+  });
+
+  it('returns empty string when nothing usable remains', () => {
+    expect(cleanTitle('   \n  ')).toBe('');
+  });
+
+  it('caps very long output on a word boundary', () => {
+    const long = `${'word '.repeat(40)}`.trim();
+    const out = cleanTitle(long);
+    expect(out.length).toBeLessThanOrEqual(80);
+    expect(out.endsWith('word')).toBe(true);
+  });
+});

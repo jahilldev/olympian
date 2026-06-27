@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { spawn } from 'node:child_process';
 import { STDOUT_CAP, type RawSpawnResult, type SpawnSpec } from './agent.model.js';
+import { type LangfuseEvent } from '../langfuse/langfuse.model.js';
 
 const HERMES_CONTAINER_HOME = '/root/.hermes';
 const CONTAINER_WORKDIR = '/workspace';
@@ -395,6 +396,20 @@ export function spawnProcess(
 
     child.on('close', (code) => finish(code));
   });
+}
+
+/** Maps a run's live Langfuse events to AgentEvent insert rows (full body preserved verbatim). */
+export function eventInsertRows(
+  runId: string,
+  events: LangfuseEvent[],
+): { runId: string; seq: number; type: string; timestamp: string; body: string }[] {
+  return events.map((e, i) => ({
+    runId,
+    seq: i,
+    type: e.type,
+    timestamp: e.timestamp,
+    body: JSON.stringify(e.body),
+  }));
 }
 
 /**

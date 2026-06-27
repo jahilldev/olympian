@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { type Env } from './config.model.js';
+import { MODEL_ROLES, type Env, type ModelInfo } from './config.model.js';
 import { resolvePrivateKey } from './config.utility.js';
 
 /**
@@ -41,6 +41,16 @@ export class AppConfigService {
         this.get('HERMES_PRIMARY_PROVIDER') ||
         undefined,
     };
+  }
+
+  /** The configured, selectable models — one per role whose model env var is set. */
+  availableModels(): ModelInfo[] {
+    return MODEL_ROLES.map(({ key, label, model, provider }) => ({
+      key,
+      label,
+      model: (this.get(model) as string | undefined) || '',
+      provider: (this.get(provider) as string | undefined) || null,
+    })).filter((m) => m.model.length > 0);
   }
 
   /** Resolved GitHub App private key (inline or from file). Throws if missing. */

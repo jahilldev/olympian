@@ -4,7 +4,11 @@ import type { ReviewPassDto } from '@olympian/api/review/review.model.js';
 import type { AgentRunDto } from '@olympian/api/agent/agent.model.js';
 import type { VerifyRunDto } from '@olympian/api/verify/verify.model.js';
 import { navigate } from '../utils/navigate.ts';
+import { jobIssueUrl, jobSourceLabel } from '../utils/job.ts';
 import StateBadge from './StateBadge.tsx';
+import DiffView from './DiffView.tsx';
+import RepoControl from './RepoControl.tsx';
+import PlanThread from './PlanThread.tsx';
 import Timeline from './Timeline.tsx';
 import ReviewPassCard from './ReviewPassCard.tsx';
 import PlanViewer from './PlanViewer.tsx';
@@ -12,6 +16,8 @@ import AgentRunRow from './AgentRunRow.tsx';
 import VerifyRunRow from './VerifyRunRow.tsx';
 
 const TERMINAL_STATES = new Set(['DONE', 'FAILED', 'CANCELLED']);
+// Dashboard jobs can (re)target their repo only up to plan approval (before any code is committed).
+const EDITABLE_REPO_STATES = new Set(['TRIAGED', 'PLANNING', 'AWAITING_PLAN_APPROVAL']);
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -96,28 +102,50 @@ export default function JobDetail() {
   const [planOpen, setPlanOpen] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [changesNote, setChangesNote] = useState('');
+
+  async function refreshJob() {
+    const jr = await fetch(`/api/jobs/${id}`);
+    if (jr.ok) setJob((await jr.json()) as JobDetailDto);
+  }
+
+  /** POST an operator action and reflect the new state immediately. Returns success. */
+  async function postAction(path: string, body?: unknown): Promise<boolean> {
+    setActionPending(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/jobs/${id}/${path}`, {
+        method: 'POST',
+        headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const b = (await res.json().catch(() => ({}))) as { message?: string | string[] };
+        const msg = Array.isArray(b.message) ? b.message.join(', ') : b.message;
+        setActionError(msg ?? `Action failed (${res.status})`);
+        return false;
+      }
+      await refreshJob();
+      return true;
+    } catch {
+      setActionError('Action failed — network error');
+      return false;
+    } finally {
+      setActionPending(false);
+    }
+  }
 
   async function act(action: 'cancel' | 'retry' | 'approve') {
     if (action === 'cancel' && !window.confirm('Cancel this job? This stops the running agent.')) {
       return;
     }
-    setActionPending(true);
-    setActionError(null);
-    try {
-      const path = action === 'approve' ? 'plan/approve' : action;
-      const res = await fetch(`/api/jobs/${id}/${path}`, { method: 'POST' });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { message?: string };
-        setActionError(body.message ?? `Could not ${action} (${res.status})`);
-        return;
-      }
-      const jr = await fetch(`/api/jobs/${id}`); // reflect the new state immediately
-      if (jr.ok) setJob((await jr.json()) as JobDetailDto);
-    } catch {
-      setActionError(`Could not ${action} — network error`);
-    } finally {
-      setActionPending(false);
-    }
+    await postAction(action === 'approve' ? 'plan/approve' : action);
+  }
+
+  async function requestChanges() {
+    if (changesNote.trim().length === 0) return;
+    const ok = await postAction('changes', { body: changesNote.trim() });
+    if (ok) setChangesNote('');
   }
 
   useEffect(() => {
@@ -193,7 +221,7 @@ export default function JobDetail() {
   return (
     <div class="flex flex-col h-full overflow-hidden">
       {/* Compact sticky header */}
-      <header class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-950">
+      <header class="shrink-0 flex items-center gap-2 px-4 h-14 border-b border-zinc-800 bg-zinc-950">
         <button
           class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
           onClick={() => navigate('/')}
@@ -244,7 +272,7 @@ export default function JobDetail() {
                   <button
                     disabled={actionPending}
                     onClick={() => act('approve')}
-                    class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                    class="rounded-lg bg-hermes-400 px-3 py-1.5 text-xs font-medium text-zinc-950 hover:bg-hermes-500 disabled:opacity-50 transition-colors"
                   >
                     {actionPending ? 'Approving…' : 'Approve plan'}
                   </button>
@@ -254,7 +282,7 @@ export default function JobDetail() {
                     <button
                       disabled={actionPending}
                       onClick={() => act('retry')}
-                      class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+                      class="rounded-lg bg-hermes-400 px-3 py-1.5 text-xs font-medium text-zinc-950 hover:bg-hermes-500 disabled:opacity-50 transition-colors"
                     >
                       {actionPending ? 'Working…' : 'Retry'}
                     </button>
@@ -272,14 +300,18 @@ export default function JobDetail() {
               </div>
             )}
             <div class="flex items-center gap-x-3 text-xs text-zinc-500 min-w-0">
-              <a
-                href={`https://github.com/${job.repoFullName}/issues/${job.issueNumber}`}
-                class="hover:text-zinc-300 transition-colors truncate min-w-0"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {job.repoFullName} #{job.issueNumber}
-              </a>
+              {jobIssueUrl(job) ? (
+                <a
+                  href={jobIssueUrl(job) ?? '#'}
+                  class="hover:text-zinc-300 transition-colors truncate min-w-0"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {jobSourceLabel(job)}
+                </a>
+              ) : (
+                <span class="truncate min-w-0">{jobSourceLabel(job)}</span>
+              )}
               {job.prNumber && (
                 <a
                   href={job.prUrl ?? '#'}
@@ -308,8 +340,54 @@ export default function JobDetail() {
               <span class="ml-auto shrink-0 whitespace-nowrap">{relativeTime(job.updatedAt)}</span>
             </div>
 
+            {job.origin === 'DASHBOARD' && (
+              <div class="pt-1">
+                <RepoControl
+                  jobId={id}
+                  repoUrl={job.repoUrl}
+                  editable={EDITABLE_REPO_STATES.has(job.state)}
+                  onSaved={() => void refreshJob()}
+                />
+              </div>
+            )}
+
             {actionError && <p class="text-xs text-red-400 pt-1">{actionError}</p>}
           </div>
+
+          {/* Result — dashboard no-PR delivery: diff + Accept / Request changes */}
+          {job.origin === 'DASHBOARD' && job.state === 'AWAITING_PR_APPROVAL' && (
+            <section>
+              <SectionHeading>Result</SectionHeading>
+              <div class="space-y-3">
+                <DiffView jobId={id} />
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    disabled={actionPending}
+                    onClick={() => void postAction('accept')}
+                    class="rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600 disabled:opacity-50 transition-colors"
+                  >
+                    {actionPending ? 'Working…' : 'Accept'}
+                  </button>
+                </div>
+                <div class="space-y-2">
+                  <textarea
+                    value={changesNote}
+                    onInput={(e) => setChangesNote((e.target as HTMLTextAreaElement).value)}
+                    placeholder="Request changes (Markdown) — Hermes will revise and push an update…"
+                    rows={3}
+                    class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-600 resize-y"
+                  />
+                  <button
+                    disabled={actionPending || changesNote.trim().length === 0}
+                    onClick={() => void requestChanges()}
+                    class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                  >
+                    {actionPending ? 'Working…' : 'Request changes'}
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Error */}
           {job.error && (
@@ -365,28 +443,41 @@ export default function JobDetail() {
             </section>
           )}
 
-          {/* Plan — collapsed by default */}
-          {latestPlan && (
+          {/* Plan — dashboard jobs get the full requirements→plan→feedback thread with an
+              inline feedback composer; GitHub jobs keep the collapsed plan + feedback list. */}
+          {job.origin === 'DASHBOARD' ? (
             <section>
-              <button
-                class="flex items-center gap-2 w-full text-left mb-3 group"
-                onClick={() => setPlanOpen((o) => !o)}
-              >
-                <h2 class="text-xs font-semibold uppercase tracking-widest text-zinc-500 group-hover:text-zinc-400 transition-colors">
-                  Plan
-                </h2>
-                <span class="text-zinc-600 text-xs font-mono">{planOpen ? '▾' : '▸'}</span>
-              </button>
-              {planOpen && <PlanViewer plan={latestPlan} />}
+              <SectionHeading>Plan</SectionHeading>
+              <PlanThread
+                job={job}
+                pending={actionPending}
+                onSubmitFeedback={(body) => postAction('plan/feedback', { body })}
+              />
             </section>
-          )}
+          ) : (
+            <>
+              {latestPlan && (
+                <section>
+                  <button
+                    class="flex items-center gap-2 w-full text-left mb-3 group"
+                    onClick={() => setPlanOpen((o) => !o)}
+                  >
+                    <h2 class="text-xs font-semibold uppercase tracking-widest text-zinc-500 group-hover:text-zinc-400 transition-colors">
+                      Plan
+                    </h2>
+                    <span class="text-zinc-600 text-xs font-mono">{planOpen ? '▾' : '▸'}</span>
+                  </button>
+                  {planOpen && <PlanViewer plan={latestPlan} />}
+                </section>
+              )}
 
-          {/* Plan feedback */}
-          {job.planFeedback.length > 0 && (
-            <section>
-              <SectionHeading>Plan feedback</SectionHeading>
-              <FeedbackList items={job.planFeedback} />
-            </section>
+              {job.planFeedback.length > 0 && (
+                <section>
+                  <SectionHeading>Plan feedback</SectionHeading>
+                  <FeedbackList items={job.planFeedback} />
+                </section>
+              )}
+            </>
           )}
         </div>
       </div>

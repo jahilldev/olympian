@@ -1,5 +1,6 @@
 import type { JobSummaryDto } from '@olympian/api/job/job.model.js';
 import { navigate } from '../utils/navigate.ts';
+import { jobIssueUrl, jobSourceLabel } from '../utils/job.ts';
 import StateBadge from './StateBadge.tsx';
 
 interface Props {
@@ -36,15 +37,19 @@ export default function JobCard({ job }: Props) {
       <td class="py-3 px-4 max-w-sm">
         <div class="flex flex-col gap-0.5">
           <span class="text-sm text-zinc-200 truncate">{title}</span>
-          <a
-            href={`https://github.com/${job.repoFullName}/issues/${job.issueNumber}`}
-            class="text-xs text-zinc-500 hover:text-zinc-400"
-            onClick={(e) => e.stopPropagation()}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {job.repoFullName} #{job.issueNumber}
-          </a>
+          {jobIssueUrl(job) ? (
+            <a
+              href={jobIssueUrl(job) ?? '#'}
+              class="text-xs text-zinc-500 hover:text-zinc-400"
+              onClick={(e) => e.stopPropagation()}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {jobSourceLabel(job)}
+            </a>
+          ) : (
+            <span class="text-xs text-zinc-500">{jobSourceLabel(job)}</span>
+          )}
         </div>
       </td>
       <td class="py-3 px-4 whitespace-nowrap">

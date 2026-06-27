@@ -40,7 +40,7 @@ delegation:
   # Per delegate_task subagent wall-clock cap. Hermes' default is 600s (10 min) — too short for the
   # substantial subtasks our agents delegate (e.g. "fix all build errors") on slow local inference,
   # where a child steadily making progress (~30s/API call) gets killed mid-work.
-  child_timeout_seconds: 3600
+  child_timeout_seconds: 7200
 
 agent:
   max_turns: 1000 # default is 90; complex IMPLEMENT/REVISE jobs need far more — HERMES_TIMEOUT_MS is the real backstop

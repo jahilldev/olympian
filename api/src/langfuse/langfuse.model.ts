@@ -14,6 +14,10 @@ export const LANGFUSE_PUBLIC_KEY = 'pk-lf-olympian';
 export const LANGFUSE_SECRET_KEY = 'sk-lf-olympian';
 export const BUFFER_EVENTS = 1_000;
 
+// How long a finished run's event buffer is retained in memory after completion, so the UI
+// can still render its activity (e.g. chat history) on reload. In-memory only — lost on restart.
+export const BUFFER_RETENTION_MS = 60 * 60 * 1_000;
+
 export interface ParsedSpan {
   traceId: string;
   spanId: string;
