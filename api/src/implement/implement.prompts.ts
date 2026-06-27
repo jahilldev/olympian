@@ -1,5 +1,6 @@
 import {
   AUTONOMY_NOTICE,
+  COMMIT_MESSAGE_CONTRACT,
   DELEGATION_STRATEGY,
   READ_DISCIPLINE,
   STATIC_ANALYSIS_INSTRUCTIONS,
@@ -54,6 +55,7 @@ You are already inside the repository — your working directory IS the repo roo
     VERIFY_CONTRACT,
     IMPLEMENT_OUTPUT_CONTRACT,
     STATIC_ANALYSIS_INSTRUCTIONS,
+    COMMIT_MESSAGE_CONTRACT,
   ];
 
   return parts.join('\n\n');

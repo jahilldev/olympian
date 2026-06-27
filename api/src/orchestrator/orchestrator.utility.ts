@@ -53,6 +53,50 @@ export function parseCommand(body: string, prefix: string): Command {
   return { kind: 'none' };
 }
 
+const COMMIT_BLOCK_RE = /```commit[^\n]*\n([\s\S]*?)```/gi;
+
+/**
+ * Extracts the agent-authored commit message from its final output — a fenced ` ```commit ` block
+ * holding a Conventional Commits subject and optional body. Returns a sanitized `subject\n\nbody`
+ * string, or null when no usable block is present (the caller then falls back to a templated
+ * message). The LAST block wins: an earlier one is likely the instructional example echoed back.
+ * The subject is capped to 72 chars and the body bounded, so a runaway response can't produce a
+ * pathological commit message.
+ */
+export function parseCommitMessage(stdout: string): string | null {
+  let match: RegExpExecArray | null;
+  let block: string | null = null;
+  COMMIT_BLOCK_RE.lastIndex = 0;
+  while ((match = COMMIT_BLOCK_RE.exec(stdout)) !== null) {
+    block = match[1];
+  }
+
+  if (block === null) {
+    return null;
+  }
+
+  const lines = block.replace(/\r/g, '').split('\n');
+  const subjectIdx = lines.findIndex((l) => l.trim().length > 0);
+
+  if (subjectIdx === -1) {
+    return null;
+  }
+
+  const subject = lines[subjectIdx].trim().slice(0, 72);
+
+  const body = lines
+    .slice(subjectIdx + 1)
+    .join('\n')
+    .trim()
+    .split('\n')
+    .slice(0, 12)
+    .join('\n')
+    .slice(0, 1_000)
+    .trim();
+
+  return body ? `${subject}\n\n${body}` : subject;
+}
+
 export function buildStatusReport(ctx: StatusContext): string {
   const label = STATE_LABELS[ctx.state] ?? ctx.state.toLowerCase().replace(/_/g, ' ');
   const lines: string[] = [`**Status: ${ctx.state}** — ${label}`];

@@ -55,6 +55,7 @@ import {
   buildStatusReport,
   formatDownloadedAttachments,
   parseCommand,
+  parseCommitMessage,
 } from './orchestrator.utility.js';
 
 /**
@@ -1079,7 +1080,16 @@ export class OrchestratorService {
         );
       }
 
-      const sha = await this.workspace.commitAll(p.ws.dir, p.commitMessage(attempt));
+      // Prefer the agent's own commit message (it described what it actually did, in a fenced
+      // `commit` block) over the generic template; keep the issue linkage via a trailer.
+      const authored = parseCommitMessage(res.stdout);
+      const issueNumber = p.job.issueNumber ?? 0;
+      const commitMessage =
+        authored && issueNumber > 0 && !new RegExp(`#${issueNumber}(?!\\d)`).test(authored)
+          ? `${authored}\n\nRefs #${issueNumber}`
+          : (authored ?? p.commitMessage(attempt));
+
+      const sha = await this.workspace.commitAll(p.ws.dir, commitMessage);
 
       if (sha === null) {
         // No new edits this pass. That's only a real failure when the branch ALSO has no committed

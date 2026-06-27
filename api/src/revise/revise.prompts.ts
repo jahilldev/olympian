@@ -1,5 +1,6 @@
 import {
   AUTONOMY_NOTICE,
+  COMMIT_MESSAGE_CONTRACT,
   DELEGATION_STRATEGY,
   READ_DISCIPLINE,
   STATIC_ANALYSIS_INSTRUCTIONS,
@@ -72,6 +73,7 @@ You are already inside the repository — do NOT clone, fetch, or browse GitHub,
 
 The session is not done until every numbered issue above is fixed and static analysis passes — listing remaining issues and stopping does not count. Then end with a short summary of what was fixed. Do not start a dev server (the review stage handles runtime testing).`,
     STATIC_ANALYSIS_INSTRUCTIONS,
+    COMMIT_MESSAGE_CONTRACT,
   ];
 
   return parts.join('\n\n');

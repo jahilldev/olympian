@@ -1,4 +1,35 @@
-import { buildStatusReport, parseCommand } from './orchestrator.utility.js';
+import { buildStatusReport, parseCommand, parseCommitMessage } from './orchestrator.utility.js';
+
+describe('parseCommitMessage', () => {
+  it('extracts subject + body from a fenced commit block', () => {
+    const out = `Done — summary here.\n\n\`\`\`commit\nfeat: add AABB broad-phase collision\n\n- add PhysicsEngine.broadPhase()\n- wire HUD collision counter\n\`\`\`\n`;
+    expect(parseCommitMessage(out)).toBe(
+      'feat: add AABB broad-phase collision\n\n- add PhysicsEngine.broadPhase()\n- wire HUD collision counter',
+    );
+  });
+
+  it('returns just the subject when there is no body', () => {
+    expect(parseCommitMessage('```commit\nfix: correct off-by-one in pager\n```')).toBe(
+      'fix: correct off-by-one in pager',
+    );
+  });
+
+  it('takes the LAST block (ignores an echoed example)', () => {
+    const out =
+      '```commit\nfeat: <summary>\n```\nthinking...\n```commit\nfeat: real change to loader\n```';
+    expect(parseCommitMessage(out)).toBe('feat: real change to loader');
+  });
+
+  it('caps an over-long subject to 72 chars', () => {
+    const subj = 'feat: ' + 'x'.repeat(120);
+    expect(parseCommitMessage(`\`\`\`commit\n${subj}\n\`\`\``)).toHaveLength(72);
+  });
+
+  it('returns null when no commit block is present', () => {
+    expect(parseCommitMessage('just a prose summary, no block')).toBeNull();
+    expect(parseCommitMessage('```commit\n\n```')).toBeNull();
+  });
+});
 
 describe('parseCommand', () => {
   it('parses approve (case-insensitive, any line)', () => {

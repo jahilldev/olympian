@@ -117,3 +117,19 @@ export const STATIC_ANALYSIS_INSTRUCTIONS = `# Static analysis
 - **Any other language**: check \`Makefile\`, \`justfile\`, or \`.github/workflows/\` to find the right lint/type-check/compile commands
 
 Fix all errors and warnings before finishing — a clean static analysis pass is required.`;
+
+export const COMMIT_MESSAGE_CONTRACT = `# Commit message
+
+The orchestrator commits your work for you (do NOT run git). So that the commit history records what was *actually* done — not a generic placeholder — the **very last thing** in your response must be a single fenced \`commit\` block describing this change:
+
+\`\`\`commit
+<type>: <concise summary of what changed, imperative mood, ≤72 chars>
+
+- <specific change 1>
+- <specific change 2>
+\`\`\`
+
+- Use a Conventional Commits type (\`feat\`, \`fix\`, \`refactor\`, \`test\`, \`docs\`, \`chore\`, …).
+- The subject must describe the concrete outcome (e.g. \`feat: add AABB broad-phase collision to physics engine\`), never restate the task generically (\`resolve issue\`, \`address review\`).
+- Body bullets are optional but should name the key files/behaviours touched. Omit the body for a trivial one-line change.
+- Output exactly one such block, as the final element of your message.`;
