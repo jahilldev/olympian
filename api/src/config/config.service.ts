@@ -9,7 +9,26 @@ import { resolvePrivateKey } from './config.utility.js';
  */
 @Injectable()
 export class AppConfigService {
-  constructor(private readonly config: ConfigService<Env, true>) {}
+  constructor(private readonly config: ConfigService<Env, true>) {
+    this.bridgeCustomApiKey();
+  }
+
+  /**
+   * Hermes' `custom` provider (local / OpenAI-compatible inference servers) authenticates via the
+   * standard `OPENAI_API_KEY` env var — there is no dedicated `custom` key in Hermes. So that users
+   * pointing a role at `provider=custom` can supply a key under an unambiguous name rather than
+   * overloading `OPENAI_API_KEY`, expose `CUSTOM_API_KEY` to Hermes under the name it actually
+   * reads. Populating `process.env` covers both runtimes: the docker forward passes `OPENAI_API_KEY`
+   * by name, and the SANDBOX_MODE=none subprocess inherits `process.env`. An explicitly set
+   * `OPENAI_API_KEY` always wins (so a real OpenAI role is never clobbered).
+   */
+  private bridgeCustomApiKey(): void {
+    const customKey = process.env.CUSTOM_API_KEY?.trim();
+
+    if (customKey && !process.env.OPENAI_API_KEY?.trim()) {
+      process.env.OPENAI_API_KEY = customKey;
+    }
+  }
 
   get<K extends keyof Env>(key: K): Env[K] {
     return this.config.get(key, { infer: true });

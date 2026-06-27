@@ -50,6 +50,8 @@ export const PROVIDER_CREDENTIAL_ENV = [
   // Nous Portal / Claude Max OAuth fallback tokens (primary path is mounted credential files).
   'ANTHROPIC_TOKEN',
   'CLAUDE_CODE_OAUTH_TOKEN',
+  // The `custom` provider reads OPENAI_API_KEY; AppConfigService bridges CUSTOM_API_KEY → this var
+  // at startup, so forwarding OPENAI_API_KEY (above) also carries a CUSTOM_API_KEY-supplied value.
 ] as const;
 
 export interface AgentSpecParams {
