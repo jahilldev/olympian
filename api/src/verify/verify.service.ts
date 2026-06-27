@@ -26,9 +26,18 @@ export class VerifyService {
     });
   }
 
-  /** Verify attempts already recorded for a cycle — used to cap the VERIFY→REVISE loop. */
+  /** Total verify attempts recorded for a cycle — used for the human-facing attempt number. */
   countForCycle(jobId: string, cycle: number): Promise<number> {
     return this.prisma.verifyRun.count({ where: { jobId, cycle } });
+  }
+
+  /**
+   * FAILED verify attempts in a cycle — the cap for the VERIFY→REVISE fix loop. A cycle can also
+   * contain passing re-verifies (after review passes); those must NOT consume the fix budget, so
+   * the cap counts failures only, not total verifies.
+   */
+  countFailedForCycle(jobId: string, cycle: number): Promise<number> {
+    return this.prisma.verifyRun.count({ where: { jobId, cycle, ok: false } });
   }
 
   async listForJob(jobId: string): Promise<VerifyRunDto[]> {

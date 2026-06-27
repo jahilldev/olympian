@@ -1221,12 +1221,20 @@ export class OrchestratorService {
       return;
     }
 
-    this.logger.warn(`[job ${jobId}] verify failed on attempt ${attempt}`);
+    // Cap the VERIFY→REVISE *fix* loop on the number of verify FAILURES this cycle — NOT total
+    // verifies. A cycle can include passing re-verifies after review passes; counting those would
+    // make the first real failure look like the budget was already spent and prematurely open a
+    // draft PR with a red build instead of routing to REVISE to fix it. Includes the failure just
+    // recorded above.
+    const failures = await this.verify.countFailedForCycle(jobId, cycle);
 
-    // Cap the VERIFY→REVISE loop; beyond it, open a draft PR with tests still red.
-    if (attempt < this.config.get('MAX_VERIFY_ATTEMPTS')) {
+    this.logger.warn(
+      `[job ${jobId}] verify failed (attempt ${attempt}, failure ${failures}/${this.config.get('MAX_VERIFY_ATTEMPTS')})`,
+    );
+
+    if (failures < this.config.get('MAX_VERIFY_ATTEMPTS')) {
       await this.jobs.transition(jobId, 'REVISING', {
-        reason: `verify failed (attempt ${attempt})`,
+        reason: `verify failed (failure ${failures})`,
         actor: 'AGENT',
       });
 
@@ -1238,7 +1246,7 @@ export class OrchestratorService {
     await this.safeComment(
       ref,
       job.prNumber ?? job.issueNumber,
-      `The verification command (\`${verifyCommand}\`) is still failing after ${attempt} attempts. Opening a draft PR for human review.`,
+      `The verification command (\`${verifyCommand}\`) is still failing after ${failures} failed attempts. Opening a draft PR for human review.`,
     );
 
     await this.jobs.transition(jobId, 'OPENING_PR', {

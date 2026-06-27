@@ -135,7 +135,11 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     maxPasses: 5,
   };
 
-  const verify = { countForCycle: resolved(0), record: resolved(undefined) };
+  const verify = {
+    countForCycle: resolved(0),
+    countFailedForCycle: resolved(1),
+    record: resolved(undefined),
+  };
 
   const judge = { assess: resolved({ passed: true, critique: '' }), listForJob: resolved([]) };
 
@@ -231,7 +235,7 @@ describe('OrchestratorService.handleVerify', () => {
 
   it('fails at the cap → opens a draft PR', async () => {
     const { service, workspace, queue, jobs, verify, github } = setup();
-    verify.countForCycle.mockResolvedValue(2); // → attempt 3 === MAX_VERIFY_ATTEMPTS
+    verify.countFailedForCycle.mockResolvedValue(3); // 3 failures === MAX_VERIFY_ATTEMPTS
     workspace.runVerify.mockResolvedValue({ ok: false, output: 'boom' });
 
     await callPrivate(service, 'handleVerify', 'job1');
@@ -239,6 +243,22 @@ describe('OrchestratorService.handleVerify', () => {
     expect(transitionedTo(jobs)).toContain('OPENING_PR');
     expect(enqueuedKinds(queue)).toEqual(['OPEN_PR']);
     expect(github.createIssueComment).toHaveBeenCalled();
+  });
+
+  it('routes a FIRST verify failure to REVISE even after earlier passing verifies in the cycle', async () => {
+    // The cap counts failures, not total verifies — two prior passes must not exhaust the budget.
+    const { service, workspace, queue, jobs, verify } = setup();
+    verify.countForCycle.mockResolvedValue(2); // 2 earlier (passing) verifies this cycle
+    verify.countFailedForCycle.mockResolvedValue(1); // but only this one failed
+    workspace.runVerify.mockResolvedValue({
+      ok: false,
+      output: 'npm ci EUSAGE: lockfile out of sync',
+    });
+
+    await callPrivate(service, 'handleVerify', 'job1');
+
+    expect(transitionedTo(jobs)).toContain('REVISING');
+    expect(enqueuedKinds(queue)).toEqual(['REVISE']);
   });
 
   it('retries once on failure before routing to REVISE', async () => {
