@@ -86,7 +86,7 @@ export default function AgentRunRow({ run, jobId }: Props) {
           <button
             class={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
               isRunning
-                ? 'bg-green-800 text-green-200 hover:bg-green-700'
+                ? 'bg-hermes-400 text-zinc-950 hover:bg-hermes-500'
                 : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
             }`}
             onClick={() => navigate(viewHref)}
