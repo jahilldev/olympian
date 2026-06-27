@@ -250,16 +250,16 @@ export default function JobDetail() {
             {(activeRun || !TERMINAL_STATES.has(job.state) || job.state === 'FAILED') && (
               <div class="flex items-stretch gap-2">
                 {activeRun && (
-                  <div class="flex-1 min-w-0 rounded-lg border border-green-900 bg-green-950/30 px-3 py-2.5 flex items-center gap-2.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
-                    <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
+                  <div class="flex-1 min-w-0 rounded-lg border border-hermes-300/30 bg-hermes-400/10 px-3 py-2.5 flex items-center gap-2.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-hermes-400 animate-pulse shrink-0" />
+                    <span class="text-xs text-hermes-400 font-mono">{activeRun.phase}</span>
                     {activeRun.model && (
-                      <span class="text-xs text-green-900 truncate hidden sm:block">
+                      <span class="text-xs text-zinc-500 truncate hidden sm:block">
                         {activeRun.model}
                       </span>
                     )}
                     <button
-                      class="ml-auto shrink-0 text-xs font-medium text-green-300 hover:text-green-100 transition-colors"
+                      class="ml-auto shrink-0 text-xs font-medium text-hermes-400 hover:text-hermes-300 transition-colors"
                       onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
                     >
                       Watch live →

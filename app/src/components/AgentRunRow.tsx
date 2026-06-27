@@ -42,7 +42,7 @@ export default function AgentRunRow({ run, jobId }: Props) {
   return (
     <div
       class={`rounded-lg border p-3 transition-colors ${
-        isRunning ? 'border-green-800 bg-green-950/20' : 'border-zinc-800 bg-zinc-900/50'
+        isRunning ? 'border-hermes-300/30 bg-zinc-900/50' : 'border-zinc-800 bg-zinc-900/50'
       }`}
     >
       <div class="flex items-center gap-3">
@@ -54,8 +54,8 @@ export default function AgentRunRow({ run, jobId }: Props) {
         {/* Status, with model + duration on a meta line beneath */}
         <div class="flex-1 min-w-0 leading-tight">
           {isRunning ? (
-            <span class="flex items-center gap-1.5 text-xs text-green-400 font-medium">
-              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span class="flex items-center gap-1.5 text-xs text-hermes-400 font-medium">
+              <span class="w-1.5 h-1.5 rounded-full bg-hermes-400 animate-pulse" />
               Running
             </span>
           ) : isJudge && run.status === 'SUCCEEDED' ? (
