@@ -151,7 +151,20 @@ HERMES_PRIMARY_PROVIDER=<provider>
 HERMES_MODEL_BASE_URL=http://localhost:11434/v1   # if using a local endpoint
 ```
 
-For cloud providers, add the relevant API key (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
+For cloud providers, set each role's provider and add the matching API key to `api/.env` — keys are
+keyed by provider, not by role:
+
+```
+HERMES_PRIMARY_PROVIDER=openai
+HERMES_JUDGE_PROVIDER=anthropic
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Hermes already knows each cloud provider's base URL, so `HERMES_MODEL_BASE_URL` is only needed for
+the `custom` provider (local/self-hosted OpenAI-compatible endpoints). Keys are forwarded by name
+into each agent container, so they never appear in the stored command line; the full list of
+recognised provider env vars is in `api/.env.example`.
 
 **System mode (no Docker):** set in `api/.env`:
 

@@ -11,6 +11,36 @@ import { type LangfuseEvent } from '../langfuse/langfuse.model.js';
 const HERMES_CONTAINER_HOME = '/root/.hermes';
 const CONTAINER_WORKDIR = '/workspace';
 
+/**
+ * Provider credential env vars forwarded into the agent container (SANDBOX_MODE=default).
+ *
+ * A model role selects a provider via `--provider <name>` (e.g. HERMES_JUDGE_PROVIDER=anthropic);
+ * Hermes then reads that provider's API key from the standard env var below and already knows the
+ * provider's base URL, so no per-provider base_url config is needed (the `custom` provider is the
+ * exception — its endpoint comes from HERMES_MODEL_BASE_URL). Forwarding every present key into
+ * each container also covers Hermes' background auxiliary tasks (compression/vision/web-extract),
+ * which run in-process under the primary and so need their provider's key in the same container.
+ *
+ * Forwarded by NAME ONLY (`--env OPENAI_API_KEY`) so the value is pulled from the orchestrator's
+ * own environment by the docker CLI and never lands in the args array — which is persisted verbatim
+ * to AgentRun.command. Add new providers here as needed.
+ */
+export const PROVIDER_CREDENTIAL_ENV = [
+  'OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'GEMINI_API_KEY',
+  'GOOGLE_API_KEY',
+  'GROQ_API_KEY',
+  'MISTRAL_API_KEY',
+  'DEEPSEEK_API_KEY',
+  'OPENROUTER_API_KEY',
+  'XAI_API_KEY',
+  'TOGETHER_API_KEY',
+  'FIREWORKS_API_KEY',
+  'PERPLEXITY_API_KEY',
+  'NOUS_API_KEY',
+] as const;
+
 export interface AgentSpecParams {
   sandboxMode: 'none' | 'default';
   hermesBin: string;
@@ -123,6 +153,15 @@ export function buildAgentSpec(p: AgentSpecParams): SpawnSpec {
       '--env',
       `HERMES_LANGFUSE_BASE_URL=http://host.docker.internal:${langfusePort}/langfuse`,
     );
+
+    // Forward provider API keys (by name only) so the role's selected provider can
+    // authenticate. Name-only keeps the secret out of args (persisted to AgentRun.command);
+    // docker resolves the value from this process's env at spawn time.
+    for (const name of PROVIDER_CREDENTIAL_ENV) {
+      if (process.env[name]) {
+        args.push('--env', name);
+      }
+    }
 
     const containerName = `olympian-agent-${randomUUID()}`;
 

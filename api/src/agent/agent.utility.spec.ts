@@ -158,6 +158,51 @@ describe('buildAgentSpec', () => {
       expect.arrayContaining(['--model', 'anthropic/claude-sonnet-4.6', '--provider', 'anthropic']),
     );
   });
+
+  it('forwards set provider API keys into the container by name only (no secret in args)', () => {
+    const prev = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = 'sk-secret-value';
+    try {
+      const spec = buildAgentSpec({
+        sandboxMode: 'default',
+        hermesBin: 'hermes',
+        dockerImage: 'img',
+        cwd: '/w',
+        prompt: 'test prompt',
+      });
+      // name is forwarded...
+      const idx = spec.args.indexOf('OPENAI_API_KEY');
+      expect(idx).toBeGreaterThan(-1);
+      expect(spec.args[idx - 1]).toBe('--env');
+      // ...but the value never appears in the args (which get persisted to AgentRun.command).
+      expect(spec.args.join(' ')).not.toContain('sk-secret-value');
+    } finally {
+      if (prev === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = prev;
+      }
+    }
+  });
+
+  it('does not forward provider API keys that are unset', () => {
+    const prev = process.env.GROQ_API_KEY;
+    delete process.env.GROQ_API_KEY;
+    try {
+      const spec = buildAgentSpec({
+        sandboxMode: 'default',
+        hermesBin: 'hermes',
+        dockerImage: 'img',
+        cwd: '/w',
+        prompt: 'test prompt',
+      });
+      expect(spec.args).not.toContain('GROQ_API_KEY');
+    } finally {
+      if (prev !== undefined) {
+        process.env.GROQ_API_KEY = prev;
+      }
+    }
+  });
 });
 
 describe('generateHermesConfig auxiliary model', () => {
