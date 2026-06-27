@@ -1665,36 +1665,39 @@ export class OrchestratorService {
 
     const unresolved = lastReview ? formatIssues(JSON.parse(lastReview.issues)) : undefined;
 
-    if (!job.prNumber) {
-      const prBodyRes = await this.agent.run({
-        jobId,
-        phase: 'SUMMARY',
-        cwd: this.workspace.dir(jobId),
-        prompt: buildSummaryPrompt({
-          repoFullName: this.repoLabel(job),
-          issueNumber: job.issueNumber ?? 0,
-          issueTitle: job.issueTitle,
-          issueBody: job.issueBody,
-          baseBranch: base,
-          branchName,
-        }),
-      });
-
-      const agentSummary =
-        prBodyRes.status === 'SUCCEEDED' && prBodyRes.stdout.trim().length > 0
-          ? prBodyRes.stdout.trim().slice(0, 8_000)
-          : `Resolves #${job.issueNumber}: ${job.issueTitle}`;
-
-      const body = buildPrBody({
+    // Regenerate the PR body from a fresh summary + the latest review state. Built whether we're
+    // opening the PR or refreshing it after a revise, so the description reflects the current work
+    // (resolved/outstanding issues, confidence) instead of going stale after requested changes.
+    const prBodyRes = await this.agent.run({
+      jobId,
+      phase: 'SUMMARY',
+      cwd: this.workspace.dir(jobId),
+      prompt: buildSummaryPrompt({
+        repoFullName: this.repoLabel(job),
         issueNumber: job.issueNumber ?? 0,
-        agentSummary,
-        confidence: lastReview?.confidence ?? null,
-        meetsThreshold: meets,
-        verifyOk: lastResult?.verifyOk ?? null,
-        failedDimensions: failedChecks,
-        unresolvedIssues: unresolved,
-      });
+        issueTitle: job.issueTitle,
+        issueBody: job.issueBody,
+        baseBranch: base,
+        branchName,
+      }),
+    });
 
+    const agentSummary =
+      prBodyRes.status === 'SUCCEEDED' && prBodyRes.stdout.trim().length > 0
+        ? prBodyRes.stdout.trim().slice(0, 8_000)
+        : `Resolves #${job.issueNumber}: ${job.issueTitle}`;
+
+    const body = buildPrBody({
+      issueNumber: job.issueNumber ?? 0,
+      agentSummary,
+      confidence: lastReview?.confidence ?? null,
+      meetsThreshold: meets,
+      verifyOk: lastResult?.verifyOk ?? null,
+      failedDimensions: failedChecks,
+      unresolvedIssues: unresolved,
+    });
+
+    if (!job.prNumber) {
       const pr = await this.github.createDraftPullRequest(ref!, {
         title: `[Hermes] ${job.issueTitle}`.slice(0, 250),
         head: branchName,
@@ -1721,12 +1724,14 @@ export class OrchestratorService {
         `Opened draft PR #${pr.number} for review: ${pr.url}`,
       );
     } else {
+      // Refresh the existing PR's description to reflect the addressed changes, then bump headSha.
+      await this.github.updatePullRequest(ref!, job.prNumber, { body });
       await this.prisma.pullRequest.updateMany({ where: { jobId }, data: { headSha } });
 
       await this.safeComment(
         ref,
         job.prNumber,
-        `Pushed an update addressing the latest feedback. Please re-review.`,
+        `Pushed an update addressing the latest feedback and refreshed the PR description. Please re-review.`,
       );
     }
 

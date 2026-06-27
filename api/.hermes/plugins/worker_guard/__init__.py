@@ -8,11 +8,16 @@ mechanisms, both primary-only (sub-agents are never affected — they edit and r
   * BLOCK the write path — write_file / patch, plus file-mutating shell commands (`sed -i`, output
     redirects (> / >>), tee, mv/cp/rm/…). Test/build commands and harmless redirects (2>&1,
     > /dev/null) are left alone. Enforced via pre_tool_call.
-  * CAP large reads — a read_file result over N lines is truncated (for the primary only) with a
-    note telling it to delegate a survey or re-read a tight offset+limit range. A verification or
-    quote-a-function read is well under the cap; only a wholesale survey-by-reading gets clipped,
-    which is exactly the work that should be delegated. Enforced via transform_tool_result. The
-    cap is PRIMARY_READ_MAX_LINES (default 300), forwarded into the container by the service.
+  * BLOCK code execution — execute_code / run_python / etc. Arbitrary code is a back door around
+    BOTH guards above: it can `open(p).read()` whole files (uncapped context bloat) and
+    `open(p,"w").write(...)` to edit them (bypassing the write block). The primary delegates code
+    runs to a sub-agent; only sub-agents may execute code. Enforced via pre_tool_call.
+  * CAP large reads — a read_file result over N lines (or one Hermes already truncated) is clipped
+    (for the primary only) with a note telling it to delegate a survey or re-read a tight
+    offset+limit range. A verification or quote-a-function read is well under the cap; only a
+    wholesale survey-by-reading gets clipped, which is exactly the work that should be delegated.
+    Enforced via transform_tool_result. The cap is PRIMARY_READ_MAX_LINES (default 300), forwarded
+    into the container by the service.
 
 We cannot remove the write tools from the parent's toolset — Hermes caps a child's toolset to a
 subset of the parent's (see delegate_tool's intersection), so that would strip editing from
@@ -36,6 +41,12 @@ from typing import Any, Optional
 _WORKER_PHASES = {"IMPLEMENT", "REVISE"}
 # Write tools — the primary may still read (read_file/search_files/cat) to verify a sub-agent.
 _BLOCKED = {"write_file", "patch"}
+# Code-execution tools — a back door that can read AND write files outside the delegation model, so
+# the primary is blocked from all of them (sub-agents may run code). Names cover Hermes variants;
+# any that don't exist are simply never seen.
+_CODE_EXEC = {
+    "execute_code", "run_code", "run_python", "python", "code_interpreter", "ipython", "jupyter",
+}
 
 # Read tools whose result is capped for the primary (see _on_transform_tool_result). Both names
 # exist in Hermes; their result is JSON with a "content" field holding the (line-numbered) text.
@@ -162,6 +173,18 @@ def on_pre_tool_call(
                 ),
             }
 
+        if tool_name in _CODE_EXEC:
+            return {
+                "action": "block",
+                "message": (
+                    f"`{tool_name}` is disabled for you (the orchestrator). Executing code lets you "
+                    "read whole files into your context and edit files on disk, bypassing the "
+                    "delegation model. Delegate any code execution, file reading, or edits to a "
+                    "sub-agent with delegate_task and work from its result. (You can still read "
+                    "files directly with read_file to verify a sub-agent's work.)"
+                ),
+            }
+
         if tool_name == "terminal" and _is_file_write_command((args or {}).get("command")):
             return {
                 "action": "block",
@@ -199,14 +222,20 @@ def on_transform_tool_result(
 
         cap = _primary_read_max_lines()
         lines = content.split("\n")
-        if len(lines) <= cap:
+        over_line_cap = len(lines) > cap
+        # Hermes may have already truncated by characters (long-line / minified files, or its own
+        # char cap) while leaving the line count under ours — that read is still "large" and must
+        # carry the delegate nudge, so trigger on either condition.
+        already_truncated = bool(data.get("truncated"))
+        if not over_line_cap and not already_truncated:
             return None
 
-        data["content"] = "\n".join(lines[:cap]) + (
-            f"\n\n… [olympian: truncated to {cap} lines for you, the orchestrator, to protect your "
-            "context. This is a large read — delegate a survey of this file to a sub-agent via "
-            "delegate_task and work from its summary, or re-read a specific offset+limit range to "
-            "verify a change. Sub-agents are not capped.]"
+        body = "\n".join(lines[:cap]) if over_line_cap else content
+        data["content"] = body + (
+            f"\n\n… [olympian: this is a large read, capped to {cap} lines for you, the orchestrator, "
+            "to protect your context. Delegate a survey of this file to a sub-agent via delegate_task "
+            "and work from its summary, or re-read a specific offset+limit range to verify a change. "
+            "Sub-agents are not capped.]"
         )
         data["truncated"] = True
         return json.dumps(data, ensure_ascii=False)

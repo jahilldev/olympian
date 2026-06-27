@@ -142,6 +142,21 @@ export class GithubService {
     return { number: data.number, url: data.html_url, headSha: data.head.sha };
   }
 
+  /** Update an existing PR's body/title — used to refresh the description after a revise cycle. */
+  async updatePullRequest(
+    ref: RepoRef,
+    prNumber: number,
+    input: { body?: string; title?: string },
+  ): Promise<void> {
+    await this.client(ref).rest.pulls.update({
+      owner: ref.owner,
+      repo: ref.repo,
+      pull_number: prNumber,
+      ...(input.body !== undefined ? { body: input.body } : {}),
+      ...(input.title !== undefined ? { title: input.title } : {}),
+    });
+  }
+
   async getPullRequest(ref: RepoRef, prNumber: number): Promise<PullRequestInfo> {
     const { data } = await this.client(ref).rest.pulls.get({
       owner: ref.owner,

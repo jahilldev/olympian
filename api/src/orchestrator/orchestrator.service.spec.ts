@@ -148,6 +148,8 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     getDefaultBranch: resolved('main'),
     createIssueReaction: resolved(undefined),
     getCollaboratorPermission: resolved('admin'),
+    createDraftPullRequest: resolved({ number: 67, url: 'https://gh/pr/67', headSha: 'sha-pr' }),
+    updatePullRequest: resolved(undefined),
   };
 
   const service = new OrchestratorService(
@@ -483,6 +485,35 @@ describe('OrchestratorService.handleOpenPr', () => {
 
     expect(transitionedTo(jobs)).toContain('REVISING');
     expect(enqueuedKinds(queue)).toEqual(['REVISE']);
+  });
+
+  it('opens a draft PR with a generated body when none exists yet', async () => {
+    const { service, prisma, github, jobs } = setup({
+      job: { state: 'OPENING_PR', prNumber: null },
+    });
+    prisma.agentRun.findFirst.mockResolvedValue({ createdAt: new Date(0) });
+    prisma.pullRequestFeedback.count.mockResolvedValue(0);
+
+    await callPrivate(service, 'handleOpenPr', 'job1');
+
+    expect(github.createDraftPullRequest).toHaveBeenCalled();
+    expect(github.updatePullRequest).not.toHaveBeenCalled();
+    expect(transitionedTo(jobs)).toContain('AWAITING_PR_APPROVAL');
+  });
+
+  it('refreshes the existing PR body (not just headSha) after addressing changes', async () => {
+    const { service, prisma, github } = setup({ job: { state: 'OPENING_PR', prNumber: 67 } });
+    prisma.agentRun.findFirst.mockResolvedValue({ createdAt: new Date(0) });
+    prisma.pullRequestFeedback.count.mockResolvedValue(0);
+
+    await callPrivate(service, 'handleOpenPr', 'job1');
+
+    expect(github.updatePullRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      67,
+      expect.objectContaining({ body: expect.any(String) }),
+    );
+    expect(github.createDraftPullRequest).not.toHaveBeenCalled();
   });
 });
 
