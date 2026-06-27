@@ -15,30 +15,41 @@ const CONTAINER_WORKDIR = '/workspace';
  * Provider credential env vars forwarded into the agent container (SANDBOX_MODE=default).
  *
  * A model role selects a provider via `--provider <name>` (e.g. HERMES_JUDGE_PROVIDER=anthropic);
- * Hermes then reads that provider's API key from the standard env var below and already knows the
- * provider's base URL, so no per-provider base_url config is needed (the `custom` provider is the
- * exception — its endpoint comes from HERMES_MODEL_BASE_URL). Forwarding every present key into
- * each container also covers Hermes' background auxiliary tasks (compression/vision/web-extract),
- * which run in-process under the primary and so need their provider's key in the same container.
+ * Hermes reads that provider's API key from `os.environ` under the standard name below — no
+ * translation layer is involved — and already knows the provider's base URL, so no per-provider
+ * base_url config is needed (the `custom` provider is the exception — its endpoint comes from
+ * HERMES_MODEL_BASE_URL). Forwarding every present key into each container also covers Hermes'
+ * background auxiliary tasks (compression/vision/web-extract), which run in-process under the
+ * primary and so need their provider's key in the same container.
+ *
+ * The names below are exactly those the Hermes source reads from the environment (verified against
+ * the agent image). Do NOT add speculative names — an env var Hermes doesn't read is dead weight.
  *
  * Forwarded by NAME ONLY (`--env OPENAI_API_KEY`) so the value is pulled from the orchestrator's
  * own environment by the docker CLI and never lands in the args array — which is persisted verbatim
- * to AgentRun.command. Add new providers here as needed.
+ * to AgentRun.command.
  */
 export const PROVIDER_CREDENTIAL_ENV = [
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
-  'GEMINI_API_KEY',
-  'GOOGLE_API_KEY',
+  'OPENROUTER_API_KEY',
+  'XAI_API_KEY',
   'GROQ_API_KEY',
   'MISTRAL_API_KEY',
   'DEEPSEEK_API_KEY',
-  'OPENROUTER_API_KEY',
-  'XAI_API_KEY',
-  'TOGETHER_API_KEY',
-  'FIREWORKS_API_KEY',
-  'PERPLEXITY_API_KEY',
-  'NOUS_API_KEY',
+  'GEMINI_API_KEY',
+  'GOOGLE_API_KEY',
+  'DASHSCOPE_API_KEY', // Alibaba — Qwen cloud
+  'MINIMAX_API_KEY',
+  'KIMI_API_KEY', // Moonshot
+  'GLM_API_KEY', // z.ai
+  'ZAI_API_KEY', // z.ai (alias)
+  'AZURE_FOUNDRY_API_KEY',
+  'OLLAMA_API_KEY',
+  'GMI_API_KEY',
+  // Nous Portal / Claude Max OAuth fallback tokens (primary path is mounted credential files).
+  'ANTHROPIC_TOKEN',
+  'CLAUDE_CODE_OAUTH_TOKEN',
 ] as const;
 
 export interface AgentSpecParams {
