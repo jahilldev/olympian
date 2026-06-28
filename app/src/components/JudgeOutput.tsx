@@ -36,7 +36,7 @@ export default function JudgeOutput() {
       <div class="flex flex-col items-center justify-center h-full text-zinc-500 gap-3">
         <p class="text-base">Judgement not found</p>
         <button
-          class="text-sm text-indigo-400 hover:text-indigo-300"
+          class="text-sm text-cyan-400 hover:text-cyan-300"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
           Back to job
@@ -48,7 +48,7 @@ export default function JudgeOutput() {
   if (!judgement) {
     return (
       <div class="flex items-center justify-center h-full">
-        <div class="w-6 h-6 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
+        <div class="w-6 h-6 border-2 border-zinc-700 border-t-cyan-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function JudgeOutput() {
           ← Back
         </button>
         <span class="text-zinc-700 text-sm">/</span>
-        <span class="font-mono text-xs px-2 py-0.5 rounded shrink-0 bg-pink-900/60 text-pink-300">
+        <span class="font-mono text-xs px-2 py-0.5 rounded shrink-0 bg-zinc-800 text-zinc-300">
           JUDGE
         </span>
         <span
@@ -80,7 +80,7 @@ export default function JudgeOutput() {
         <div class="max-w-4xl mx-auto px-4 py-5 space-y-4">
           {html ? (
             <div
-              class="prose prose-sm prose-invert max-w-none prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-li:text-zinc-300 prose-strong:text-zinc-200 prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800"
+              class="prose prose-sm prose-invert max-w-none prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-li:text-zinc-300 prose-strong:text-zinc-200 prose-code:text-cyan-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800"
               // eslint-disable-next-line react/no-danger
               dangerouslySetInnerHTML={{ __html: html }}
             />

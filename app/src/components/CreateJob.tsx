@@ -6,7 +6,7 @@ import { navigate } from '../utils/navigate.ts';
 const SSH_REMOTE_REGEX = /^(?:[^@\s]+@[^:\s]+:.+|ssh:\/\/.+)$/;
 
 const PROSE =
-  'prose prose-sm prose-invert max-w-none prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-a:text-blue-400 prose-strong:text-zinc-200 prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800 prose-li:text-zinc-300';
+  'prose prose-sm prose-invert max-w-none prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-a:text-cyan-400 prose-strong:text-zinc-200 prose-code:text-cyan-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800 prose-li:text-zinc-300';
 
 export default function CreateJob() {
   const [title, setTitle] = useState('');
@@ -76,7 +76,7 @@ export default function CreateJob() {
               value={title}
               onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
               placeholder="Short summary of the work"
-              class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-600"
+              class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-cyan-600"
             />
           </div>
 
@@ -90,7 +90,7 @@ export default function CreateJob() {
               onInput={(e) => setRepoUrl((e.target as HTMLInputElement).value)}
               placeholder="git@github.com:owner/repo.git — leave empty for a scratch workspace"
               class={`w-full rounded-lg bg-zinc-900 border px-3 py-2 text-sm font-mono text-zinc-100 placeholder-zinc-600 focus:outline-none ${
-                repoInvalid ? 'border-red-700 focus:border-red-600' : 'border-zinc-800 focus:border-indigo-600'
+                repoInvalid ? 'border-red-700 focus:border-red-600' : 'border-zinc-800 focus:border-cyan-600'
               }`}
             />
             {repoInvalid && (
@@ -125,7 +125,7 @@ export default function CreateJob() {
                 onInput={(e) => setRequirements((e.target as HTMLTextAreaElement).value)}
                 placeholder="Describe the work like a GitHub issue — context, goals, acceptance criteria…"
                 rows={14}
-                class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm font-mono text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-600 resize-y"
+                class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm font-mono text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-cyan-600 resize-y"
               />
             )}
           </div>

@@ -63,7 +63,7 @@ export default function RepoControl({
               setValue(repoUrl ?? '');
               setEditing(true);
             }}
-            class="text-indigo-400 hover:text-indigo-300 transition-colors"
+            class="text-cyan-400 hover:text-cyan-300 transition-colors"
           >
             {repoUrl ? 'change' : 'set'}
           </button>
@@ -81,7 +81,7 @@ export default function RepoControl({
           onInput={(e) => setValue((e.target as HTMLInputElement).value)}
           placeholder="git@github.com:owner/repo.git (empty = scratch)"
           class={`flex-1 rounded-lg bg-zinc-900 border px-2.5 py-1.5 text-xs font-mono text-zinc-100 placeholder-zinc-600 focus:outline-none ${
-            invalid ? 'border-red-700' : 'border-zinc-800 focus:border-indigo-600'
+            invalid ? 'border-red-700' : 'border-zinc-800 focus:border-cyan-600'
           }`}
         />
         <button

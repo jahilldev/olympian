@@ -83,9 +83,9 @@ function GenerationCard({ event, isSubagent }: { event: LangfuseEvent; isSubagen
         section: 'border-cyan-900/30',
       }
     : {
-        border: 'border-indigo-900/50',
-        header: 'bg-indigo-950/50 text-indigo-200',
-        section: 'border-indigo-900/30',
+        border: 'border-zinc-800',
+        header: 'bg-zinc-900/70 text-zinc-200',
+        section: 'border-zinc-800',
       };
 
   return (
@@ -185,9 +185,9 @@ function GenerationCard({ event, isSubagent }: { event: LangfuseEvent; isSubagen
                 class="prose prose-sm prose-invert max-w-none
               prose-headings:font-semibold prose-headings:text-zinc-100
               prose-p:text-zinc-300 prose-p:leading-relaxed
-              prose-a:text-blue-400 hover:prose-a:text-blue-300
+              prose-a:text-cyan-400 hover:prose-a:text-cyan-300
               prose-strong:text-zinc-200
-              prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.8em] prose-code:before:content-none prose-code:after:content-none
+              prose-code:text-cyan-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.8em] prose-code:before:content-none prose-code:after:content-none
               prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800
               prose-blockquote:border-zinc-700 prose-blockquote:text-zinc-400
               prose-hr:border-zinc-800

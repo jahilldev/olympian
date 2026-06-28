@@ -48,9 +48,9 @@ export function isDiff(text: string): boolean {
 export function ChatMessages({ messages }: { messages: ChatMessage[] }) {
   const roleStyle: Record<string, string> = {
     system: 'text-zinc-600',
-    user: 'text-sky-400',
-    assistant: 'text-indigo-300',
-    tool: 'text-amber-400',
+    user: 'text-cyan-400',
+    assistant: 'text-hermes-400',
+    tool: 'text-zinc-400',
   };
   return (
     <div class="divide-y divide-zinc-800/50">
@@ -92,7 +92,7 @@ export function DiffView({ text }: { text: string }) {
         return (
           <div
             key={i}
-            class={`px-2 ${isAdd ? 'bg-green-950/40' : isDel ? 'bg-red-950/40' : isHunk ? 'bg-indigo-950/30' : ''}`}
+            class={`px-2 ${isAdd ? 'bg-green-950/40' : isDel ? 'bg-red-950/40' : isHunk ? 'bg-cyan-950/30' : ''}`}
           >
             <span
               class={
@@ -101,7 +101,7 @@ export function DiffView({ text }: { text: string }) {
                   : isDel
                     ? 'text-red-300'
                     : isHunk
-                      ? 'text-indigo-400'
+                      ? 'text-cyan-400'
                       : isHeader
                         ? 'text-zinc-400 font-semibold'
                         : 'text-zinc-500'

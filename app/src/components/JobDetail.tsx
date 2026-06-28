@@ -197,7 +197,7 @@ export default function JobDetail() {
     return (
       <div class="flex flex-col items-center justify-center h-full text-zinc-500 gap-3">
         <p class="text-base">Job not found</p>
-        <button class="text-sm text-indigo-400 hover:text-indigo-300" onClick={() => navigate('/')}>
+        <button class="text-sm text-cyan-400 hover:text-cyan-300" onClick={() => navigate('/')}>
           Back to all jobs
         </button>
       </div>
@@ -207,7 +207,7 @@ export default function JobDetail() {
   if (!job) {
     return (
       <div class="flex items-center justify-center h-full">
-        <div class="w-6 h-6 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
+        <div class="w-6 h-6 border-2 border-zinc-700 border-t-cyan-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -250,16 +250,16 @@ export default function JobDetail() {
             {(activeRun || !TERMINAL_STATES.has(job.state) || job.state === 'FAILED') && (
               <div class="flex items-stretch gap-2">
                 {activeRun && (
-                  <div class="flex-1 min-w-0 rounded-lg border border-hermes-300/30 bg-hermes-400/10 px-3 py-2.5 flex items-center gap-2.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-hermes-400 animate-pulse shrink-0" />
-                    <span class="text-xs text-hermes-400 font-mono">{activeRun.phase}</span>
+                  <div class="flex-1 min-w-0 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2.5 flex items-center gap-2.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+                    <span class="text-xs text-green-400 font-mono">{activeRun.phase}</span>
                     {activeRun.model && (
                       <span class="text-xs text-zinc-500 truncate hidden sm:block">
                         {activeRun.model}
                       </span>
                     )}
                     <button
-                      class="ml-auto shrink-0 text-xs font-medium text-hermes-400 hover:text-hermes-300 transition-colors"
+                      class="ml-auto shrink-0 text-xs font-medium text-green-400 hover:text-green-300 transition-colors"
                       onClick={() => navigate(`/jobs/${id}/runs/${activeRun.id}`)}
                     >
                       Watch live →
@@ -315,7 +315,7 @@ export default function JobDetail() {
               {job.prNumber && (
                 <a
                   href={job.prUrl ?? '#'}
-                  class={`shrink-0 hover:underline ${job.prIsDraft ? 'text-zinc-500' : 'text-sky-400'}`}
+                  class={`shrink-0 hover:underline ${job.prIsDraft ? 'text-zinc-500' : 'text-cyan-400'}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -375,7 +375,7 @@ export default function JobDetail() {
                     onInput={(e) => setChangesNote((e.target as HTMLTextAreaElement).value)}
                     placeholder="Request changes (Markdown) — Hermes will revise and push an update…"
                     rows={3}
-                    class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-600 resize-y"
+                    class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-cyan-600 resize-y"
                   />
                   <button
                     disabled={actionPending || changesNote.trim().length === 0}

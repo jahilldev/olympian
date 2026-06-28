@@ -63,7 +63,7 @@ export default function RunOutput() {
           </button>
         </header>
         <div class="flex-1 bg-black flex items-center justify-center">
-          <div class="w-5 h-5 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
+          <div class="w-5 h-5 border-2 border-zinc-700 border-t-cyan-500 rounded-full animate-spin" />
         </div>
       </div>
     );
