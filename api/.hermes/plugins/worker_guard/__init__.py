@@ -95,11 +95,13 @@ def _primary_read_max_lines() -> int:
         return _DEFAULT_PRIMARY_READ_MAX_LINES
 
 
-def _is_primary(task_id: str) -> bool:
-    """True only for the primary's own task_id (never a delegated sub-agent). Relies on the
-    primary/sub-agent state already populated by on_pre_tool_call for this same call."""
+def _is_subagent(task_id: str) -> bool:
+    """True only for a task_id we've positively identified as a delegated sub-agent (registered by
+    on_pre_tool_call before the tool ran). Everything else — including the top-level primary, whose
+    task_id is empty (`""`) — is treated as NOT a sub-agent. Detection is by exclusion: we can't
+    rely on a positive primary id, because the primary often has none."""
     with _LOCK:
-        return bool(task_id) and task_id == _STATE["primary"] and task_id not in _STATE["subagents"]
+        return bool(task_id) and task_id in _STATE["subagents"]
 
 
 def _has_write_redirect(cmd: str) -> bool:
@@ -205,11 +207,16 @@ def on_transform_tool_result(
     """Cap an over-long read_file result for the PRIMARY only — truncating the JSON `content`
     to the line budget and appending a note to delegate the rest. Sub-agents are never capped, so
     they still read whole files to do the work. Returning a string replaces the result the model
-    sees; None leaves it untouched. Fail-open — never raise."""
+    sees; None leaves it untouched. Fail-open — never raise.
+
+    The primary is identified by EXCLUSION (not a known sub-agent), mirroring the write-block in
+    on_pre_tool_call. A positive `_is_primary` id check used to gate this, but the top-level
+    primary's task_id is empty (`""`), so that check was always false and the cap silently never
+    fired — the bug this replaces."""
     if not _phase_ok() or tool_name not in _READ_TOOLS or not isinstance(result, str):
         return None
     try:
-        if not _is_primary(task_id):
+        if _is_subagent(task_id):
             return None
 
         data = json.loads(result)
