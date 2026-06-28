@@ -12,6 +12,10 @@ mechanisms, both primary-only (sub-agents are never affected — they edit and r
     BOTH guards above: it can `open(p).read()` whole files (uncapped context bloat) and
     `open(p,"w").write(...)` to edit them (bypassing the write block). The primary delegates code
     runs to a sub-agent; only sub-agents may execute code. Enforced via pre_tool_call.
+  * BLOCK git history/state commands — `git commit` / `git push` in a terminal command, for EVERY
+    agent (primary AND sub-agents, unlike the primary-only guards above), since the orchestrator
+    owns all git (it stages/commits/pushes); an agent commit would collide with that. Read-only git
+    (diff/log/status) is left alone so a reviewer can inspect the branch. Enforced via pre_tool_call.
   * CAP large reads — a read_file result over N lines (or one Hermes already truncated) is clipped
     (for the primary only) with a note telling it to delegate a survey or re-read a tight
     offset+limit range. A verification or quote-a-function read is well under the cap; only a
@@ -142,6 +146,52 @@ def _is_file_write_command(cmd: Optional[str]) -> bool:
     return _has_write_redirect(cmd) or _has_write_command(cmd)
 
 
+# git sub-commands no agent may run — the orchestrator owns all git history/state (it stages,
+# commits and pushes for you). Read-only git (diff/log/show/status/…) is deliberately NOT here, so
+# a reviewer can still inspect the branch.
+_BLOCKED_GIT_SUBCOMMANDS = {"commit", "push"}
+# git global options that take a value, so the subcommand scanner skips their argument too.
+_GIT_OPTS_WITH_ARG = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
+
+
+def _git_subcommand(parts: list[str]) -> Optional[str]:
+    """Given shlex tokens whose first token is `git`, return the subcommand (e.g. commit/push),
+    skipping global options like `-C <dir>` / `-c <kv>`. None if no subcommand is present."""
+    i = 1
+    while i < len(parts):
+        tok = parts[i]
+        if tok in _GIT_OPTS_WITH_ARG:
+            i += 2  # option plus its separate-token value
+            continue
+        if tok.startswith("-"):
+            i += 1  # `--git-dir=…` (attached value) or a valueless global flag
+            continue
+        return tok
+    return None
+
+
+def _is_blocked_git_command(cmd: Optional[str]) -> bool:
+    """True when any pipeline segment invokes a forbidden git subcommand (commit/push). Quote-aware
+    (an echoed "git commit" in a string is ignored) and tolerant of a leading `VAR=val` env prefix."""
+    cmd = _strip_quoted((cmd or "").strip())
+    if not cmd:
+        return False
+    for seg in _SEGMENTS.split(cmd):
+        seg = seg.strip()
+        if not seg:
+            continue
+        try:
+            parts = shlex.split(seg)
+        except Exception:
+            parts = seg.split()
+        idx = 0
+        while idx < len(parts) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", parts[idx]):
+            idx += 1  # skip `FOO=bar git …` env assignments
+        if idx < len(parts) and parts[idx] == "git" and _git_subcommand(parts[idx:]) in _BLOCKED_GIT_SUBCOMMANDS:
+            return True
+    return False
+
+
 def on_pre_tool_call(
     *, tool_name: str = "", task_id: str = "", args: Optional[dict] = None, **_: Any
 ) -> Any:
@@ -161,6 +211,21 @@ def on_pre_tool_call(
             if _STATE["primary"] is None and task_id:
                 _STATE["primary"] = task_id  # first non-delegate tool call = the parent
             is_subagent = task_id in _STATE["subagents"]
+
+        # Hard safety net on top of the prompt guidance: NO agent — primary OR sub-agent — runs git
+        # history/state commands. The orchestrator stages, commits and pushes your work; an agent
+        # commit/push would collide with that (e.g. leave nothing staged for the orchestrator's own
+        # commit, or push an unreviewed state). Checked before the sub-agent exemption below.
+        if tool_name == "terminal" and _is_blocked_git_command((args or {}).get("command")):
+            return {
+                "action": "block",
+                "message": (
+                    "`git commit` / `git push` are disabled — the orchestrator owns all git and "
+                    "stages, commits and pushes your work for you. Just edit files (or delegate the "
+                    "edit); never run git history/state commands. Read-only git (`git diff`, "
+                    "`git log`, `git status`) is fine."
+                ),
+            }
 
         if is_subagent:
             return None  # sub-agents do the editing — never block them
