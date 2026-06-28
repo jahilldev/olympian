@@ -305,9 +305,12 @@ export class HermesAgentService implements OnModuleInit {
       if (pending.length === 0) {
         return;
       }
+
       const batch = pending.splice(0, pending.length);
       const rows = eventInsertRows(runId, batch, seq);
+
       seq += batch.length;
+
       chain = chain.then(() =>
         this.prisma.agentEvent.createMany({ data: rows }).then(
           () => undefined,
@@ -319,6 +322,7 @@ export class HermesAgentService implements OnModuleInit {
 
     const subscription = this.langfuse.observe(runId).subscribe((ev) => pending.push(ev));
     const timer = setInterval(flush, EVENT_FLUSH_INTERVAL_MS);
+
     timer.unref?.(); // never hold the process open on this timer alone
 
     return {
