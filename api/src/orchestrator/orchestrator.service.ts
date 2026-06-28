@@ -185,7 +185,7 @@ export class OrchestratorService {
           orderBy: { createdAt: 'desc' },
           select: { phase: true, createdAt: true },
         }),
-        this.prisma.reviewPass.count({ where: { jobId: job.id, cycle: job.reviewCycle } }),
+        this.prisma.reviewPass.count({ where: { jobId: job.id, cycle: job.revisionCycle } }),
         this.prisma.queueTask.findFirst({
           where: { jobId: job.id, status: { in: ['PENDING', 'RUNNING'] } },
           orderBy: { createdAt: 'desc' },
@@ -196,7 +196,7 @@ export class OrchestratorService {
           select: { prNumber: true },
         }),
         this.prisma.reviewPass.findFirst({
-          where: { jobId: job.id, cycle: job.reviewCycle },
+          where: { jobId: job.id, cycle: job.revisionCycle },
           orderBy: { passNumber: 'desc' },
           select: { issues: true, verifyOk: true, dimensions: true },
         }),
@@ -274,9 +274,9 @@ export class OrchestratorService {
       return;
     }
 
-    // /hermes revise on a PR thread: store feedback and enqueue IMPLEMENT only when
-    // the job is parked (AWAITING_PR_APPROVAL). If an agent is already running the
-    // feedback is persisted and will be picked up on the next handleImplement call.
+    // /hermes revise on a PR thread: store feedback and open a new revision round (REVISE)
+    // only when the job is parked (AWAITING_PR_APPROVAL). If an agent is already running the
+    // feedback is persisted and folds into the in-flight round on the next revise call.
     if (command.kind === 'revise' && job.prNumber) {
       const prefix = this.config.get('COMMAND_PREFIX');
 
@@ -297,12 +297,16 @@ export class OrchestratorService {
       await this.safeCommentReaction(ref, evt.commentId, 'eyes');
 
       if (job.state === 'AWAITING_PR_APPROVAL') {
-        await this.jobs.transition(job.id, 'IMPLEMENTING', {
+        // A settled PR + new feedback = a fresh revision round: bump the round (fresh verify/
+        // review budget) and run REVISE, scoped to this feedback — not a full re-implement.
+        await this.jobs.update(job.id, { revisionCycle: { increment: 1 } });
+
+        await this.jobs.transition(job.id, 'REVISING', {
           reason: `revision requested by @${evt.author}`,
           actor: 'HUMAN',
         });
 
-        await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
+        await this.queue.enqueue({ jobId: job.id, kind: 'REVISE' });
 
         await this.safeComment(
           ref,
@@ -410,13 +414,16 @@ export class OrchestratorService {
       });
 
       if (job.state === 'AWAITING_PR_APPROVAL') {
-        // The PR was settled — start a fresh revision cycle to address the feedback.
-        await this.jobs.transition(job.id, 'IMPLEMENTING', {
+        // The PR was settled — open a fresh revision round (fresh verify/review budget) and
+        // run REVISE, scoped to this feedback, rather than re-running the full IMPLEMENT.
+        await this.jobs.update(job.id, { revisionCycle: { increment: 1 } });
+
+        await this.jobs.transition(job.id, 'REVISING', {
           reason: `changes requested by @${evt.author}`,
           actor: 'HUMAN',
         });
 
-        await this.queue.enqueue({ jobId: job.id, kind: 'IMPLEMENT' });
+        await this.queue.enqueue({ jobId: job.id, kind: 'REVISE' });
 
         await this.safeComment(
           ref,
@@ -581,6 +588,9 @@ export class OrchestratorService {
       data: { status: 'APPROVED' },
     });
 
+    // Plan approval opens revision round 1 — the first (and only) IMPLEMENT pass.
+    await this.jobs.update(jobId, { revisionCycle: { increment: 1 } });
+
     await this.jobs.transition(jobId, 'IMPLEMENTING', {
       reason: `plan approved by ${by}`,
       actor: 'HUMAN',
@@ -700,12 +710,16 @@ export class OrchestratorService {
 
     await this.prisma.pullRequestFeedback.create({ data: { jobId, author: by, body } });
 
-    await this.jobs.transition(jobId, 'IMPLEMENTING', {
+    // Settled result + new feedback = a fresh revision round (fresh verify/review budget),
+    // addressed via a scoped REVISE rather than a full re-implement.
+    await this.jobs.update(jobId, { revisionCycle: { increment: 1 } });
+
+    await this.jobs.transition(jobId, 'REVISING', {
       reason: `changes requested by ${by}`,
       actor: 'HUMAN',
     });
 
-    await this.queue.enqueue({ jobId, kind: 'IMPLEMENT' });
+    await this.queue.enqueue({ jobId, kind: 'REVISE' });
 
     return { ok: true };
   }
@@ -955,10 +969,22 @@ export class OrchestratorService {
 
     // PR/result feedback applies once a PR exists (GitHub) or for any dashboard job, where
     // "request changes" stores feedback without a PR number. Older GitHub jobs with no PR
-    // yet have nothing to fold in.
+    // yet have nothing to fold in. Only feedback submitted *after* the last implement run is
+    // relevant — anything older was already incorporated by that pass; re-injecting it makes a
+    // fresh cycle re-attack already-resolved rounds (and mislabel them as current corrections).
+    // Mirrors the same guard in handleRevise.
     if (job.prNumber || job.origin === 'DASHBOARD') {
+      const lastImplementRun = await this.prisma.agentRun.findFirst({
+        where: { jobId, phase: 'IMPLEMENT' },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+
       const prRevisions = await this.prisma.pullRequestFeedback.findMany({
-        where: { jobId },
+        where: {
+          jobId,
+          ...(lastImplementRun ? { createdAt: { gt: lastImplementRun.createdAt } } : {}),
+        },
         orderBy: { createdAt: 'asc' },
       });
 
@@ -1015,7 +1041,10 @@ export class OrchestratorService {
     });
 
     await this.jobs.incrementAttempts(jobId);
-    await this.jobs.update(jobId, { reviewCycle: { increment: 1 } });
+    // NB: revisionCycle is NOT incremented here. The round advances only on a human-triggered
+    // work episode (plan approval → round 1; each settled-PR changes request → +1), set at that
+    // transition. Incrementing per IMPLEMENT pass is the old coupling that forced PR feedback to
+    // route through IMPLEMENT just to get a fresh verify/review budget.
 
     await this.jobs.transition(jobId, 'VERIFYING', {
       reason: 'implementation complete',
@@ -1181,7 +1210,7 @@ export class OrchestratorService {
       branchName: this.branchFor(job),
     });
 
-    const cycle = job.reviewCycle;
+    const cycle = job.revisionCycle;
     const verifyCommand = await this.verifyCommandFor(job, ws.dir);
 
     // No automated checks in the repo (yet) — nothing to run, proceed to self-review.
@@ -1283,17 +1312,20 @@ export class OrchestratorService {
 
     const plan = await this.approvedPlan(jobId);
 
-    // PR feedback is only relevant if it was submitted after the last IMPLEMENT run;
-    // anything older was already incorporated into the code by that IMPLEMENT pass.
-    const lastImplementRun = await this.prisma.agentRun.findFirst({
-      where: { jobId, phase: 'IMPLEMENT' },
+    // PR feedback is only relevant if it was submitted after the last WORK run (IMPLEMENT or
+    // REVISE); anything older was already incorporated by that pass. Anchoring on either phase
+    // (not just IMPLEMENT) keeps each round isolated now that feedback drives REVISE, not
+    // IMPLEMENT — otherwise the anchor would freeze at the round-1 build and re-inject every
+    // prior round's feedback.
+    const lastWorkRun = await this.prisma.agentRun.findFirst({
+      where: { jobId, phase: { in: ['IMPLEMENT', 'REVISE'] } },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
 
     const [reviewPasses, prFeedback] = await Promise.all([
       this.prisma.reviewPass.findMany({
-        where: { jobId, cycle: job.reviewCycle },
+        where: { jobId, cycle: job.revisionCycle },
         orderBy: { passNumber: 'desc' },
         take: 2,
         select: { issues: true },
@@ -1301,7 +1333,7 @@ export class OrchestratorService {
       this.prisma.pullRequestFeedback.findMany({
         where: {
           jobId,
-          ...(lastImplementRun ? { createdAt: { gt: lastImplementRun.createdAt } } : {}),
+          ...(lastWorkRun ? { createdAt: { gt: lastWorkRun.createdAt } } : {}),
         },
         orderBy: { createdAt: 'asc' },
       }),
@@ -1329,7 +1361,7 @@ export class OrchestratorService {
     // If the most recent verify in this cycle failed, the build/tests are the priority
     // fix — surface their output to the revise agent.
     const lastVerify = await this.prisma.verifyRun.findFirst({
-      where: { jobId, cycle: job.reviewCycle },
+      where: { jobId, cycle: job.revisionCycle },
       orderBy: { createdAt: 'desc' },
       select: { ok: true, command: true, output: true },
     });
@@ -1410,7 +1442,7 @@ export class OrchestratorService {
     const base = ws.baseBranch;
     const plan = await this.approvedPlan(jobId);
     const maxPasses = this.review.maxPasses;
-    const cycle = job.reviewCycle;
+    const cycle = job.revisionCycle;
 
     // One ordered read of this cycle's passes backs three things: the pass number, the
     // immediately-preceding pass's issues (so the reviewer can verify each was resolved), and the
@@ -1673,7 +1705,7 @@ export class OrchestratorService {
     await this.jobs.update(jobId, { headSha });
 
     const lastReview = await this.prisma.reviewPass.findFirst({
-      where: { jobId, cycle: job.reviewCycle },
+      where: { jobId, cycle: job.revisionCycle },
       orderBy: { passNumber: 'desc' },
     });
 

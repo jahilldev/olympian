@@ -30,7 +30,7 @@ function makeJob(overrides: Record<string, unknown> = {}) {
   return {
     id: 'job1',
     state: 'VERIFYING',
-    reviewCycle: 1,
+    revisionCycle: 1,
     issueNumber: 5,
     issueTitle: 'Title',
     issueBody: 'Body',
@@ -289,15 +289,33 @@ describe('OrchestratorService.handleVerify', () => {
 });
 
 describe('OrchestratorService.handleImplement', () => {
-  it('single pass → increments cycle, then verifies', async () => {
+  it('single pass → verifies without bumping the revision round', async () => {
     const { service, queue, jobs, workspace } = setup({ job: { state: 'IMPLEMENTING' } });
 
     await callPrivate(service, 'handleImplement', 'job1');
 
     expect(workspace.commitAll).toHaveBeenCalled();
-    expect(jobs.update).toHaveBeenCalledWith('job1', { reviewCycle: { increment: 1 } });
+    // The round advances only at a human-episode transition (approval / settled-PR feedback),
+    // never inside IMPLEMENT.
+    expect(jobs.update).not.toHaveBeenCalledWith('job1', { revisionCycle: { increment: 1 } });
     expect(transitionedTo(jobs)).toContain('VERIFYING');
     expect(enqueuedKinds(queue)).toEqual(['VERIFY']);
+  });
+
+  it('only folds in PR feedback newer than the last implement run', async () => {
+    const { service, prisma } = setup({ job: { state: 'IMPLEMENTING', prNumber: 7 } });
+    const anchor = new Date(1000);
+    prisma.agentRun.findFirst.mockResolvedValue({ createdAt: anchor });
+
+    await callPrivate(service, 'handleImplement', 'job1');
+
+    // Older, already-addressed feedback rounds must be excluded — the query is time-scoped to
+    // the last implement pass, not the whole job's feedback history.
+    expect(prisma.pullRequestFeedback.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ createdAt: { gt: anchor } }),
+      }),
+    );
   });
 
   it('marks the run FAILED and throws when nothing was committed', async () => {
@@ -461,6 +479,8 @@ describe('OrchestratorService.approvePlan', () => {
       where: { jobId: 'job1', status: 'PROPOSED' },
       data: { status: 'APPROVED' },
     });
+    // Approval opens revision round 1.
+    expect(jobs.update).toHaveBeenCalledWith('job1', { revisionCycle: { increment: 1 } });
     expect(transitionedTo(jobs)).toContain('IMPLEMENTING');
     expect(enqueuedKinds(queue)).toEqual(['IMPLEMENT']);
   });
@@ -529,15 +549,17 @@ describe('OrchestratorService.onPullRequestReview (changes requested)', () => {
     isBot: false,
   };
 
-  it('records feedback and restarts the cycle when the PR is awaiting approval', async () => {
+  it('opens a new revision round (REVISE) when the PR is awaiting approval', async () => {
     const { service, prisma, queue, jobs } = setup({ job: { state: 'AWAITING_PR_APPROVAL' } });
     prisma.jobRecords.findFirst.mockResolvedValue(makeJob({ state: 'AWAITING_PR_APPROVAL' }));
 
     await service.onPullRequestReview(prEvent as never);
 
     expect(prisma.pullRequestFeedback.create).toHaveBeenCalled();
-    expect(transitionedTo(jobs)).toContain('IMPLEMENTING');
-    expect(enqueuedKinds(queue)).toEqual(['IMPLEMENT']);
+    // A settled PR re-enters via a scoped REVISE in a fresh round, not a full IMPLEMENT.
+    expect(jobs.update).toHaveBeenCalledWith('job1', { revisionCycle: { increment: 1 } });
+    expect(transitionedTo(jobs)).toContain('REVISING');
+    expect(enqueuedKinds(queue)).toEqual(['REVISE']);
   });
 
   it('records feedback but does NOT restart when the job is already working mid-cycle', async () => {
@@ -649,15 +671,16 @@ describe('OrchestratorService dashboard actions', () => {
     expect(jobs.transition).not.toHaveBeenCalled();
   });
 
-  it('requestChanges records feedback and restarts IMPLEMENT', async () => {
+  it('requestChanges records feedback and opens a new REVISE round', async () => {
     const { service, prisma, jobs, queue } = setup({ job: { state: 'AWAITING_PR_APPROVAL' } });
 
     const res = await service.requestChanges('job1', 'dashboard', 'fix Y');
 
     expect(res.ok).toBe(true);
     expect(prisma.pullRequestFeedback.create).toHaveBeenCalled();
-    expect(transitionedTo(jobs)).toContain('IMPLEMENTING');
-    expect(enqueuedKinds(queue)).toEqual(['IMPLEMENT']);
+    expect(jobs.update).toHaveBeenCalledWith('job1', { revisionCycle: { increment: 1 } });
+    expect(transitionedTo(jobs)).toContain('REVISING');
+    expect(enqueuedKinds(queue)).toEqual(['REVISE']);
   });
 
   it('setRepo updates the repo and discards the workspace while editable', async () => {

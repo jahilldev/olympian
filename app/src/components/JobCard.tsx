@@ -88,8 +88,8 @@ export default function JobCard({ job }: Props) {
         )}
       </td>
       <td class="py-3 px-4 whitespace-nowrap">
-        {job.reviewCycle > 0 ? (
-          <span class="text-xs text-zinc-400">cycle {job.reviewCycle}</span>
+        {job.revisionCycle > 0 ? (
+          <span class="text-xs text-zinc-400">revision {job.revisionCycle}</span>
         ) : (
           <span class="text-zinc-700">—</span>
         )}

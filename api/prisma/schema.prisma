@@ -50,7 +50,7 @@ model JobRecords {
   headSha        String?
   confidence     Int? // latest review confidence (0-100)
   verifyCommand  String? // agent-discovered tests/build command; null/"" = none found yet (re-discovered until a real command appears)
-  reviewCycle    Int               @default(0) // incremented each time handleImplement completes
+  revisionCycle  Int               @default(0) // the revision round: starts at 1 on plan approval, +1 per human-triggered work episode (settled-PR changes). Verify attempts + review passes are budgeted per round.
   attempts       Int               @default(0)
   error          String?
   createdAt      DateTime          @default(now())
@@ -198,7 +198,7 @@ model ReviewPass {
   id         String     @id @default(cuid())
   job        JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId      String
-  cycle      Int        @default(1) // which implementation round (matches JobRecords.reviewCycle)
+  cycle      Int        @default(1) // which revision round (matches JobRecords.revisionCycle)
   passNumber Int // pass within this cycle
   confidence Int // advisory only — the gate is the rubric + verify, not this number
   verdict    String // ReviewVerdict union
@@ -218,7 +218,7 @@ model VerifyRun {
   id         String     @id @default(cuid())
   job        JobRecords @relation(fields: [jobId], references: [id], onDelete: Cascade)
   jobId      String
-  cycle      Int // implementation round (matches JobRecords.reviewCycle)
+  cycle      Int // revision round (matches JobRecords.revisionCycle)
   attempt    Int // verify attempt within this cycle
   command    String
   ok         Boolean

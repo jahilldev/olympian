@@ -17,7 +17,8 @@ describe('canTransition', () => {
     expect(canTransition('VERIFYING', 'REVISING')).toBe(true);
     expect(canTransition('SELF_REVIEWING', 'REVISING')).toBe(true);
     expect(canTransition('REVISING', 'VERIFYING')).toBe(true);
-    expect(canTransition('AWAITING_PR_APPROVAL', 'IMPLEMENTING')).toBe(true);
+    expect(canTransition('AWAITING_PR_APPROVAL', 'REVISING')).toBe(true);
+    expect(canTransition('AWAITING_PR_APPROVAL', 'IMPLEMENTING')).toBe(false);
   });
 
   it('forbids illegal jumps', () => {

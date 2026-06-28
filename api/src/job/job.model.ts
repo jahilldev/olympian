@@ -34,7 +34,7 @@ export const ALLOWED_TRANSITIONS: Record<JobState, JobState[]> = {
   SELF_REVIEWING: ['REVISING', 'OPENING_PR'],
   REVISING: ['VERIFYING'],
   OPENING_PR: ['AWAITING_PR_APPROVAL', 'REVISING'],
-  AWAITING_PR_APPROVAL: ['IMPLEMENTING', 'DONE'],
+  AWAITING_PR_APPROVAL: ['REVISING', 'DONE'],
   DONE: [],
   FAILED: [],
   CANCELLED: [],
@@ -95,7 +95,7 @@ export interface JobSummaryDto {
   issueTitle: string;
   state: string;
   confidence: number | null;
-  reviewCycle: number;
+  revisionCycle: number;
   prNumber: number | null;
   prUrl: string | null;
   prIsDraft: boolean;

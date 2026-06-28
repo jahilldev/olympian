@@ -336,7 +336,7 @@ export default function JobDetail() {
                   {job.confidence}%
                 </span>
               )}
-              {job.reviewCycle > 0 && <span class="shrink-0">cycle {job.reviewCycle}</span>}
+              {job.revisionCycle > 0 && <span class="shrink-0">revision {job.revisionCycle}</span>}
               <span class="ml-auto shrink-0 whitespace-nowrap">{relativeTime(job.updatedAt)}</span>
             </div>
 
