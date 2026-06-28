@@ -40,12 +40,12 @@ export function buildRevisePrompt(ctx: RevisePromptContext): string {
   const issueSections: string[] = [];
 
   if (ctx.latestIssuesText) {
-    issueSections.push(`Issues from the latest review:\n${ctx.latestIssuesText}`);
+    issueSections.push(`## Issues from the latest review\n\n${ctx.latestIssuesText}`);
   }
 
   if (ctx.priorIssuesText) {
     issueSections.push(
-      `Issues from the prior review pass (the reviewer may have overlooked some when updating their list — verify whether each is still present before skipping it):\n${ctx.priorIssuesText}`,
+      `## Issues from the prior review pass\n\nThe reviewer may have overlooked some when updating their list — verify whether each is still present before skipping it.\n\n${ctx.priorIssuesText}`,
     );
   }
 
