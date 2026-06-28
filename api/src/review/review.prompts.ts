@@ -1,49 +1,13 @@
 import { AUTONOMY_NOTICE } from '../agent/agent.prompts.js';
 import { type ReviewPromptContext } from './review.model.js';
 
-export function buildReviewPrompt(ctx: ReviewPromptContext): string {
-  const parts: string[] = [
-    `You are Hermes acting as a rigorous senior code reviewer for \`${ctx.repoFullName}\`. The working directory contains a branch with changes committed on top of \`${ctx.baseBranch}\`. Review the diff of this branch against \`${ctx.baseBranch}\` (use git to inspect it). Use \`.olympian/\` as a scratch directory for any temporary files such as diffs — it is excluded from commits automatically. **This is a read-only review: do NOT modify any source files and do NOT use the clarify tool. If you find a bug, record it in the issues array — do not fix it.**`,
-    `Judge whether the changes correctly and completely resolve the issue, satisfy the plan's acceptance criteria, and meet a professional bar for correctness, security, and tests.`,
-    `**Read efficiently, but never review less.** Inspect the FULL diff against \`${ctx.baseBranch}\` — every changed file and every hunk. When you need surrounding context (a changed function's callers, a type or constant it relies on, related logic, the tests that cover it), use \`search_files\` to read the specific 20-40 line window instead of loading whole files. This is purely about HOW you read: a lean context won't get compressed mid-review, which is exactly when defects slip through. It must never narrow WHAT you review — follow the diff outward wherever a change could introduce a bug (broken callers, unhandled edge cases, security or data-loss risks, missing or weak tests), and do a complete independent pass even on hunks that look fine. If understanding a change demands reading more, read more.`,
-    `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
-    `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
-  ];
+const TESTS_CONTRACT = `# Tests
 
-  if (ctx.humanFeedback) {
-    parts.push(
-      `--- HUMAN PR REVIEW FEEDBACK (highest priority — verify every point is addressed) ---\n${ctx.humanFeedback}\n--- END FEEDBACK ---`,
-    );
-  }
+The project's automated checks (tests/build) have already passed in a separate VERIFY stage — a green result is therefore a given, not evidence of quality, and the implementer wrote its own tests. **Scrutinise the tests themselves:** confirm an automated test exists for each acceptance criterion, that each genuinely exercises the new behaviour (it would fail without the implementation — watch for trivial, tautological, or assertion-free tests), and that no existing test was weakened, skipped, or deleted to reach green. Treat a missing or gamed test as a tests-dimension failure. Then focus on correctness, security, and full coverage of the acceptance criteria.`;
 
-  if (ctx.priorIssues && ctx.priorIssues.length > 0) {
-    const formatted = ctx.priorIssues
-      .map((issue, i) => {
-        const loc = issue.file ? ` (${issue.file})` : '';
-        return `${i + 1}. [${issue.severity}] ${issue.title}${loc}\n   ${issue.detail}`;
-      })
-      .join('\n');
+const BROWSER_CONTRACT = `# Browser smoke-test (optional)
 
-    parts.push(
-      `--- ISSUES FROM PRIOR REVIEW PASS (verify each is now resolved) ---\n${formatted}\n--- END PRIOR ISSUES ---\n\nFor each prior issue, explicitly state in your summary whether it is resolved. **If an issue is not fully resolved — including partial fixes — it MUST appear in your JSON "issues" array.** Mentioning it only in the summary is not sufficient; the issues array is the only signal the next revision receives. Then perform a full independent review of all changes to catch any additional problems not listed above.`,
-    );
-  }
-
-  // The repo's tests/build already ran and passed in the dedicated VERIFY stage
-  // before this review (a failure would have routed to REVISE, not here).
-  parts.push(
-    `The project's automated checks (tests/build) have already passed in a separate VERIFY stage — a green result is therefore a given, not evidence of quality, and the implementer wrote its own tests. **Scrutinise the tests themselves:** confirm an automated test exists for each acceptance criterion, that each genuinely exercises the new behaviour (it would fail without the implementation — watch for trivial, tautological, or assertion-free tests), and that no existing test was weakened, skipped, or deleted to reach green. Treat a missing or gamed test as a tests-dimension failure. Then focus on correctness, security, and full coverage of the acceptance criteria.`,
-  );
-
-  if (ctx.outOfPlanFiles && ctx.outOfPlanFiles.length > 0) {
-    parts.push(
-      `--- SCOPE CHECK ---\nThese files were changed but aren't in the approved plan's "Files to change". Out-of-plan changes are frequently legitimate: a fix the build/tests required, a shared type/config, or repairing pre-existing breakage in another package/workspace. The VERIFY stage has already PASSED, so any change the green build depends on is in scope by definition — do NOT ask for it to be reverted. Only raise an issue if a change is clearly unrelated to the task, unnecessary for a passing build, AND risky (a genuine regression or accidental edit). A pure "this is beyond the plan" observation is at most "low" severity — NEVER high/critical — and on its own must not set "dimensions.criteria" to false. Files:\n${ctx.outOfPlanFiles.map((f) => `- ${f}`).join('\n')}\n--- END SCOPE CHECK ---`,
-    );
-  }
-
-  if (ctx.hasBrowser) {
-    parts.push(
-      `A Camofox browser is available for a smoke-test of the running application. **This is secondary to the code review — do not let it block your verdict.**
+A Camofox browser is available for a smoke-test of the running application. **This is secondary to the code review — do not let it block your verdict.**
 
 Steps (do them exactly once in this order, then move on):
 1. Start the dev server bound to all interfaces so Camofox can reach it through Docker's port proxy. Determine the framework from package.json first, then use the appropriate command:
@@ -58,15 +22,11 @@ Steps (do them exactly once in this order, then move on):
 
 **Ports forwarded to Camofox:** 3000, 3001, 4000, 4200, 5000, 5173, 5174, 8000, 8080, 8888. Navigate to \`http://localhost:<port>\` — do not use the container hostname or any internal IP.
 
-If the server fails to start, skip the browser step and note it in your summary — your code-level verdict still stands.`,
-    );
-  }
+If the server fails to start, skip the browser step and note it in your summary — your code-level verdict still stands.`;
 
-  parts.push(AUTONOMY_NOTICE);
+const VERDICT_CONTRACT = `# Output — verdict (required, inline)
 
-  parts.push(
-    `Files changed on this branch:\n${ctx.changedFiles.map((f) => `- ${f}`).join('\n') || '(none detected)'}`,
-    `Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text:
+Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text. This inline block is the ONLY thing read; do NOT write it to a file, and do NOT replace it with a prose summary (e.g. "the review is written to review.json"):
 \`\`\`json
 {
   "confidence": <integer 0-100, advisory only — your subjective confidence>,
@@ -83,18 +43,77 @@ If the server fails to start, skip the browser step and note it in your summary 
   ]
 }
 \`\`\`
-**The rubric is the gate, not the confidence number.** Set "verdict" to "PASS" ONLY when ALL FOUR dimensions are true AND there are no high/critical issues. Mark a dimension false the moment you are not confident it fully holds — err toward false. List every concrete problem in "issues" (empty array if none). You may include detailed reasoning after the JSON block.`,
+**The rubric is the gate, not the confidence number.** Set "verdict" to "PASS" ONLY when ALL FOUR dimensions are true AND there are no high/critical issues. Mark a dimension false the moment you are not confident it fully holds — err toward false. List every concrete problem in "issues" (empty array if none). You may include detailed reasoning after the JSON block.`;
+
+const RETRY_CONTRACT = `# Retry — your previous output was rejected
+
+IMPORTANT — RETRY: your previous response could not be parsed against the required schema, so this review is being re-run. The verdict was discarded; none of that prior analysis was recorded. Conform EXACTLY this time:
+- Start the response with a single \`\`\`json fenced block — no preamble, narrative, or prose before it. Do NOT write the verdict to a file (\`review.json\` or similar) and then summarise — the file is ignored; only this inline block is read.
+- \`verdict\` MUST be the string "PASS" or "FAIL" (uppercase) — NOT a boolean (\`true\`/\`false\`), number, or any other word.
+- \`confidence\` MUST be present, as an integer 0-100.
+- \`dimensions\` MUST contain all four boolean keys: \`correctness\`, \`tests\`, \`criteria\`, \`security\`.
+- MOST IMPORTANT — \`issues\`: every concrete problem MUST be a structured object in the \`issues\` array with the exact \`{severity,title,detail,file?}\` shape. This array is the ONLY thing passed to the agent that fixes the code — any finding left out, written as prose, or placed under a stray key (\`rationale\`, \`findings\`, \`explanation\`, …) is INVISIBLE to the fix stage and WILL NOT be fixed. Each \`detail\` must say both what is wrong and how to fix it. Put a FAIL's full reasoning here, not after the block.`;
+
+export function buildReviewPrompt(ctx: ReviewPromptContext): string {
+  // Injected documents stay wrapped in `--- NAME --- … ---` fences so their own Markdown headings
+  // never read as one of the prompt's own sections (mirrors the implement/revise prompts).
+  const context: string[] = [
+    `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
+    `--- PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
+  ];
+
+  if (ctx.humanFeedback) {
+    context.push(
+      `--- HUMAN PR REVIEW FEEDBACK (highest priority — verify every point is addressed) ---\n${ctx.humanFeedback}\n--- END FEEDBACK ---`,
+    );
+  }
+
+  if (ctx.priorIssues && ctx.priorIssues.length > 0) {
+    const formatted = ctx.priorIssues
+      .map((issue, i) => {
+        const loc = issue.file ? ` (${issue.file})` : '';
+        return `${i + 1}. [${issue.severity}] ${issue.title}${loc}\n   ${issue.detail}`;
+      })
+      .join('\n');
+
+    context.push(
+      `--- ISSUES FROM PRIOR REVIEW PASS (verify each is now resolved) ---\n${formatted}\n--- END PRIOR ISSUES ---\n\nFor each prior issue, explicitly state in your summary whether it is resolved. **If an issue is not fully resolved — including partial fixes — it MUST appear in your JSON "issues" array.** Mentioning it only in the summary is not sufficient; the issues array is the only signal the next revision receives. Then perform a full independent review of all changes to catch any additional problems not listed above.`,
+    );
+  }
+
+  if (ctx.outOfPlanFiles && ctx.outOfPlanFiles.length > 0) {
+    context.push(
+      `--- SCOPE CHECK ---\nThese files were changed but aren't in the approved plan's "Files to change". Out-of-plan changes are frequently legitimate: a fix the build/tests required, a shared type/config, or repairing pre-existing breakage in another package/workspace. The VERIFY stage has already PASSED, so any change the green build depends on is in scope by definition — do NOT ask for it to be reverted. Only raise an issue if a change is clearly unrelated to the task, unnecessary for a passing build, AND risky (a genuine regression or accidental edit). A pure "this is beyond the plan" observation is at most "low" severity — NEVER high/critical — and on its own must not set "dimensions.criteria" to false. Files:\n${ctx.outOfPlanFiles.map((f) => `- ${f}`).join('\n')}\n--- END SCOPE CHECK ---`,
+    );
+  }
+
+  context.push(
+    `--- FILES CHANGED ON THIS BRANCH ---\n${ctx.changedFiles.map((f) => `- ${f}`).join('\n') || '(none detected)'}\n--- END FILES CHANGED ---`,
   );
 
+  const parts: string[] = [
+    `# Role
+
+You are Hermes acting as a rigorous senior code reviewer for \`${ctx.repoFullName}\`. The working directory contains a branch with changes committed on top of \`${ctx.baseBranch}\`; review the diff of this branch against \`${ctx.baseBranch}\` (use git to inspect it). Use \`.olympian/\` as a scratch directory for temporary files such as diffs — it is excluded from commits automatically.
+
+**This is a read-only review:** do NOT modify any source files and do NOT use the clarify tool. If you find a bug, record it in the issues array — do not fix it. **Your verdict must be returned INLINE in your final message as the JSON block in "# Output" — do NOT write the review or verdict to a file (e.g. \`review.json\`); a file is NEVER read and the review will be discarded as unparseable.**`,
+    `# Context\n\n${context.join('\n\n')}`,
+    `# Reviewing
+
+Judge whether the changes correctly and completely resolve the issue, satisfy the plan's acceptance criteria, and meet a professional bar for correctness, security, and tests.
+
+**Read efficiently, but never review less.** Inspect the FULL diff against \`${ctx.baseBranch}\` — every changed file and every hunk. When you need surrounding context (a changed function's callers, a type or constant it relies on, related logic, the tests that cover it), use \`search_files\` to read the specific 20-40 line window instead of loading whole files. This is purely about HOW you read: a lean context won't get compressed mid-review, which is exactly when defects slip through. It must never narrow WHAT you review — follow the diff outward wherever a change could introduce a bug (broken callers, unhandled edge cases, security or data-loss risks, missing or weak tests), and do a complete independent pass even on hunks that look fine. If understanding a change demands reading more, read more.`,
+    TESTS_CONTRACT,
+  ];
+
+  if (ctx.hasBrowser) {
+    parts.push(BROWSER_CONTRACT);
+  }
+
+  parts.push(AUTONOMY_NOTICE, VERDICT_CONTRACT);
+
   if (ctx.parseRetry) {
-    parts.push(
-      `IMPORTANT — RETRY: your previous response could not be parsed against the required schema, so this review is being re-run. The verdict was discarded; none of that prior analysis was recorded. Conform EXACTLY this time:\n` +
-        `- Start the response with a single \`\`\`json fenced block — no preamble, narrative, or prose before it.\n` +
-        `- \`verdict\` MUST be the string "PASS" or "FAIL" (uppercase) — NOT a boolean (\`true\`/\`false\`), number, or any other word.\n` +
-        `- \`confidence\` MUST be present, as an integer 0-100.\n` +
-        `- \`dimensions\` MUST contain all four boolean keys: \`correctness\`, \`tests\`, \`criteria\`, \`security\`.\n` +
-        `- MOST IMPORTANT — \`issues\`: every concrete problem MUST be a structured object in the \`issues\` array with the exact \`{severity,title,detail,file?}\` shape. This array is the ONLY thing passed to the agent that fixes the code — any finding left out, written as prose, or placed under a stray key (\`rationale\`, \`findings\`, \`explanation\`, …) is INVISIBLE to the fix stage and WILL NOT be fixed. Each \`detail\` must say both what is wrong and how to fix it. Put a FAIL's full reasoning here, not after the block.`,
-    );
+    parts.push(RETRY_CONTRACT);
   }
 
   return parts.join('\n\n');

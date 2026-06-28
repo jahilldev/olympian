@@ -24,7 +24,7 @@ export function buildImplementPrompt(ctx: ImplementPromptContext): string {
   // headings (e.g. a plan's "## Steps") never read as one of the prompt's own sections.
   const context: string[] = [
     `--- ISSUE: ${ctx.issueTitle} ---\n${ctx.issueBody}\n--- END ISSUE ---`,
-    `--- APPROVED PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
+    `--- PLAN ---\n${ctx.plan}\n--- END PLAN ---`,
   ];
 
   if (ctx.guidance) {

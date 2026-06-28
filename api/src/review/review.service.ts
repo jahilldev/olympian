@@ -55,6 +55,11 @@ export class ReviewService {
     return this.config.get('MAX_REVIEW_PASSES');
   }
 
+  /** Max consecutive unparseable review passes tolerated before bailing to a draft PR. */
+  get maxParseRetries(): number {
+    return this.config.get('MAX_REVIEW_PARSE_RETRIES');
+  }
+
   async listForJob(jobId: string): Promise<ReviewPassDto[]> {
     const rows = await this.prisma.reviewPass.findMany({
       where: { jobId },

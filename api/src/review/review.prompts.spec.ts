@@ -17,6 +17,12 @@ describe('buildReviewPrompt parseRetry guidance', () => {
     expect(p).not.toContain('RETRY');
   });
 
+  it('forbids writing the verdict to a file on every pass (inline JSON only)', () => {
+    const p = buildReviewPrompt(baseCtx);
+    expect(p).toContain('review.json');
+    expect(p).toMatch(/do NOT write the (review|verdict)/i);
+  });
+
   it('injects schema-conformance guidance when retrying after an unparseable pass', () => {
     const p = buildReviewPrompt({ ...baseCtx, parseRetry: true });
     expect(p).toContain('RETRY');

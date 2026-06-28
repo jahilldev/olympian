@@ -1565,15 +1565,16 @@ export class OrchestratorService {
       return;
     }
 
-    // Count how many passes in this cycle produced no parseable JSON verdict.
-    // After 2 consecutive unparseable passes the model is unlikely to self-correct,
-    // so fall through to the draft-PR path rather than burning the entire pass budget.
+    // Count this cycle's consecutive unparseable passes (priorUnparseable is already consecutive).
+    // After MAX_REVIEW_PARSE_RETRIES in a row the model is unlikely to self-correct, so fall through
+    // to the draft-PR path rather than burning the entire pass budget on malformed output.
     const unparseablePasses = priorUnparseable + (parsed === null ? 1 : 0);
+    const maxParseRetries = this.review.maxParseRetries;
 
     // Only revise when the review produced parseable, actionable issues.
     // If the output couldn't be parsed, retry the review so the agent gets another
-    // chance to emit valid JSON — but cap unparseable retries at 2.
-    if (pass < maxPasses && (parsed !== null || unparseablePasses < 2)) {
+    // chance to emit valid JSON — but cap consecutive unparseable retries.
+    if (pass < maxPasses && (parsed !== null || unparseablePasses < maxParseRetries)) {
       if (parsed !== null) {
         await this.jobs.transition(jobId, 'REVISING', {
           reason: `addressing review pass ${pass}`,
@@ -1588,7 +1589,7 @@ export class OrchestratorService {
     }
 
     const reason =
-      unparseablePasses >= 2
+      unparseablePasses >= maxParseRetries
         ? `Self-review produced unparseable output ${unparseablePasses} times in a row. Opening a draft PR for human review.`
         : `Self-review didn't reach the confidence threshold after ${pass} passes (best ${result.confidence}/100). Opening a draft PR for human review.`;
 

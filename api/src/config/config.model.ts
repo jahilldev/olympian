@@ -53,6 +53,10 @@ export const envSchema = z.object({
   // anyway. 0 disables the judge loop entirely.
   MAX_COMPLETION_RETRIES: intFromString(2),
   MAX_REVIEW_PASSES: intFromString(5),
+  // Max consecutive review passes whose output can't be parsed into a verdict before giving up on
+  // self-review and opening a draft PR for a human. Each unparseable pass is re-run with stricter
+  // schema guidance; only after this many in a row do we bail.
+  MAX_REVIEW_PARSE_RETRIES: intFromString(2),
   // Soft cap on lines returned to the IMPLEMENT/REVISE *primary* from a single file read; over
   // this, the read is truncated with a "delegate the survey" note (sub-agents are uncapped). Keeps
   // the orchestrator from bloating its context by reading large files itself. Forwarded into the
