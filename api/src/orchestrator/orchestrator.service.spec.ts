@@ -133,7 +133,7 @@ function setup(overrides: { job?: Record<string, unknown> } = {}) {
     persist: resolved(undefined),
     threshold: 85,
     maxPasses: 5,
-    maxParseRetries: 2,
+    maxRetries: 2,
   };
 
   const verify = {

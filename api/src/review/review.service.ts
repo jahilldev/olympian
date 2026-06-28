@@ -56,7 +56,7 @@ export class ReviewService {
   }
 
   /** Max consecutive unparseable review passes tolerated before bailing to a draft PR. */
-  get maxParseRetries(): number {
+  get maxRetries(): number {
     return this.config.get('MAX_REVIEW_RETRIES');
   }
 
