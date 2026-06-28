@@ -55,6 +55,9 @@ const dimensionsSchema = z.preprocess(
   }),
 );
 
+// The review contract is strict: a pass that doesn't conform (missing confidence, non-enum
+// verdict, findings under the wrong key, …) is NOT coerced into shape — `safeParse` fails, the
+// pass is recorded as unparseable, and the orchestrator RE-RUNS the review.
 const reviewSchema = z.object({
   confidence: z.coerce.number().int().min(0).max(100),
   verdict: z.enum(['PASS', 'FAIL']).optional(),

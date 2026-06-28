@@ -88,8 +88,12 @@ If the server fails to start, skip the browser step and note it in your summary 
 
   if (ctx.parseRetry) {
     parts.push(
-      `IMPORTANT: Your previous response did not contain a valid \`\`\`json block and could not be parsed. ` +
-        `This time you MUST start your response with the JSON block above — do not write any preamble or narrative before it.`,
+      `IMPORTANT — RETRY: your previous response could not be parsed against the required schema, so this review is being re-run. The verdict was discarded; none of that prior analysis was recorded. Conform EXACTLY this time:\n` +
+        `- Start the response with a single \`\`\`json fenced block — no preamble, narrative, or prose before it.\n` +
+        `- \`verdict\` MUST be the string "PASS" or "FAIL" (uppercase) — NOT a boolean (\`true\`/\`false\`), number, or any other word.\n` +
+        `- \`confidence\` MUST be present, as an integer 0–100.\n` +
+        `- \`dimensions\` MUST contain all four boolean keys: \`correctness\`, \`tests\`, \`planCoverage\`, \`security\`.\n` +
+        `- Put every finding inside the \`issues\` array using the exact \`{severity,title,detail,file?}\` shape — do NOT invent other keys (e.g. \`rationale\`, \`findings\`) for them. Free-form reasoning, if any, goes AFTER the closing \`\`\`.`,
     );
   }
 

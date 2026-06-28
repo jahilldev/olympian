@@ -62,6 +62,16 @@ describe('parseReview', () => {
   it('returns null when no JSON can be recovered', () => {
     expect(parseReview('no structured output here')).toBeNull();
   });
+
+  // The contract is strict: an off-schema review (here: boolean verdict + missing confidence) is
+  // rejected so the orchestrator re-runs it, rather than being coerced into a possibly-misread shape.
+  it('returns null for an off-schema verdict (must re-run, not salvage)', () => {
+    expect(
+      parseReview(
+        '```json\n{"verdict":false,"dimensions":{"correctness":false,"tests":true,"planCoverage":false,"security":true}}\n```',
+      ),
+    ).toBeNull();
+  });
 });
 
 describe('meetsThreshold', () => {

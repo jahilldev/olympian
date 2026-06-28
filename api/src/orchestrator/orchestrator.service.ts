@@ -33,7 +33,11 @@ import { buildPrBody } from '../summary/summary.utility.js';
 import { WorkspaceService } from '../workspace/workspace.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { buildReviewPrompt } from '../review/review.prompts.js';
-import { type ReviewIssue, type ReviewResult } from '../review/review.model.js';
+import {
+  type ReviewIssue,
+  type ReviewResult,
+  UNPARSEABLE_REVIEW_TITLE,
+} from '../review/review.model.js';
 import {
   failedDimensions,
   formatIssues,
@@ -1408,27 +1412,30 @@ export class OrchestratorService {
     const maxPasses = this.review.maxPasses;
     const cycle = job.reviewCycle;
 
-    // Count only passes in the current cycle so the cap applies per-cycle and task
-    // retries continue from where they left off rather than restarting from pass 1.
-    const [priorPasses, priorUnparseable] = await Promise.all([
-      this.prisma.reviewPass.count({ where: { jobId, cycle } }),
-      this.prisma.reviewPass.count({ where: { jobId, cycle, confidence: 0 } }),
-    ]);
-    const pass = priorPasses + 1;
+    // One ordered read of this cycle's passes backs three things: the pass number, the
+    // immediately-preceding pass's issues (so the reviewer can verify each was resolved), and the
+    // count of *consecutive* unparseable passes right before this one. Consecutiveness matters —
+    // a single stray unparseable pass among otherwise-valid ones must not exhaust the retry budget,
+    // since the model has clearly shown it can still emit a valid verdict. Detected via the
+    // sentinel issue title rather than `confidence: 0` (a validly-parsed review can also lack a
+    // confidence and default to 0).
+    const cyclePasses = await this.prisma.reviewPass.findMany({
+      where: { jobId, cycle },
+      orderBy: { passNumber: 'desc' },
+      select: { issues: true },
+    });
+    const pass = cyclePasses.length + 1;
 
-    // Fetch issues from the immediately preceding pass (if any) so the reviewer
-    // can explicitly verify each was resolved in addition to doing a full fresh review.
-    const priorPassRecord =
-      pass > 1
-        ? await this.prisma.reviewPass.findFirst({
-            where: { jobId, cycle },
-            orderBy: { passNumber: 'desc' },
-            select: { issues: true },
-          })
-        : null;
+    let priorUnparseable = 0;
+    for (const p of cyclePasses) {
+      if (!p.issues.includes(UNPARSEABLE_REVIEW_TITLE)) {
+        break;
+      }
+      priorUnparseable++;
+    }
 
-    const priorIssues = priorPassRecord
-      ? (JSON.parse(priorPassRecord.issues) as ReviewIssue[])
+    const priorIssues = cyclePasses[0]
+      ? (JSON.parse(cyclePasses[0].issues) as ReviewIssue[])
       : undefined;
 
     // Only include PR feedback submitted after the last IMPLEMENT run — older
@@ -1538,7 +1545,7 @@ export class OrchestratorService {
           issues: [
             {
               severity: 'high',
-              title: 'Unparseable review output',
+              title: UNPARSEABLE_REVIEW_TITLE,
               detail: res.stdout.slice(0, 800),
             },
           ],

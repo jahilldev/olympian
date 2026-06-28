@@ -3,6 +3,13 @@ export type ReviewVerdict = 'PASS' | 'FAIL';
 export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical';
 
 /**
+ * Title of the sentinel issue recorded when a review pass can't be parsed into a verdict. Used both
+ * to build that fallback issue and to detect unparseable passes in the retry cap — keep them in sync
+ * (and decoupled from `confidence: 0`, which a validly-parsed but confidence-less review can also be).
+ */
+export const UNPARSEABLE_REVIEW_TITLE = 'Unparseable review output';
+
+/**
  * Rubric dimensions the reviewer grades independently. Each is a hard gate: the
  * verdict can only be PASS if every dimension holds. Confidence is advisory only.
  */
