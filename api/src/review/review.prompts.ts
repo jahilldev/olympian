@@ -93,7 +93,7 @@ If the server fails to start, skip the browser step and note it in your summary 
         `- \`verdict\` MUST be the string "PASS" or "FAIL" (uppercase) — NOT a boolean (\`true\`/\`false\`), number, or any other word.\n` +
         `- \`confidence\` MUST be present, as an integer 0–100.\n` +
         `- \`dimensions\` MUST contain all four boolean keys: \`correctness\`, \`tests\`, \`planCoverage\`, \`security\`.\n` +
-        `- MOST IMPORTANT — \`issues\`: every concrete problem MUST be a structured object in the \`issues\` array with the exact \`{severity,title,detail,file?}\` shape. This array is the ONLY thing passed to the engineer who fixes the code — any finding left out, written as prose, or placed under a stray key (\`rationale\`, \`findings\`, \`explanation\`, …) is INVISIBLE to the fix stage and WILL NOT be fixed. Each \`detail\` must say both what is wrong and how to fix it. Put a FAIL's full reasoning here, not after the block.`,
+        `- MOST IMPORTANT — \`issues\`: every concrete problem MUST be a structured object in the \`issues\` array with the exact \`{severity,title,detail,file?}\` shape. This array is the ONLY thing passed to the agent that fixes the code — any finding left out, written as prose, or placed under a stray key (\`rationale\`, \`findings\`, \`explanation\`, …) is INVISIBLE to the fix stage and WILL NOT be fixed. Each \`detail\` must say both what is wrong and how to fix it. Put a FAIL's full reasoning here, not after the block.`,
     );
   }
 
