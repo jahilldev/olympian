@@ -1566,7 +1566,7 @@ export class OrchestratorService {
     }
 
     // Count this cycle's consecutive unparseable passes (priorUnparseable is already consecutive).
-    // After MAX_REVIEW_PARSE_RETRIES in a row the model is unlikely to self-correct, so fall through
+    // After MAX_REVIEW_RETRIES in a row the model is unlikely to self-correct, so fall through
     // to the draft-PR path rather than burning the entire pass budget on malformed output.
     const unparseablePasses = priorUnparseable + (parsed === null ? 1 : 0);
     const maxParseRetries = this.review.maxParseRetries;

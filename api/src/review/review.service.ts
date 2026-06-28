@@ -57,7 +57,7 @@ export class ReviewService {
 
   /** Max consecutive unparseable review passes tolerated before bailing to a draft PR. */
   get maxParseRetries(): number {
-    return this.config.get('MAX_REVIEW_PARSE_RETRIES');
+    return this.config.get('MAX_REVIEW_RETRIES');
   }
 
   async listForJob(jobId: string): Promise<ReviewPassDto[]> {
