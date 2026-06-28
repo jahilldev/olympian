@@ -35,6 +35,7 @@ import json
 import os
 import re
 import shlex
+import sys
 import threading
 from typing import Any, Optional
 
@@ -245,6 +246,14 @@ def on_transform_tool_result(
             "Sub-agents are not capped.]"
         )
         data["truncated"] = True
+        # The langfuse trace (and so the UI event card) is captured at post_tool_call, which runs
+        # BEFORE this transform — so this cap is invisible there by construction. Emit a line to
+        # stderr (captured into AgentRun.stderr) so the cap is verifiable for the model-facing result.
+        sys.stderr.write(
+            f"[worker_guard] capped read_file for primary: {len(lines)} lines -> {cap} "
+            f"(phase={(os.environ.get('OLYMPIAN_PHASE') or '').strip()}, task_id={task_id!r})\n"
+        )
+        sys.stderr.flush()
         return json.dumps(data, ensure_ascii=False)
     except Exception:
         return None
