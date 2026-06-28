@@ -268,4 +268,17 @@ describe('eventInsertRows', () => {
   it('returns no rows for an empty event list', () => {
     expect(eventInsertRows('run1', [])).toEqual([]);
   });
+
+  it('offsets seq by seqStart so incremental batches stay monotonic', () => {
+    const rows = eventInsertRows(
+      'run1',
+      [
+        { type: 'event', timestamp: 't3', body: { output: 'c' } },
+        { type: 'event', timestamp: 't4', body: { output: 'd' } },
+      ],
+      5,
+    );
+
+    expect(rows.map((r) => r.seq)).toEqual([5, 6]);
+  });
 });

@@ -6,6 +6,7 @@ import { AppConfigService } from '../config/config.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
 import {
   STDOUT_CAP,
+  EVENT_FLUSH_INTERVAL_MS,
   type AgentRunDto,
   type AgentRunOptions,
   type AgentRunResult,
@@ -20,6 +21,7 @@ import {
   generateHermesConfig,
 } from './agent.utility.js';
 import { LangfuseService } from '../langfuse/langfuse.service.js';
+import { type LangfuseEvent } from '../langfuse/langfuse.model.js';
 
 /**
  * Drives the Hermes Agent CLI. Each call runs `hermes -z --yolo --accept-hooks …` headless in the
@@ -111,24 +113,33 @@ export class HermesAgentService implements OnModuleInit {
       const list = spawn('docker', ['ps', '-q', '--filter', 'name=olympian-'], {
         stdio: ['ignore', 'pipe', 'ignore'],
       });
+
       let ids = '';
+
       list.stdout.on('data', (d: Buffer) => {
         ids += d.toString();
       });
+
       list.on('error', () => resolve());
+
       list.on('close', () => {
         const containerIds = ids
           .split('\n')
           .map((s) => s.trim())
           .filter(Boolean);
+
         if (containerIds.length === 0) {
           resolve();
+
           return;
         }
+
         this.logger.warn(
           `Killing ${containerIds.length} orphaned container(s): ${containerIds.join(', ')}`,
         );
+
         const rm = spawn('docker', ['rm', '-f', ...containerIds], { stdio: 'ignore' });
+
         rm.on('error', () => resolve());
         rm.on('close', () => resolve());
       });
@@ -140,6 +151,7 @@ export class HermesAgentService implements OnModuleInit {
     const provider = opts.provider ?? this.config.get('HERMES_PRIMARY_PROVIDER') ?? undefined;
     const sandboxMode = this.config.get('SANDBOX_MODE');
     const hermesHomeRaw = this.config.get('HERMES_HOME') || undefined;
+
     // Resolve to absolute: docker run -v requires absolute bind-mount sources.
     const hermesHome = hermesHomeRaw ? resolve(hermesHomeRaw) : undefined;
 
@@ -184,6 +196,7 @@ export class HermesAgentService implements OnModuleInit {
     // merged into every span's resource, making session.id=<runId> visible in
     // the binary protobuf payload without requiring any agent-side changes.
     const sessionAttr = `session.id=${run.id}`;
+
     // Read by the worker_guard plugin to cap the IMPLEMENT/REVISE primary's per-read line count.
     const primaryReadMaxLines = String(this.config.get('PRIMARY_READ_MAX_LINES'));
     const imageArg = this.config.get('DOCKER_AGENT_IMAGE');
@@ -208,74 +221,114 @@ export class HermesAgentService implements OnModuleInit {
 
     this.logger.log(`[job ${opts.jobId}] agent ${opts.phase} starting: ${commandLine}`);
 
-    const raw = await spawnProcess(spec, {
-      cwd: opts.cwd,
-      timeoutMs: opts.timeoutMs ?? this.config.get('HERMES_TIMEOUT_MS'),
-    });
+    // Persist activity events to AgentEvent incrementally as they stream in (not just at
+    // completion), so a crashed/killed run still leaves a full paper trail and a long run isn't
+    // truncated by the in-memory display buffer cap. Ownerless utility runs (e.g. TITLE) surface
+    // nowhere, so they skip persistence to avoid noise. Started before spawn to catch every span.
+    const persist = opts.jobId || opts.sessionId ? this.startEventPersistence(run.id) : null;
 
-    // A clean exit (code 0) is only a real success if the output also passes the
-    // caller's validation — a turn that exits 0 but cut off early is a failed run.
-    const validationError =
-      raw.exitCode === 0 && !raw.timedOut && opts.validate ? opts.validate(raw.stdout) : null;
+    try {
+      const raw = await spawnProcess(spec, {
+        cwd: opts.cwd,
+        timeoutMs: opts.timeoutMs ?? this.config.get('HERMES_TIMEOUT_MS'),
+      });
 
-    const status: AgentRunStatus = raw.timedOut
-      ? 'TIMED_OUT'
-      : raw.exitCode === 0 && !validationError
-        ? 'SUCCEEDED'
-        : 'FAILED';
+      // A clean exit (code 0) is only a real success if the output also passes the
+      // caller's validation — a turn that exits 0 but cut off early is a failed run.
+      const validationError =
+        raw.exitCode === 0 && !raw.timedOut && opts.validate ? opts.validate(raw.stdout) : null;
 
-    const stderr = validationError ? `${raw.stderr}\n[incomplete] ${validationError}` : raw.stderr;
+      const status: AgentRunStatus = raw.timedOut
+        ? 'TIMED_OUT'
+        : raw.exitCode === 0 && !validationError
+          ? 'SUCCEEDED'
+          : 'FAILED';
 
-    await this.prisma.agentRun.update({
-      where: { id: run.id },
-      data: {
+      const stderr = validationError
+        ? `${raw.stderr}\n[incomplete] ${validationError}`
+        : raw.stderr;
+
+      await this.prisma.agentRun.update({
+        where: { id: run.id },
+        data: {
+          status,
+          exitCode: raw.exitCode,
+          stdout: raw.stdout,
+          stderr,
+          durationMs: raw.durationMs,
+        },
+      });
+
+      this.metrics.recordAgentRun(opts.phase, status, raw.durationMs);
+
+      this.logger.log(
+        `[job ${opts.jobId}] agent ${opts.phase} ${status} in ${raw.durationMs}ms (exit ${raw.exitCode})${
+          validationError ? ` — ${validationError}` : ''
+        }`,
+      );
+
+      return {
+        runId: run.id,
         status,
         exitCode: raw.exitCode,
         stdout: raw.stdout,
         stderr,
         durationMs: raw.durationMs,
-      },
-    });
+      };
+    } finally {
+      // Drain any events buffered since the last flush, then end the live subject. Runs on every
+      // exit path (including a thrown error) so the persister's timer/subscription never leak.
+      if (persist) {
+        await persist.stop();
+      }
 
-    // Only runs owned by a job or chat session surface their events anywhere; ownerless
-    // utility runs (e.g. TITLE generation) skip persistence to avoid orphan AgentEvent rows.
-    if (opts.jobId || opts.sessionId) {
-      await this.persistEvents(run.id);
+      this.langfuse.complete(run.id);
     }
-    this.langfuse.complete(run.id);
-    this.metrics.recordAgentRun(opts.phase, status, raw.durationMs);
-
-    this.logger.log(
-      `[job ${opts.jobId}] agent ${opts.phase} ${status} in ${raw.durationMs}ms (exit ${raw.exitCode})${
-        validationError ? ` — ${validationError}` : ''
-      }`,
-    );
-
-    return {
-      runId: run.id,
-      status,
-      exitCode: raw.exitCode,
-      stdout: raw.stdout,
-      stderr,
-      durationMs: raw.durationMs,
-    };
   }
 
   /**
-   * Persist the run's activity events (full bodies) to AgentEvent so they survive a restart
-   * and can be re-rendered on any device. Best-effort — a failure here never fails the run.
-   * Reads the retained Langfuse buffer, so call before complete() drops the live subject.
+   * Persist the run's activity events (full bodies) to AgentEvent incrementally as they stream in,
+   * so they survive a crash/restart and a long run keeps a complete paper trail (the in-memory
+   * display buffer is capped and would otherwise drop the earliest events). Subscribes to the live
+   * event stream and flushes pending events to the DB on a short interval; `stop()` drains the
+   * remainder and waits for all writes to land. Best-effort throughout — a persistence failure
+   * never fails the run. Call before `langfuse.complete()` tears down the subject.
    */
-  private async persistEvents(runId: string): Promise<void> {
-    try {
-      const events = this.langfuse.getBuffer(runId);
+  private startEventPersistence(runId: string): { stop: () => Promise<void> } {
+    const pending: LangfuseEvent[] = [];
+    let seq = 0;
+    // Serialise writes so batches land in order and `stop()` can await the whole chain. `seq` is
+    // assigned synchronously at flush-time (call order), so concurrent ticks never collide.
+    let chain: Promise<void> = Promise.resolve();
 
-      if (events.length > 0) {
-        await this.prisma.agentEvent.createMany({ data: eventInsertRows(runId, events) });
+    const flush = (): void => {
+      if (pending.length === 0) {
+        return;
       }
-    } catch (e) {
-      this.logger.warn(`failed to persist events for run ${runId}: ${(e as Error).message}`);
-    }
+      const batch = pending.splice(0, pending.length);
+      const rows = eventInsertRows(runId, batch, seq);
+      seq += batch.length;
+      chain = chain.then(() =>
+        this.prisma.agentEvent.createMany({ data: rows }).then(
+          () => undefined,
+          (e: unknown) =>
+            this.logger.warn(`event persist failed for run ${runId}: ${(e as Error).message}`),
+        ),
+      );
+    };
+
+    const subscription = this.langfuse.observe(runId).subscribe((ev) => pending.push(ev));
+    const timer = setInterval(flush, EVENT_FLUSH_INTERVAL_MS);
+    timer.unref?.(); // never hold the process open on this timer alone
+
+    return {
+      stop: async () => {
+        clearInterval(timer);
+        subscription.unsubscribe();
+        flush(); // queue the final batch
+        await chain; // wait for every queued write to land
+      },
+    };
   }
 
   /**

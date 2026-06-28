@@ -450,14 +450,19 @@ export function spawnProcess(
   });
 }
 
-/** Maps a run's live Langfuse events to AgentEvent insert rows (full body preserved verbatim). */
+/**
+ * Maps a run's live Langfuse events to AgentEvent insert rows (full body preserved verbatim).
+ * `seqStart` offsets the per-row `seq` so incremental batches keep a monotonic order across the run
+ * (batch 1 → 0..n, batch 2 → n..m, …).
+ */
 export function eventInsertRows(
   runId: string,
   events: LangfuseEvent[],
+  seqStart = 0,
 ): { runId: string; seq: number; type: string; timestamp: string; body: string }[] {
   return events.map((e, i) => ({
     runId,
-    seq: i,
+    seq: seqStart + i,
     type: e.type,
     timestamp: e.timestamp,
     body: JSON.stringify(e.body),

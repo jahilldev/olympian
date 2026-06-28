@@ -34,6 +34,14 @@ export interface AgentRunOutputDto {
 /** Caps so a runaway agent can't blow up memory or the SQLite row. */
 export const STDOUT_CAP = 200_000;
 
+/**
+ * How often (ms) a running agent's streamed Langfuse events are flushed to AgentEvent. Events are
+ * persisted incrementally rather than only at completion, so a crashed/killed run still leaves a
+ * full paper trail and a long run isn't truncated by the in-memory display buffer cap. A crash
+ * loses at most this window of un-flushed events.
+ */
+export const EVENT_FLUSH_INTERVAL_MS = 1_000;
+
 export interface AgentRunOptions {
   /** Owning job, for delivery-pipeline runs. Omitted (with `sessionId` set) for CHAT runs. */
   jobId?: string;
