@@ -66,10 +66,6 @@ export function StreamingOutput({
   // Compression is inferred from the input-token drop between turns (see
   // compressionDrops), plus any explicitly-labelled compression span.
   const drops = useMemo(() => compressionDrops(orderedEvents), [orderedEvents]);
-  const compressionCount = useMemo(
-    () => drops.size + orderedEvents.reduce((n, ev) => n + (isExplicitCompression(ev) ? 1 : 0), 0),
-    [drops, orderedEvents],
-  );
 
   // The parent agent's trace is the first one we see; delegate_task children run as separate
   // traces under the same session. Anything not on the parent trace is sub-agent activity.
@@ -80,6 +76,18 @@ export function StreamingOutput({
     }
     return null;
   }, [orderedEvents]);
+
+  // Count only the PRIMARY agent's compressions here — this badge sits beside the primary
+  // context meter, so a sub-agent compressing its own (separate, much larger) context must not
+  // inflate it. Sub-agent compressions still render inline, labelled as such.
+  const compressionCount = useMemo(() => {
+    const onParent = (ev: LangfuseEvent) =>
+      parentTraceId !== null && String(ev.body.traceId ?? '') === parentTraceId;
+    let n = 0;
+    for (const i of drops.keys()) if (onParent(orderedEvents[i])) n++;
+    for (const ev of orderedEvents) if (isExplicitCompression(ev) && onParent(ev)) n++;
+    return n;
+  }, [drops, orderedEvents, parentTraceId]);
 
   const contextPct = useMemo(() => {
     // Track the MAIN agent's context only — the first generation's trace. A run's stream
@@ -266,6 +274,7 @@ export function StreamingOutput({
                     before={drop.before}
                     after={drop.after}
                     contextLength={contextLength}
+                    isSubagent={isSubagent}
                   />
                 )}
                 {showDivider && <hr class="border-zinc-800 my-4" />}

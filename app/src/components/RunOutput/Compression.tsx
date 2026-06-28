@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { LangfuseEvent } from '@olympian/api/langfuse/langfuse.model.js';
-import { IconCompress } from './Icons.tsx';
+import { IconBrain, IconCompress, IconRobot } from './Icons.tsx';
 import { fmtTime, splitThinking } from './format.tsx';
 import {
   ChatMessages,
@@ -171,20 +171,27 @@ export function CompressionMarker({
   before,
   after,
   contextLength,
+  isSubagent = false,
 }: {
   before: number;
   after: number;
   contextLength: number;
+  isSubagent?: boolean;
 }) {
   const pct = (t: number) => Math.round((t / contextLength) * 100);
   const k = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(1)}k` : String(t));
   return (
     <div class="mb-3 flex items-center gap-2 sm:gap-3">
       <div class="h-px flex-1 bg-zinc-800" />
-      <div class="flex shrink-0 items-center gap-2 rounded-xl border border-cyan-900/50 bg-cyan-950/30 px-3 py-1.5 text-cyan-500">
-        <IconCompress />
+      <div class="flex shrink-0 items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/40 px-3 py-1.5 text-zinc-400">
+        <span
+          class="inline-flex items-center"
+          title={isSubagent ? 'sub-agent context' : 'primary agent context'}
+        >
+          {isSubagent ? <IconRobot /> : <IconBrain />}
+        </span>
         <span class="text-[11px] font-mono font-semibold uppercase tracking-wide">Compress</span>
-        <span class="whitespace-nowrap text-[10px] font-mono text-cyan-600 tabular-nums">
+        <span class="whitespace-nowrap text-[10px] font-mono text-zinc-500 tabular-nums">
           {k(before)}→{k(after)} tok · {pct(before)}%→{pct(after)}%
         </span>
       </div>
