@@ -27,6 +27,6 @@ describe('buildReviewPrompt parseRetry guidance', () => {
     expect(p).toContain('rationale'); // explicitly warns against this stray key
     // `issues` is emphasised as the critical field — it is the only thing the fix stage receives.
     expect(p).toContain('MOST IMPORTANT');
-    expect(p).toContain('ONLY thing passed to the engineer who fixes the code');
+    expect(p).toContain('ONLY thing passed to the agent that fixes the code');
   });
 });
