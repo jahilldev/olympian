@@ -91,7 +91,7 @@ If the server fails to start, skip the browser step and note it in your summary 
       `IMPORTANT — RETRY: your previous response could not be parsed against the required schema, so this review is being re-run. The verdict was discarded; none of that prior analysis was recorded. Conform EXACTLY this time:\n` +
         `- Start the response with a single \`\`\`json fenced block — no preamble, narrative, or prose before it.\n` +
         `- \`verdict\` MUST be the string "PASS" or "FAIL" (uppercase) — NOT a boolean (\`true\`/\`false\`), number, or any other word.\n` +
-        `- \`confidence\` MUST be present, as an integer 0–100.\n` +
+        `- \`confidence\` MUST be present, as an integer 0-100.\n` +
         `- \`dimensions\` MUST contain all four boolean keys: \`correctness\`, \`tests\`, \`planCoverage\`, \`security\`.\n` +
         `- MOST IMPORTANT — \`issues\`: every concrete problem MUST be a structured object in the \`issues\` array with the exact \`{severity,title,detail,file?}\` shape. This array is the ONLY thing passed to the agent that fixes the code — any finding left out, written as prose, or placed under a stray key (\`rationale\`, \`findings\`, \`explanation\`, …) is INVISIBLE to the fix stage and WILL NOT be fixed. Each \`detail\` must say both what is wrong and how to fix it. Put a FAIL's full reasoning here, not after the block.`,
     );
