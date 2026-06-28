@@ -28,14 +28,23 @@ export function isExplicitCompression(event: LangfuseEvent): boolean {
   return typeof meta === 'string' && /"task"\s*:\s*"compression"/i.test(meta);
 }
 
-/** Input-token count reported by a generation event, or null. */
+/**
+ * True prompt-token count for a generation event, or null. Prompt-caching providers (DeepSeek,
+ * Anthropic, …) report `input` as the cache-MISS tokens only and put the cached prefix in a
+ * separate field — so the real context size is `input + cache_read + cache_creation`. Summing them
+ * is essential: without it a warm cache hit (e.g. input 67k → 3k while 69k is cached) looks like a
+ * context drop and is misread as a compression. These cache fields are reported *separately from*
+ * `input` (not a subset of it), so the sum never double-counts.
+ */
 export function inputTokens(event: LangfuseEvent): number | null {
   if ((event.body['langfuse.observation.type'] as string | undefined) !== 'generation') return null;
   const raw = event.body['langfuse.observation.usage_details'] as string | undefined;
   if (!raw) return null;
   try {
-    const usage = JSON.parse(raw) as { input?: number };
-    return typeof usage.input === 'number' ? usage.input : null;
+    const usage = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof usage.input !== 'number') return null;
+    const num = (k: string) => (typeof usage[k] === 'number' ? (usage[k] as number) : 0);
+    return usage.input + num('cache_read_input_tokens') + num('cache_creation_input_tokens');
   } catch {
     return null;
   }
