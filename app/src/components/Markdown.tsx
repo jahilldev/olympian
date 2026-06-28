@@ -7,7 +7,7 @@ const PROSE =
   'prose-p:text-zinc-300 prose-p:leading-relaxed ' +
   'prose-a:text-cyan-400 hover:prose-a:text-cyan-300 ' +
   'prose-strong:text-zinc-200 ' +
-  'prose-code:text-cyan-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.8em] prose-code:before:content-none prose-code:after:content-none ' +
+  'prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.8em] prose-code:before:content-none prose-code:after:content-none ' +
   'prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800 ' +
   'prose-blockquote:border-zinc-700 prose-blockquote:text-zinc-400 ' +
   'prose-hr:border-zinc-800 prose-li:text-zinc-300';
