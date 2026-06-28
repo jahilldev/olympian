@@ -21,19 +21,22 @@ const boolish = z.preprocess((v) => {
   if (typeof v === 'boolean') {
     return v;
   }
+
   if (typeof v === 'string') {
     const s = v.trim().toLowerCase();
+
     if (['pass', 'passed', 'yes', 'true', 'ok', 'y', '1'].includes(s)) {
       return true;
     }
+
     if (['fail', 'failed', 'no', 'false', 'n', '0'].includes(s)) {
       return false;
     }
   }
+
   return undefined;
 }, z.boolean().default(true));
 
-// Tolerate snake_case / loose key names for the multi-word dimension.
 const dimensionsSchema = z.preprocess(
   (v) => {
     if (!v || typeof v !== 'object') {
@@ -43,14 +46,14 @@ const dimensionsSchema = z.preprocess(
     return {
       correctness: o.correctness,
       tests: o.tests,
-      planCoverage: o.planCoverage ?? o.plan_coverage ?? o.coverage,
+      criteria: o.criteria,
       security: o.security,
     };
   },
   z.object({
     correctness: boolish,
     tests: boolish,
-    planCoverage: boolish,
+    criteria: boolish,
     security: boolish,
   }),
 );
@@ -69,7 +72,7 @@ const reviewSchema = z.object({
 const ALL_DIMENSIONS_PASS: ReviewDimensions = {
   correctness: true,
   tests: true,
-  planCoverage: true,
+  criteria: true,
   security: true,
 };
 
@@ -169,7 +172,7 @@ export function meetsThreshold(result: ReviewResult): boolean {
 const DIMENSION_LABELS: Record<ReviewDimension, string> = {
   correctness: 'correctness',
   tests: 'tests',
-  planCoverage: 'plan coverage',
+  criteria: 'acceptance criteria',
   security: 'security',
 };
 

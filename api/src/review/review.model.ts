@@ -13,7 +13,7 @@ export const UNPARSEABLE_REVIEW_TITLE = 'Unparseable review output';
  * Rubric dimensions the reviewer grades independently. Each is a hard gate: the
  * verdict can only be PASS if every dimension holds. Confidence is advisory only.
  */
-export const REVIEW_DIMENSIONS = ['correctness', 'tests', 'planCoverage', 'security'] as const;
+export const REVIEW_DIMENSIONS = ['correctness', 'tests', 'criteria', 'security'] as const;
 export type ReviewDimension = (typeof REVIEW_DIMENSIONS)[number];
 export type ReviewDimensions = Record<ReviewDimension, boolean>;
 

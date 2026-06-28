@@ -1539,7 +1539,7 @@ export class OrchestratorService {
           dimensions: {
             correctness: false,
             tests: false,
-            planCoverage: false,
+            criteria: false,
             security: false,
           },
           issues: [

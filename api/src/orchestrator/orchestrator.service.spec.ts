@@ -55,7 +55,7 @@ const CONFIG: Record<string, unknown> = {
 };
 
 const PASS_REVIEW_JSON =
-  '```json\n{"confidence":90,"verdict":"PASS","dimensions":{"correctness":true,"tests":true,"planCoverage":true,"security":true},"issues":[]}\n```';
+  '```json\n{"confidence":90,"verdict":"PASS","dimensions":{"correctness":true,"tests":true,"criteria":true,"security":true},"issues":[]}\n```';
 
 const okRun = {
   runId: 'run1',

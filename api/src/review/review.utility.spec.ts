@@ -8,7 +8,7 @@ import {
 } from './review.utility.js';
 import { type ReviewResult } from './review.model.js';
 
-const PASS_DIMS = { correctness: true, tests: true, planCoverage: true, security: true };
+const PASS_DIMS = { correctness: true, tests: true, criteria: true, security: true };
 
 function result(overrides: Partial<ReviewResult> = {}): ReviewResult {
   return {
@@ -24,7 +24,7 @@ function result(overrides: Partial<ReviewResult> = {}): ReviewResult {
 describe('parseReview', () => {
   it('parses a fenced json verdict with rubric dimensions', () => {
     const out =
-      'Here is my review:\n```json\n{"confidence":92,"verdict":"PASS","dimensions":{"correctness":true,"tests":true,"planCoverage":true,"security":true},"issues":[]}\n```';
+      'Here is my review:\n```json\n{"confidence":92,"verdict":"PASS","dimensions":{"correctness":true,"tests":true,"criteria":true,"security":true},"issues":[]}\n```';
     const r = parseReview(out);
     expect(r?.confidence).toBe(92);
     expect(r?.verdict).toBe('PASS');
@@ -32,17 +32,17 @@ describe('parseReview', () => {
     expect(r?.verifyOk).toBeNull();
   });
 
-  it('accepts stringy "pass"/"fail" dimension values and snake_case keys', () => {
+  it('accepts stringy "pass"/"fail" dimension values', () => {
     const r = parseReview(
-      '{"confidence":50,"dimensions":{"correctness":"pass","tests":"fail","plan_coverage":"yes","security":true},"issues":[]}',
+      '{"confidence":50,"dimensions":{"correctness":"pass","tests":"fail","criteria":"yes","security":true},"issues":[]}',
     );
     expect(r?.dimensions.tests).toBe(false);
-    expect(r?.dimensions.planCoverage).toBe(true);
+    expect(r?.dimensions.criteria).toBe(true);
   });
 
   it('derives FAIL when a dimension fails even with no explicit verdict', () => {
     const r = parseReview(
-      '{"confidence":80,"dimensions":{"correctness":false,"tests":true,"planCoverage":true,"security":true},"issues":[]}',
+      '{"confidence":80,"dimensions":{"correctness":false,"tests":true,"criteria":true,"security":true},"issues":[]}',
     );
     expect(r?.verdict).toBe('FAIL');
   });
@@ -68,7 +68,7 @@ describe('parseReview', () => {
   it('returns null for an off-schema verdict (must re-run, not salvage)', () => {
     expect(
       parseReview(
-        '```json\n{"verdict":false,"dimensions":{"correctness":false,"tests":true,"planCoverage":false,"security":true}}\n```',
+        '```json\n{"verdict":false,"dimensions":{"correctness":false,"tests":true,"criteria":false,"security":true}}\n```',
       ),
     ).toBeNull();
   });
@@ -105,9 +105,9 @@ describe('meetsThreshold', () => {
 
 describe('failedDimensions', () => {
   it('lists the human labels of failing dimensions', () => {
-    expect(failedDimensions({ ...PASS_DIMS, tests: false, planCoverage: false })).toEqual([
+    expect(failedDimensions({ ...PASS_DIMS, tests: false, criteria: false })).toEqual([
       'tests',
-      'plan coverage',
+      'acceptance criteria',
     ]);
   });
 });
