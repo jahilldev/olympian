@@ -194,11 +194,13 @@ export function StreamingOutput({
         <span class="text-zinc-700 text-sm">/</span>
         {meta && (
           <>
-            <span class="text-xs font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
+            <span class="shrink-0 text-xs font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
               {meta.phase}
             </span>
-            {meta.model && <span class="text-xs text-zinc-500 truncate">{meta.model}</span>}
-            <span class="flex items-center gap-1.5">
+            {meta.model && (
+              <span class="min-w-0 truncate text-xs text-zinc-500">{meta.model}</span>
+            )}
+            <span class="flex shrink-0 items-center gap-1.5">
               {statusDot(
                 streamStatus === 'connecting' || streamStatus === 'following'
                   ? 'CONNECTING'
@@ -206,7 +208,9 @@ export function StreamingOutput({
               )}
             </span>
             {meta.durationMs !== null && (
-              <span class="text-xs text-zinc-500">{formatDuration(meta.durationMs)}</span>
+              <span class="shrink-0 whitespace-nowrap text-xs text-zinc-500">
+                {formatDuration(meta.durationMs)}
+              </span>
             )}
           </>
         )}
