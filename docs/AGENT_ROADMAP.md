@@ -110,6 +110,24 @@ tracked. Track: review-catch-rate per cycle, VERIFY failure reasons, judge not-m
 **human-PR-change-request rate** — the ground truth for reviewer quality — and feed it back into
 the review prompt/model choice.
 
+### A5. Authoritative compression telemetry — ▢ _effort: S, payoff: medium_
+Context compression is currently **inferred heuristically**: Hermes does not emit a compression
+span to Langfuse, because the summary is generated through the auxiliary `call_llm` path, which
+(unlike the main conversation loop) fires no `pre_/post_llm_call` hooks — so the observability
+plugin never sees it. Verified empirically (0 compression/summarize-tagged spans across thousands
+of stored events; only `LLM call N` + `Tool: …`) and in the image (the plugin registers
+`*_llm_call`/`*_tool_call` hooks only, fired from `conversation_loop.py`). The UI therefore
+detects compression from its **effect** — a prompt-token drop between turns — which is the only
+signal available. _Groundwork shipped:_ that detector is now **cache-aware** (sums
+`input + cache_read + cache_creation`), so prompt-caching reviewers like DeepSeek no longer trip
+phantom "compress" markers on every cache hit. **Next:** a small `.hermes/plugins/capture_compression`
+plugin (mirroring `capture_reasoning`) that hooks the compression event — or instruments the aux
+`call_llm` — to emit a `task=compression` span carrying the summary + before/after tokens. That
+makes the marker exact instead of inferred, lights up the already-built `CompressionCard`, and is
+the prerequisite for accurate **auxiliary-token cost accounting** (ties into A2 — aux calls are
+otherwise invisible to per-job cost totals). The same gap hides title-gen, vision, and web-extract
+calls, so the plugin should generalise to all auxiliary tasks.
+
 ---
 
 ## Pillar B — Run unattended without silent failure
@@ -204,7 +222,8 @@ A1 eval harness · A2 cost/latency aggregation · B1 webhook durability · B3 wo
 
 **Phase 2 — Harden the rest.**
 B2 reconciliation (+ the `onPrReviewComment` guard) · B4 token hardening · B5 Queue/Workspace
-tests · C2 repo memory · A3 experimentation · A4 outcome telemetry.
+tests · C2 repo memory · A3 experimentation · A4 outcome telemetry · A5 compression telemetry
+(quick win; unlocks aux-token cost accounting for A2).
 
 **Phase 3 — Scale + frontier.**
 C3 decomposition · C4 retrieval · C5 ensemble/escalation · C6 inline-comment replies ·
