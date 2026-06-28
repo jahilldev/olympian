@@ -215,7 +215,7 @@ function ToolCard({ event, isSubagent }: { event: LangfuseEvent; isSubagent?: bo
   return (
     <div class="rounded-xl border border-amber-900/40 overflow-hidden text-xs shadow-sm">
       {/* Header */}
-      <div class="flex items-center gap-2 px-3 py-2.5 bg-amber-950/25 text-amber-200">
+      <div class="flex items-center gap-2 px-3 py-2.5 bg-amber-950/25 text-amber-300">
         <IconWrench />
         <span class="font-semibold font-mono tracking-wide">TOOL</span>
         <span class="text-zinc-300 font-mono font-medium">{displayName}</span>
