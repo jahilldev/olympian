@@ -9,6 +9,7 @@ import {
   extractJsonBlock,
   generateHermesConfig,
   incompleteOutputReason,
+  stripShutdownNoise,
 } from './agent.utility.js';
 
 describe('buildVerifySpec', () => {
@@ -280,5 +281,43 @@ describe('eventInsertRows', () => {
     );
 
     expect(rows.map((r) => r.seq)).toEqual([5, 6]);
+  });
+});
+
+describe('stripShutdownNoise', () => {
+  const STANZA = [
+    'Exception ignored in: <generator object Langfuse._create_span_with_parent_context at 0x7f04789a74c0>',
+    'Traceback (most recent call last):',
+    '  File "/usr/local/lib/hermes-agent/venv/lib/python3.11/site-packages/langfuse/_client/client.py", line 1196, in _create_span_with_parent_context',
+    '  File "/usr/local/share/uv/python/cpython-3.11.15/lib/python3.11/contextlib.py", line 158, in __exit__',
+    '  File "/usr/local/lib/hermes-agent/venv/lib/python3.11/site-packages/opentelemetry/trace/__init__.py", line 616, in use_span',
+    'TypeError: isinstance() arg 2 must be a type, a tuple of types, or a union',
+  ].join('\n');
+
+  it('removes the langfuse shutdown stanza while keeping surrounding output', () => {
+    const input = `real warning line\n${STANZA}\nanother real line`;
+    const out = stripShutdownNoise(input);
+
+    expect(out).toContain('real warning line');
+    expect(out).toContain('another real line');
+    expect(out).not.toContain('isinstance() arg 2');
+    expect(out).not.toContain('_create_span_with_parent_context');
+    expect(out).not.toContain('Traceback');
+  });
+
+  it('leaves a genuine error traceback untouched', () => {
+    const realError = [
+      'Traceback (most recent call last):',
+      '  File "app.py", line 10, in <module>',
+      'ValueError: something actually broke',
+    ].join('\n');
+
+    expect(stripShutdownNoise(realError)).toBe(realError);
+  });
+
+  it('is a no-op when the stanza is absent', () => {
+    expect(stripShutdownNoise('plain stderr\n[worker_guard] capped read_file')).toBe(
+      'plain stderr\n[worker_guard] capped read_file',
+    );
   });
 });

@@ -371,6 +371,49 @@ function cap(buf: string): string {
 }
 
 /**
+ * Strip a confirmed-benign shutdown artifact from captured agent stderr. langfuse leaves an
+ * OpenTelemetry span context-manager open at process exit (typically a threaded `delegate_task`
+ * subagent span); during interpreter-shutdown GC, `opentelemetry.trace.use_span` references a
+ * module global already torn down to `None`, raising `isinstance() arg 2 must be a type`. Python
+ * prints it as an "Exception ignored in: <generator object Langfuse._create_span_with_parent_context
+ * …>" stanza and discards it — it never reaches the agent, so the run is unaffected. We drop the
+ * stanza so it neither clutters every run's stderr nor buries the real error when a run genuinely
+ * fails. Narrowly matched to that exact generator, so no other diagnostic is hidden.
+ */
+export function stripShutdownNoise(stderr: string): string {
+  if (!stderr.includes('Langfuse._create_span_with_parent_context')) {
+    return stderr;
+  }
+
+  const lines = stderr.split('\n');
+  const kept: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const isStanzaStart =
+      lines[i].startsWith('Exception ignored in:') &&
+      lines[i].includes('Langfuse._create_span_with_parent_context');
+
+    if (!isStanzaStart) {
+      kept.push(lines[i]);
+      continue;
+    }
+
+    // Drop the whole stanza: the "Exception ignored in:" line, the "Traceback" header, every
+    // indented frame line, and the trailing column-0 exception summary (e.g. "TypeError: …").
+    i++;
+    while (
+      i < lines.length &&
+      (lines[i] === 'Traceback (most recent call last):' || /^\s/.test(lines[i]))
+    ) {
+      i++;
+    }
+    // lines[i] is now the exception summary (or out of range); the for-loop's increment skips it.
+  }
+
+  return kept.join('\n');
+}
+
+/**
  * Spawns a process, captures (capped) stdout/stderr, and hard-kills it after
  * `timeoutMs`. Never rejects — failures surface in the result.
  */
@@ -420,7 +463,7 @@ export function spawnProcess(
       resolve({
         exitCode,
         stdout: cap(Buffer.concat(stdoutChunks).toString()),
-        stderr: cap(Buffer.concat(stderrChunks).toString()),
+        stderr: stripShutdownNoise(cap(Buffer.concat(stderrChunks).toString())),
         durationMs: Date.now() - start,
         timedOut,
       });
