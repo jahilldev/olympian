@@ -47,7 +47,7 @@ export default function VerifyOutput() {
       <div class="flex flex-col items-center justify-center h-full text-zinc-500 gap-3">
         <p class="text-base">Verification not found</p>
         <button
-          class="text-sm text-indigo-400 hover:text-indigo-300"
+          class="text-sm text-cyan-400 hover:text-cyan-300"
           onClick={() => navigate(`/jobs/${jobId}`)}
         >
           Back to job
@@ -59,7 +59,7 @@ export default function VerifyOutput() {
   if (!run) {
     return (
       <div class="flex items-center justify-center h-full">
-        <div class="w-6 h-6 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
+        <div class="w-6 h-6 border-2 border-zinc-700 border-t-cyan-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -76,10 +76,10 @@ export default function VerifyOutput() {
           ← Back
         </button>
         <span class="text-zinc-700 text-sm">/</span>
-        <span class="font-mono text-xs px-2 py-0.5 rounded shrink-0 bg-teal-900/60 text-teal-300">
+        <span class="font-mono text-xs px-2 py-0.5 rounded shrink-0 bg-zinc-800 text-zinc-300">
           VERIFY
         </span>
-        <span class={`text-xs font-medium ${run.ok ? 'text-teal-400' : 'text-red-400'}`}>
+        <span class={`text-xs font-medium ${run.ok ? 'text-green-400' : 'text-red-400'}`}>
           {run.ok ? '✓ passed' : '✗ failed'}
         </span>
         <span class="text-xs text-zinc-600">attempt {run.attempt}</span>

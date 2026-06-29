@@ -41,7 +41,7 @@ function MobileJobCard({ job }: { job: JobSummaryDto }) {
             </span>
           )}
           {job.prNumber && (
-            <span class={job.prIsDraft ? 'text-zinc-600' : 'text-sky-400'}>PR #{job.prNumber}</span>
+            <span class={job.prIsDraft ? 'text-zinc-600' : 'text-cyan-400'}>PR #{job.prNumber}</span>
           )}
           {job.confidence !== null && (
             <span

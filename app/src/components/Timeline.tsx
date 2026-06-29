@@ -6,8 +6,8 @@ interface Props {
 }
 
 const ACTOR_STYLES: Record<string, string> = {
-  HUMAN: 'text-blue-400',
-  AGENT: 'text-violet-400',
+  HUMAN: 'text-cyan-400',
+  AGENT: 'text-hermes-400',
   SYSTEM: 'text-zinc-500',
 };
 

@@ -8,8 +8,8 @@ interface Props {
 const SEVERITY_STYLES = {
   low: 'bg-zinc-700 text-zinc-300',
   medium: 'bg-amber-900 text-amber-300',
-  high: 'bg-orange-900 text-orange-300',
-  critical: 'bg-red-900 text-red-300',
+  high: 'bg-red-950 text-red-300',
+  critical: 'bg-red-900 text-red-200',
 };
 
 export default function ReviewPassCard({ pass }: Props) {

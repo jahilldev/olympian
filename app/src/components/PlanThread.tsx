@@ -59,7 +59,7 @@ export default function PlanThread({
                     ? 'bg-green-900/50 text-green-400'
                     : item.plan.status === 'SUPERSEDED'
                       ? 'bg-zinc-800 text-zinc-500'
-                      : 'bg-indigo-900/40 text-indigo-300'
+                      : 'bg-cyan-900/40 text-cyan-300'
                 }`}
               >
                 {item.plan.status}
@@ -89,7 +89,7 @@ export default function PlanThread({
             onInput={(e) => setFeedback((e.target as HTMLTextAreaElement).value)}
             placeholder="Request changes to the plan (Markdown) — Hermes will revise and re-propose…"
             rows={4}
-            class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-600 resize-y"
+            class="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-cyan-600 resize-y"
           />
           <button
             disabled={pending || feedback.trim().length === 0}

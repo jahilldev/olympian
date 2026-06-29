@@ -56,7 +56,7 @@ export default function JobCard({ job }: Props) {
         {job.prNumber ? (
           <a
             href={job.prUrl ?? '#'}
-            class={`text-xs font-mono hover:underline ${job.prIsDraft ? 'text-zinc-500' : 'text-sky-400'}`}
+            class={`text-xs font-mono hover:underline ${job.prIsDraft ? 'text-zinc-500' : 'text-cyan-400'}`}
             onClick={(e) => e.stopPropagation()}
             target="_blank"
             rel="noopener noreferrer"

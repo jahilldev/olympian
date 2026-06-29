@@ -6,19 +6,9 @@ interface Props {
   jobId: string;
 }
 
-const PHASE_COLOURS: Record<string, string> = {
-  PLAN: 'bg-blue-900/60 text-blue-300',
-  IMPLEMENT: 'bg-sky-900/60 text-sky-300',
-  REVIEW: 'bg-violet-900/60 text-violet-300',
-  REVISE: 'bg-sky-900/60 text-sky-300',
-  VERIFY: 'bg-teal-900/60 text-teal-300',
-  SUMMARY: 'bg-zinc-800 text-zinc-300',
-  JUDGE: 'bg-pink-900/60 text-pink-300',
-};
-
-function phasePill(phase: string): string {
-  return PHASE_COLOURS[phase] ?? 'bg-zinc-800 text-zinc-300';
-}
+// Phase badges are neutral labels — the phase name carries the meaning, so they all share one zinc
+// style rather than a per-phase rainbow.
+const PHASE_PILL = 'bg-zinc-800 text-zinc-300';
 
 function formatDuration(ms: number | null): string {
   if (ms === null) return '';
@@ -42,20 +32,20 @@ export default function AgentRunRow({ run, jobId }: Props) {
   return (
     <div
       class={`rounded-lg border p-3 transition-colors ${
-        isRunning ? 'border-hermes-300/30 bg-zinc-900/50' : 'border-zinc-800 bg-zinc-900/50'
+        isRunning ? 'border-green-500/30 bg-zinc-900/50' : 'border-zinc-800 bg-zinc-900/50'
       }`}
     >
       <div class="flex items-center gap-3">
         {/* Phase badge */}
-        <span class={`font-mono text-xs px-2.5 py-1 rounded shrink-0 ${phasePill(run.phase)}`}>
+        <span class={`font-mono text-xs px-2.5 py-1 rounded shrink-0 ${PHASE_PILL}`}>
           {run.phase}
         </span>
 
         {/* Status, with model + duration on a meta line beneath */}
         <div class="flex-1 min-w-0 leading-tight">
           {isRunning ? (
-            <span class="flex items-center gap-1.5 text-xs text-hermes-400 font-medium">
-              <span class="w-1.5 h-1.5 rounded-full bg-hermes-400 animate-pulse" />
+            <span class="flex items-center gap-1.5 text-xs text-green-400 font-medium">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               Running
             </span>
           ) : isJudge && run.status === 'SUCCEEDED' ? (

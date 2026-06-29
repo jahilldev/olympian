@@ -180,7 +180,7 @@ export default function Chat() {
       <div class="flex flex-col items-center justify-center h-full text-zinc-500 gap-3">
         <p class="text-base">Chat not found</p>
         <button
-          class="text-sm text-indigo-400 hover:text-indigo-300"
+          class="text-sm text-cyan-400 hover:text-cyan-300"
           onClick={() => navigate('/chats')}
         >
           Back to chats
@@ -211,7 +211,7 @@ export default function Chat() {
         <div class="max-w-3xl mx-auto px-4 py-5 space-y-4">
           {session === null ? (
             <div class="flex justify-center py-10">
-              <div class="w-5 h-5 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
+              <div class="w-5 h-5 border-2 border-zinc-700 border-t-cyan-500 rounded-full animate-spin" />
             </div>
           ) : session.messages.length === 0 && !activeRunId ? (
             <p class="text-center text-sm text-zinc-600 py-10">
@@ -269,7 +269,7 @@ export default function Chat() {
             <select
               value={modelKey}
               onChange={(e) => setModelKey((e.target as HTMLSelectElement).value)}
-              class="rounded-lg bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-indigo-600"
+              class="rounded-lg bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-cyan-600"
             >
               {models.map((m) => (
                 <option key={m.key} value={m.key}>
@@ -292,7 +292,7 @@ export default function Chat() {
             placeholder={activeRunId ? 'Hermes is responding…' : 'Message Hermes…'}
             rows={1}
             disabled={!!activeRunId}
-            class="flex-1 rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-600 resize-none disabled:opacity-60"
+            class="flex-1 rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-cyan-600 resize-none disabled:opacity-60"
           />
           <button
             type="submit"

@@ -93,7 +93,7 @@ export default function ChatList() {
       <div class="flex-1 overflow-y-auto">
         {sessions === null ? (
           <div class="flex justify-center py-16">
-            <div class="w-5 h-5 border-2 border-zinc-700 border-t-indigo-500 rounded-full animate-spin" />
+            <div class="w-5 h-5 border-2 border-zinc-700 border-t-cyan-500 rounded-full animate-spin" />
           </div>
         ) : sessions.length === 0 ? (
           <p class="text-center text-sm text-zinc-600 py-16 px-4">
