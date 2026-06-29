@@ -409,6 +409,27 @@ describe('OrchestratorService.handleRevise', () => {
     expect(transitionedTo(jobs)).toContain('VERIFYING');
     expect(enqueuedKinds(queue)).toEqual(['VERIFY']);
   });
+
+  it('judges a no-commit pass and pushes back with a critique rather than proceeding', async () => {
+    // An agent that commits nothing but claims "nothing to change" must still be judged against the
+    // goal; if the judge finds it unmet, the agent is re-run with the critique — not sailed to VERIFY.
+    const { service, agent, workspace, judge, jobs } = setup({ job: { state: 'REVISING' } });
+    workspace.commitAll.mockResolvedValue(null);
+    workspace.hasCommitsAhead.mockResolvedValue(true);
+    judge.assess.mockResolvedValueOnce({
+      passed: false,
+      critique: 'the reported bugs are still present',
+    });
+
+    await callPrivate(service, 'handleRevise', 'job1');
+
+    expect(agent.markRunFailed).not.toHaveBeenCalled();
+    // No-commit pass judged incomplete → one critique-driven continuation, then (judge passes) proceed.
+    expect(agent.run.mock.calls.length).toBe(2);
+    const secondPrompt = (agent.run.mock.calls[1][0] as { prompt: string }).prompt;
+    expect(secondPrompt).toContain('the reported bugs are still present');
+    expect(transitionedTo(jobs)).toContain('VERIFYING');
+  });
 });
 
 describe('OrchestratorService.handleReview', () => {

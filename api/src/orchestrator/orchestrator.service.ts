@@ -1126,11 +1126,7 @@ export class OrchestratorService {
 
       if (sha === null) {
         // No new edits this pass. That's only a real failure when the branch ALSO has no committed
-        // work at all (the agent genuinely produced nothing). If the branch already has commits
-        // ahead of base, the work exists — typically because an earlier pass committed it and this
-        // pass is a resume after a restart (the orchestrator restarted mid-loop, so handleX re-ran
-        // from attempt 1 over an already-committed branch). Treat that as "nothing left to do" and
-        // proceed to the real gates (VERIFY/REVIEW), rather than failing the job for a phantom no-op.
+        // work at all (the agent genuinely produced nothing on a first pass).
         const hasWork = await this.workspace.hasCommitsAhead(p.ws.dir, p.ws.baseBranch);
 
         if (attempt === 1 && !hasWork) {
@@ -1140,15 +1136,18 @@ export class OrchestratorService {
           throw new Error(p.noChangesError);
         }
 
+        // The branch has work but this pass committed nothing — the agent decided nothing more was
+        // needed. Do NOT take that at face value: fall through to the completion judge so it can
+        // confirm the goal is actually met against the committed code, and push back with a
+        // critique if it isn't. An agent that wrongly concludes "nothing to change" after a
+        // change-request is exactly what the judge exists to catch — this path used to break out
+        // before the judge ran, so a no-op REVISE sailed straight to VERIFY/REVIEW unchallenged.
         this.logger.log(
-          `[job ${p.job.id}] ${p.phase} pass ${attempt} made no further changes` +
-            `${hasWork ? ' (branch already has committed work — proceeding)' : ''}`,
+          `[job ${p.job.id}] ${p.phase} pass ${attempt} made no new commit — judging the committed state against the goal`,
         );
-
-        break;
+      } else {
+        await this.pushBranch(p.job, p.auth, p.ws.branch);
       }
-
-      await this.pushBranch(p.job, p.auth, p.ws.branch);
 
       // Judge disabled entirely — proceed; VERIFY/REVIEW are the backstop.
       if (maxRetries <= 0) {
