@@ -68,7 +68,7 @@ with different _surfaces_. No new `JobState` values, no new `TaskKind` values fo
 
 - **SSH repo** → push the job branch over SSH (no App ⇒ no PR), transition `AWAITING_PR_APPROVAL`. UI shows the pushed branch + diff with **Accept / Request changes**.
 - **No repo** → nothing to push; transition `AWAITING_PR_APPROVAL`; UI shows the diff from the scratch workspace.
-- **Accept** → `DONE`. **Request changes** (with a note) → `IMPLEMENTING` (same as `changes_requested` today).
+- **Accept** → `DONE`. **Request changes** (with a note) → `REVISING` (same as `changes_requested`: opens a new revision round and runs a scoped `REVISE`).
 
 ### 3.4 Chat is a separate subsystem
 
@@ -142,8 +142,8 @@ Pull the approve / feedback logic out of `onIssueComment` into reusable
 - `submitPlanFeedback(jobId, by, body)` → create `PlanFeedback`, supersede `PROPOSED`
   revision, transition `PLANNING`, enqueue `PLAN`. (Today's feedback branch.)
 - `acceptResult(jobId, by)` → transition `DONE` (dashboard analogue of PR approval).
-- `requestChanges(jobId, by, body)` → store feedback, transition `IMPLEMENTING`, enqueue
-  `IMPLEMENT` (dashboard analogue of `changes_requested`).
+- `requestChanges(jobId, by, body)` → store feedback, increment `revisionCycle`, transition
+  `REVISING`, enqueue `REVISE` (dashboard analogue of `changes_requested`).
 
 The webhook handlers (`onIssueComment`, `onPullRequestReview`) become thin callers, exactly
 as they now are for cancel/retry.

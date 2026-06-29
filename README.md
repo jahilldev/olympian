@@ -12,7 +12,7 @@ issue labeled ─▶ PLAN ─▶ (approve plan) ─▶ IMPLEMENT ─▶ VERIFY �
                                                   (verify OR review fails → revise → re-verify)
                                                                                 (approve PR) ─▶ DONE
                                                                                          │
-                                                            changes requested ─▶ IMPLEMENT ┘
+                                                            changes requested ─▶ REVISE    ┘
 ```
 
 ## How it works
@@ -25,19 +25,27 @@ issue labeled ─▶ PLAN ─▶ (approve plan) ─▶ IMPLEMENT ─▶ VERIFY �
 4. **Implement.** Hermes writes the code on a branch (`hermes/issue-<n>`) in a single pass.
 5. **Verify.** The repo's tests/build command — **discovered per-repo by the agent and
    executed by the orchestrator** (ground truth) — runs as its own stage. A failure routes
-   to **Revise** and re-verifies, up to `MAX_VERIFY_ATTEMPTS`; a pass advances to review.
+   to **Revise** and re-verifies, up to `MAX_VERIFY_ATTEMPTS` **per revision round**; a pass
+   advances to review.
 6. **Self-review.** Hermes reviews its own diff and returns a rubric verdict
    `{confidence, verdict, dimensions{correctness,tests,planCoverage,security}, issues[]}`.
    The PR gate is the **rubric** (all dimensions pass, no high/critical issues); confidence
    is advisory only. A failure routes to **Revise** (→ Verify → review again), up to
-   `MAX_REVIEW_PASSES`. Every post-implement failure — verify or review — funnels through Revise.
+   `MAX_REVIEW_PASSES` **per revision round**. Every post-implement failure — verify or review —
+   funnels through Revise.
 7. **Draft PR.** The branch is pushed and a **draft** PR is opened, linking the issue.
-8. **PR approval loop.** Approve the PR review → the job is `DONE`. Request changes → the
-   implementation loop runs again and pushes an update.
+8. **PR approval loop.** Approve the PR review → the job is `DONE`. Request changes → a new
+   **revision round** opens: the feedback drives a scoped **Revise** (→ Verify → review again),
+   pushing an update — not a fresh full implementation.
 
-The orchestrator owns git; Hermes only edits files. **Prisma (SQLite) is the source of
-truth** for every job's state, plan revisions, agent runs, reviews, and the work queue —
-each Hermes prompt is rebuilt deterministically from the database.
+**Revision rounds.** `IMPLEMENT` is the first build only (round 1, opened on plan approval).
+Every later round is a scoped `REVISE` of just the requested changes — each round of human
+feedback (a PR change-request, a `/hermes revise` comment, or the dashboard's *Request changes*)
+increments `revisionCycle` and starts a **fresh verify/review budget** so a new round is never
+short-changed by the previous round's spent attempts. The orchestrator owns git; Hermes only
+edits files. **Prisma (SQLite) is the source of truth** for every job's state, plan revisions,
+agent runs, reviews, and the work queue — each Hermes prompt is rebuilt deterministically from
+the database.
 
 ## Tech stack
 
