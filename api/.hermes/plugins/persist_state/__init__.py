@@ -187,7 +187,7 @@ def _render_checklist(result: Any) -> str:
     return "\n".join(lines)
 
 
-_THINK_TAGS = _re.compile(r"<(antThinking|think|thinking|reasoning)>.*?</\\1>", _re.DOTALL | _re.IGNORECASE)
+_THINK_TAGS = _re.compile(r"<(antThinking|think|thinking|reasoning)>.*?</\1>", _re.DOTALL | _re.IGNORECASE)
 
 
 def _strip_thinking(text: str) -> str:

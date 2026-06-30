@@ -93,15 +93,20 @@ export const DELEGATION_STRATEGY = `# Delegation
 ## Workflow
 
 1. **Map the work once.** Unless you already know exactly where everything lives, spawn ONE read-only survey subagent and use its summary to split the work into small units — ideally one file (or one acceptance criterion / issue) per unit. Do not read source yourself to plan.
-   delegate_task(goal="Locate the files and line ranges relevant to each item to be implemented/fixed — read with read_file/search_files (small offset/limit windows), not cat/grep. Report file paths and line ranges in full, but keep prose brief — key facts only", context="<the plan / issues>", toolsets=["file"], max_iterations=10)
+  delegate_task(
+    goal="Locate the files and line ranges relevant to each item to be implemented/fixed — discover with search_files or terminal (ls/find), then read the hits with read_file (small offset/limit windows). Report file paths and line ranges in full, but keep prose brief — key facts only",
+    context="<the plan / issues>",
+    toolsets=["file","terminal","search"],
+    max_iterations=10
+  )
 2. **Delegate each unit.** For every item, spawn a subagent that does the actual reading and editing:
-   delegate_task(
-     goal="<the specific change to make>. Work test-first: add or extend the automated test that encodes the acceptance criterion and confirm it FAILS first, then implement until it passes — set up the standard runner for this stack if none exists (Vitest for Vite/TS, Jest for plain Node, pytest for Python), and never weaken, skip, or delete a test to go green. Run the project's static analysis on the files you touch and fix every error. In your FINAL report, be concise — the exact files and line ranges you changed (paths and line numbers in full) plus the test result, key facts only, no restated file contents (narrate freely as you work; only this final report is persisted). Read with read_file/search_files (small offset/limit windows), not cat/grep; use terminal only to run tests/builds.",
-     context="<the slice of the plan/issue this unit covers and where it lives, from the survey>",
-     toolsets=["file","terminal","search"],
-     max_iterations=40,
-   )
-   Run units that touch DIFFERENT files in parallel; run units that share a file or depend on each other ONE at a time, feeding the earlier unit's summary into the next unit's context.
+  delegate_task(
+    goal="<the specific change to make>. Work test-first: add or extend the automated test that encodes the acceptance criterion and confirm it FAILS first, then implement until it passes — set up the standard runner for this stack if none exists (Vitest for Vite/TS, Jest for plain Node, pytest for Python), and never weaken, skip, or delete a test to go green. Run the project's static analysis on the files you touch and fix every error. In your FINAL report, be concise — the exact files and line ranges you changed (paths and line numbers in full) plus the test result, key facts only, no restated file contents (narrate freely as you work; only this final report is persisted). Read with read_file/search_files (small offset/limit windows), not cat/grep; use terminal only to run tests/builds.",
+    context="<the slice of the plan/issue this unit covers and where it lives, from the survey>",
+    toolsets=["file","terminal","search"],
+    max_iterations=40,
+  )
+  Run units that touch DIFFERENT files in parallel; run units that share a file or depend on each other ONE at a time, feeding the earlier unit's summary into the next unit's context.
 3. **Mark it done — the report is saved for you.** When a subagent returns, mark its todo item completed. Its full report is appended automatically to the Findings of \`.olympian/PROGRESS.md\`, so you do NOT need to copy it anywhere or re-open the file to verify — trust the report; the verification stage is the safety net.
 4. **Verify, don't re-do.** Use your own tools to keep the todo current, run the final whole-repo static-analysis / tests, and orchestrate; delegate a read-only subagent to CHECK a subagent's work when you need to. Route every change — even a one-line fix — and every broad survey through a subagent, so file bodies stay out of your context.`;
 
