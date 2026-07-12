@@ -40,6 +40,20 @@ describe('parseReview', () => {
     expect(r?.dimensions.criteria).toBe(true);
   });
 
+  it('normalises a lowercase verdict rather than rejecting the whole review', () => {
+    const r = parseReview(
+      '{"confidence":92,"verdict":"pass","dimensions":{"correctness":true,"tests":true,"criteria":true,"security":true},"issues":[]}',
+    );
+    expect(r?.verdict).toBe('PASS');
+  });
+
+  it('ignores an unrecognised verdict string and derives one from the rubric', () => {
+    const r = parseReview(
+      '{"confidence":80,"verdict":"maybe","dimensions":{"correctness":false,"tests":true,"criteria":true,"security":true},"issues":[]}',
+    );
+    expect(r?.verdict).toBe('FAIL');
+  });
+
   it('derives FAIL when a dimension fails even with no explicit verdict', () => {
     const r = parseReview(
       '{"confidence":80,"dimensions":{"correctness":false,"tests":true,"criteria":true,"security":true},"issues":[]}',

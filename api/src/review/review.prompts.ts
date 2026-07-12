@@ -24,31 +24,42 @@ Steps (do them exactly once in this order, then move on):
 
 If the server fails to start, skip the browser step and note it in your summary — your code-level verdict still stands.`;
 
-const VERDICT_CONTRACT = `# Output — verdict (required, inline)
+const VERDICT_CONTRACT = `# Output — verdict (required)
 
-Output your verdict as the FIRST thing in your response — a \`\`\`json block before any other text. This inline block is the ONLY thing read; do NOT write it to a file, and do NOT replace it with a prose summary (e.g. "the review is written to review.json"):
+Your response MUST contain exactly ONE \`\`\`json fenced block — the verdict. It is the ONLY thing read: do NOT write it to a file (\`review.json\` or similar; a file is never read) and do NOT replace it with a prose summary. Reasoning before the block is fine, but there must be no second \`\`\`json block anywhere in your response.
+
+The block must be STRICT, VALID JSON — real values only. Do NOT reproduce the notation from the field reference below: no \`<...>\` angle brackets, no \`"PASS" | "FAIL"\` alternatives, no \`//\` comments, no trailing commas. If you cannot emit valid JSON, the entire review is discarded and re-run.
+
+Field reference (semantics — do not copy this notation into your output):
+- \`confidence\`: integer 0-100 — your subjective confidence. Advisory only; NOT the gate.
+- \`verdict\`: the string "PASS" or "FAIL", uppercase. Never a boolean, number, or lowercase.
+- \`dimensions\`: four booleans, each \`true\` only if it fully holds —
+  - \`correctness\`: the change is logically correct and resolves the issue.
+  - \`tests\`: automated tests meaningfully encode each acceptance criterion (they exercise the new behaviour and would fail without it) and no existing test was weakened, skipped, or deleted.
+  - \`criteria\`: every acceptance criterion in the plan is met. Necessary supporting changes (build/test fixes, shared config, repairing other packages the verify gate needs) are fine — only \`false\` for missing criteria or material, unjustified, unrelated divergence.
+  - \`security\`: no injection, secret-leak, auth, or unsafe-input problems introduced.
+- \`summary\`: one-paragraph assessment (string).
+- \`issues\`: array of \`{ "severity", "title", "detail", "file" }\` objects — \`severity\` is one of "low", "medium", "high", "critical"; \`file\` is optional. EVERY concrete problem goes here — this array is the ONLY thing passed to the agent that fixes the code. A finding written as prose, or placed under any other key (\`rationale\`, \`findings\`, …), is INVISIBLE and WILL NOT be fixed. Each \`detail\` states both what is wrong AND how to fix it. Use an empty array \`[]\` when there are no issues.
+
+Emit a block with this EXACT structure, substituting your own real values (this is a filled-in example, not the values to output):
 \`\`\`json
 {
-  "confidence": <integer 0-100, advisory only — your subjective confidence>,
-  "verdict": "PASS" | "FAIL",
-  "dimensions": {
-    "correctness": <true|false: the change is logically correct and resolves the issue>,
-    "tests": <true|false: automated tests meaningfully encode each acceptance criterion — they exercise the new behaviour and would fail without it — and no existing test was weakened, skipped, or deleted>,
-    "criteria": <true|false: every acceptance criterion in the plan is met. Necessary supporting changes (build/test fixes, shared config, repairing other packages the verify gate needs) are fine — only set false for missing criteria or material, unjustified, unrelated divergence>,
-    "security": <true|false: no injection, secret-leak, auth, or unsafe-input problems introduced>
-  },
-  "summary": "<one-paragraph assessment>",
+  "confidence": 80,
+  "verdict": "FAIL",
+  "dimensions": { "correctness": true, "tests": false, "criteria": true, "security": true },
+  "summary": "The change resolves the issue, but the added test asserts nothing and would still pass if the fix were reverted.",
   "issues": [
-    { "severity": "low|medium|high|critical", "title": "<short>", "detail": "<what's wrong and how to fix>", "file": "<path, optional>" }
+    { "severity": "high", "title": "Tautological test", "detail": "test/foo.spec.ts asserts true === true; assert the response status is 200 instead so the test fails without the fix.", "file": "test/foo.spec.ts" }
   ]
 }
 \`\`\`
-**The rubric is the gate, not the confidence number.** Set "verdict" to "PASS" ONLY when ALL FOUR dimensions are true AND there are no high/critical issues. Mark a dimension false the moment you are not confident it fully holds — err toward false. List every concrete problem in "issues" (empty array if none). You may include detailed reasoning after the JSON block.`;
+**The rubric is the gate, not the confidence number.** Set \`verdict\` to "PASS" ONLY when ALL FOUR dimensions are true AND there are no high/critical issues. Mark a dimension false the moment you are not confident it fully holds — err toward false.`;
 
 const RETRY_CONTRACT = `# Retry — your previous output was rejected
 
 IMPORTANT — RETRY: your previous response could not be parsed against the required schema, so this review is being re-run. The verdict was discarded; none of that prior analysis was recorded. Conform EXACTLY this time:
-- Start the response with a single \`\`\`json fenced block — no preamble, narrative, or prose before it. Do NOT write the verdict to a file (\`review.json\` or similar) and then summarise — the file is ignored; only this inline block is read.
+- Your response MUST contain exactly ONE \`\`\`json fenced block (reasoning before it is fine; just no second \`\`\`json block). Do NOT write the verdict to a file (\`review.json\` or similar) and then summarise — the file is ignored; only this inline block is read.
+- The block MUST be strict, valid JSON: real values only, with NO \`<...>\` placeholders, NO \`"PASS" | "FAIL"\` alternatives, NO \`//\` comments, and NO trailing commas. These are the usual reasons a block fails to parse.
 - \`verdict\` MUST be the string "PASS" or "FAIL" (uppercase) — NOT a boolean (\`true\`/\`false\`), number, or any other word.
 - \`confidence\` MUST be present, as an integer 0-100.
 - \`dimensions\` MUST contain all four boolean keys: \`correctness\`, \`tests\`, \`criteria\`, \`security\`.

@@ -37,6 +37,26 @@ const boolish = z.preprocess((v) => {
   return undefined;
 }, z.boolean().default(true));
 
+// Accepts the verdict in whatever case the model emits ("pass"/"Pass"/"PASS")
+// and normalises to the canonical uppercase enum. A present-but-lowercase verdict
+// would otherwise fail the enum and reject the ENTIRE review as unparseable, even
+// though every other field is well-formed. Unrecognised values fall through to
+// undefined, letting parseReview derive a conservative verdict from the rubric.
+const verdictSchema = z.preprocess(
+  (v) => {
+    if (typeof v === 'string') {
+      const s = v.trim().toUpperCase();
+
+      if (s === 'PASS' || s === 'FAIL') {
+        return s;
+      }
+    }
+
+    return undefined;
+  },
+  z.enum(['PASS', 'FAIL']).optional(),
+);
+
 const dimensionsSchema = z.preprocess(
   (v) => {
     if (!v || typeof v !== 'object') {
@@ -63,7 +83,7 @@ const dimensionsSchema = z.preprocess(
 // pass is recorded as unparseable, and the orchestrator RE-RUNS the review.
 const reviewSchema = z.object({
   confidence: z.coerce.number().int().min(0).max(100),
-  verdict: z.enum(['PASS', 'FAIL']).optional(),
+  verdict: verdictSchema,
   summary: z.string().optional(),
   dimensions: dimensionsSchema.optional(),
   issues: z.array(issueSchema).default([]),
